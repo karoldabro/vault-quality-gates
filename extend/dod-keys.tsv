@@ -1,0 +1,2 @@
+key	why
+guard_release_pattern	the git ref pattern whose push the gate refuses on, e.g. refs/heads/release/*

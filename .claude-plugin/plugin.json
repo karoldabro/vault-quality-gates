@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "vault-quality-gates",
+  "displayName": "Vault quality gates",
+  "version": "0.1.0",
+  "description": "Refuses a push to a release branch when a measured code-quality metric is worse than its committed baseline. A plugin for the vault knowledge framework.",
+  "author": {
+    "name": "Karol Dabrowski",
+    "email": "karol.dabrowski@kdabrow.com"
+  },
+  "homepage": "https://github.com/karoldabro/vault-quality-gates",
+  "repository": "https://github.com/karoldabro/vault-quality-gates",
+  "keywords": ["quality", "coverage", "mutation-testing", "git-hooks", "vault"],
+  "dependencies": ["vault@kdabro-vault@^1.6.0"]
+}
