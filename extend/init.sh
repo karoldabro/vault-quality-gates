@@ -85,15 +85,28 @@ committed in \`quality/baseline.tsv\`. Every other push is untouched.
 **Exit codes, everywhere:** 0 measured and acceptable · 1 measured and worse · 2 could not measure.
 A check that could not run is never recorded as passing.
 
-## Start here
+## Wiring this repo is data, not code
 
-1. Read \`${PLUGIN_ROOT}/vault/architecture/guard-file-formats.md\` — the full contract.
-2. Work out which tools this repo already has. Read its \`composer.json\`, \`package.json\`,
+You write **rows**, into the two files below. You do not write shell scripts, git hooks, a runner or
+a report generator — they ship with the plugin and are listed above. A parallel implementation in
+this repo cost one session most of its length and was deleted whole.
+
+1. **Read \`${PLUGIN_ROOT}/vault/plans/2026-09-14-1251-quality-regression-gate.md\`** — the
+   specification: work items, file formats, decisions, success criteria. A \`vault/plans/*.md\` in a
+   repo you are about to change is a build order, not background reading.
+2. Read \`${PLUGIN_ROOT}/vault/architecture/guard-file-formats.md\` — the full contract. It is a
+   contract to satisfy, not reference material.
+3. Work out which tools this repo already has. Read its \`composer.json\`, \`package.json\`,
    \`Makefile\` or \`pubspec.yaml\` for commands that already exist. Prefer them over new ones.
-3. **Run each command once before you write its row.** Capture the artifact it leaves. A row whose
+   Before proposing a new tool, check it exists and is maintained: a recommendation carries a
+   version and a release date, or it is not made.
+4. **Run each command once before you write its row.** Capture the artifact it leaves. A row whose
    command was never run gates a push on a guess.
-4. Add the row to \`quality/checks.tsv\`. Then measure the baseline and commit
+5. Add the row to \`quality/checks.tsv\`. Then run \`bin/guard.sh baseline\`, and commit
    \`quality/baseline.tsv\`.
+
+The hooks are **git hooks** in \`.git/hooks/\`, not Claude Code hooks. A refusal reaches an agent
+because it ran \`git push\` and read stderr.
 
 ## quality/checks.tsv — nine columns, tab separated
 
@@ -160,8 +173,9 @@ if [ -f "${claude_md}" ] && ! grep -q "${PLUGIN_NAME}" "${claude_md}"; then
 This repo is wired to the \`${PLUGIN_NAME}\` plugin: a push to a release branch is refused when a
 measured metric is worse than \`quality/baseline.tsv\`.
 
-**Read \`quality/README.md\` before touching \`quality/checks.tsv\`.** It carries the nine columns,
-the parsers that ship, and the rule that a row is written only after its command has been run once.
+**Read \`quality/README.md\` before touching \`quality/checks.tsv\`.** Wiring this repo is data:
+rows in two TSV files. The runner, the git hooks and the parsers ship with the plugin — do not write
+your own. That file carries the columns, the parsers, and the plan that specifies all of it.
 EOF
 fi
 
