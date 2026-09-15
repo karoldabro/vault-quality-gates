@@ -23,7 +23,7 @@ measured metric is worse than its committed baseline. Keywords: `guard`, `baseli
 |---|---|
 | The whole runner — `bin/` `lib/` `templates/` — is untracked in this repo, and `recycling-api/.git/hooks/pre-push` calls it by absolute path. A `git clean -fd` here refuses every release push there. | open — W-48, do first |
 | `recycling-api`'s Docker stack is down; `docker compose ps` returns nothing. Ten of its sixteen rows run through `docker compose exec -T server`, so they measure nothing and the push is refused. Bring the stack up before any release push. | open — operational precondition |
-| The `2026-09-14 23:13` full run on `recycling-api` recorded 6513 tests, 1392 errors and 40 failures. All 1392 errors are one cause: `docker-compose.yml:26` sets `MAIL_MAILER: smtp`, and `phpunit.xml:36` lacks `force="true"`, so the container value wins and every mailing test dials `mailpit:1025`. | open — W-50, blocks W-51 |
+| The mail cause of the 1392 errors is fixed, but the 40 recorded failures were never diagnosed; the run that measures them is W-51. | open — blocks W-51 |
 | The framework fix to `scripts/completion-hook.sh` lives in `~/workspace/vault` and is copied into the plugin cache at `~/.claude/plugins/cache/kdabro-vault/vault/1.8.0/`. A plugin re-release overwrites the cache copy, so the source change must ship before the next `/v-plugin` update. | open — outside this repo |
 | A whole-repo coverage run on `recycling-api` takes 57m36s. No hook runs it. `bin/guard.sh baseline` does, out of band, and the operator schedules it. Push-time checks are diff-scoped only. | open — needs the operator's agreement |
 | Dart has no diff-scoped mutation tool. Flutter repos carry `mutation` as a `kind: absent` row. | open — no fix exists |
@@ -88,10 +88,13 @@ against it.
   `tests="6513" errors="1392" failures="40"` on its root `<testsuite>`. All 1392 errors share one
   type, `Symfony\Component\Mailer\Exception\TransportException`, reaching for `mailpit:1025`:
   `grep -o '<error type="[^"]*"' … | sort | uniq -c` returns exactly one line. 2026-09-15.
-- `docker-compose.yml:26` sets `MAIL_MAILER: smtp` in the server container's environment.
-  `phpunit.xml:36` sets it to `array` without `force="true"`, which PHPUnit does not apply over an
-  existing variable. `tests/Feature/Notifications/ProfileEmailFixture.php:132` already documents
-  this and works around it with `config(['mail.default' => 'array'])` per test. 2026-09-15.
+- PHPUnit's `<env name="X" value="Y" force="true"/>` writes `getenv()` and `$_ENV` but never
+  `$_SERVER`. Probed under `--bootstrap`: `getenv='array' _ENV='array' _SERVER='smtp'`. Laravel's
+  Env repository reads `$_SERVER`, so an `<env>` line alone cannot override a variable Docker
+  Compose sets. A `<server>` line beside it can. 2026-09-15.
+- `phpunit.xml` and `docker-compose.yml` both set `DB_PORT`, `DB_SSLMODE` and `MAIL_MAILER`. The
+  first two carry identical values, so only `MAIL_MAILER` ever diverged. `comm -12` over the two
+  name lists, 2026-09-15.
 - `docker compose ps` in `recycling-api` returns nothing, so every row carrying
   `docker compose exec -T server` is unmeasurable while the stack is down. 2026-09-15.
 - `~/vault/givore/quality/history.jsonl` holds 4 rows, all stamped `2026-06-22T13:11`.
@@ -201,9 +204,10 @@ Stage boundaries are stated once, in `## Sequencing & dependencies`. Execute sta
 | W-45 | `templates/VAULT.md` | edit | Edit | document `guard_release_pattern` as a flat scalar | — | `./bin/doc-lint.sh --changed` | TODO |
 | W-46 | `README.md` | edit | Edit | one row for `/v-guard` in the command table | — | `./bin/doc-lint.sh --changed` | TODO |
 | W-47 | `.claude-plugin/plugin.json` | edit | Edit | bump `version` | — | `./bin/release-check.sh` | TODO |
-| W-48 | `bin/` `lib/` `templates/` in this repo | commit | Bash | every one is untracked today, and `recycling-api/.git/hooks/pre-push` calls `bin/guard.sh` by absolute path; a `git clean -fd` here disarms the gate there | — | `git status --short` reports no `??` under those paths | TODO |
-| W-49 | `/home/kdabrow/workspace/recycling-api/quality/` `VAULT.md` `CLAUDE.md` `composer.json` `infection.json5` `scripts/qa-status.php` | commit | Bash | the six tool configs and the two TSVs are staged but uncommitted; review the `qa-status.php` and `composer.json` diffs before committing, because the earlier hand-rolled runner touched both | — | `git status --short` clean in that repo | TODO |
-| W-50 | `/home/kdabrow/workspace/recycling-api/phpunit.xml:36` | edit | Edit | `<env name="MAIL_MAILER" value="array" force="true"/>`; without `force` PHPUnit leaves the container's `MAIL_MAILER: smtp` from `docker-compose.yml:26` in place, and every mailing test reaches for `mailpit:1025` | — | one mailing test passes with the mailpit container stopped | TODO |
+| W-48 | `bin/` `lib/` `templates/` in this repo | commit | Bash | every one is untracked today, and `recycling-api/.git/hooks/pre-push` calls `bin/guard.sh` by absolute path; a `git clean -fd` here disarms the gate there | — | `git status --short` reports no `??` under those paths | DONE — `7b57b2c` on `feat/guard-runner` |
+| W-49 | `/home/kdabrow/workspace/recycling-api/quality/` `VAULT.md` `CLAUDE.md` `composer.json` `infection.json5` | commit | Bash | review the `composer.json` diff first; its `qa:nightly` called `composer quality:all`, which no script defines | — | `git status --short` clean in that repo | DONE — `6240c1b6` on `release/1.17.0` |
+| W-53 | `/home/kdabrow/workspace/recycling-api/scripts/qa-status.php` | revert | Bash | it carries a second baseline comparison beside `guard_compare`, and reads ids `duplication-lines-pct` and `shadow-dependencies` that `quality/baseline.tsv` does not define, so both lookups return null. A per-repo emitter is the thing that reported `msi: null` as a pass for three months | — | `git diff scripts/qa-status.php` is empty and `composer qa:status` still runs | BLOCKED — 161 uncommitted lines; needs the operator's word before reverting |
+| W-50 | `/home/kdabrow/workspace/recycling-api/phpunit.xml:36-41` | edit | Edit | both an `<env … force="true"/>` and a `<server … force="true"/>` line for `MAIL_MAILER`; `<env force>` reaches `getenv()` and `$_ENV` but never `$_SERVER`, which keeps the container's `MAIL_MAILER: smtp` from `docker-compose.yml:26`, and Laravel's Env repository reads `$_SERVER` | — | one mailing test passes with the mailpit container stopped | DONE — `4da799ff`; `AdEligibilityTest` 8 errors to 12 green, 46s to 7.7s |
 | W-51 | `/home/kdabrow/workspace/recycling-api/storage/coverage/` then `quality/baseline.tsv` | measure | Bash | re-run `composer test:coverage` after W-50 with the stack up, then re-capture only the `coverage` and `tests-failing` rows; the run takes 57m36s, so the operator schedules it | SC-6 | `tests-failing` measures 0 and `coverage` comes from a clover file under 7 days old | TODO |
 | W-52 | `tests/run.sh` `tests/Dockerfile` | create | Write | copied from `$VAULT_FRAMEWORK_PATH/tests/`; mounts this repo read-only at `/code`; W-17 and W-18 have no harness to run in without it | SC-1 SC-2 SC-3 | `./tests/run.sh tests/unit` exits 0 on an empty suite | TODO |
 
