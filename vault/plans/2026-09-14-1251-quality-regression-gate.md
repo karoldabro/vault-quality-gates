@@ -49,19 +49,19 @@ against it.
 
 | id | criterion | kind | how | check | expect | verdict | evidence |
 |----|-----------|------|-----|-------|--------|---------|----------|
-| SC-1 | WHEN a `kind: repo` metric is worse than its baseline beyond `threshold` THE SYSTEM SHALL exit 1 naming the metric, both values and the tolerance | unit | command | `checks/guard-SC-1.sh` | exit 0 | | |
-| SC-2 | WHEN a check command fails, its artifact is absent, or its parser prints nothing THE SYSTEM SHALL exit 2 and record no value | unit | command | `checks/guard-SC-2.sh` | exit 0 | | |
-| SC-3 | WHEN `pre-push` runs THE SYSTEM SHALL consume every stdin line before exiting, on the skip path as well as the gated path | unit | command | `checks/guard-SC-3.sh` | exit 0 | | |
-| SC-4 | WHEN the pushed tree lowers a `quality/baseline.tsv` row against the remote's copy with an empty `reason` THE SYSTEM SHALL exit 1 | unit | command | `checks/guard-SC-4.sh` | exit 0 | | |
-| SC-5 | WHEN the tolerance comparison is deleted from `guard_compare` THE SYSTEM SHALL turn `tests/unit/guard-metrics.bats` red | unit | command | `checks/guard-SC-5.sh` | exit 0 | | |
-| SC-7 | WHEN the hook runs with uncommitted edits in the working tree THE SYSTEM SHALL measure the commit being pushed and ignore those edits | unit | command | `checks/guard-SC-7.sh` | exit 0 | | |
+| SC-1 | WHEN a `kind: repo` metric is worse than its baseline beyond `threshold` THE SYSTEM SHALL exit 1 naming the metric, both values and the tolerance | unit | command | `checks/guard-SC-1.sh` | exit 0 | met | `./checks/guard-SC-1.sh` → rc 0, `guard-metrics.bats: 3 of 3 cases passing`, 2026-09-15 |
+| SC-2 | WHEN a check command fails, its artifact is absent, or its parser prints nothing THE SYSTEM SHALL exit 2 and record no value | unit | command | `checks/guard-SC-2.sh` | exit 0 | met | `./checks/guard-SC-2.sh` → rc 0, `guard-metrics.bats: 7 of 7 cases passing`, 2026-09-15 |
+| SC-3 | WHEN `pre-push` runs THE SYSTEM SHALL consume every stdin line before exiting, on the skip path as well as the gated path | unit | command | `checks/guard-SC-3.sh` | exit 0 | met | `./checks/guard-SC-3.sh` → rc 0, `guard-hooks.bats: 3 of 3 cases passing`; the skip test pushes 20000 ref lines and asserts `writer=0`, 2026-09-15 |
+| SC-4 | WHEN the pushed tree lowers a `quality/baseline.tsv` row against the remote's copy with an empty `reason` THE SYSTEM SHALL exit 1 | unit | command | `checks/guard-SC-4.sh` | exit 0 | met | `./checks/guard-SC-4.sh` → rc 0, `guard-metrics.bats: 3 of 3 cases passing`, 2026-09-15 |
+| SC-5 | WHEN the tolerance comparison is deleted from `guard_compare` THE SYSTEM SHALL turn `tests/unit/guard-metrics.bats` red | unit | command | `checks/guard-SC-5.sh` | exit 0 | met | `./checks/guard-SC-5.sh` → rc 0; the planted copy drops `r + t` and the same 105-against-100-tolerating-5 input then exits 1, 2026-09-15 |
+| SC-7 | WHEN the hook runs with uncommitted edits in the working tree THE SYSTEM SHALL measure the commit being pushed and ignore those edits | unit | command | `checks/guard-SC-7.sh` | exit 0 | met | `./checks/guard-SC-7.sh` → rc 0; a tree with 8 uncommitted lines still measures the committed 3, 2026-09-15 |
 | SC-6 | WHEN a release branch of this repo is pushed with a metric made worse THE SYSTEM SHALL refuse the push and name the metric | delivery | observed | clone this repo to `mktemp -d`, install the hooks there, worsen `comment-density`, `git push --dry-run` to a bare clone; fails when the push succeeds, or when the refusal names no metric and no file path; `no-command: the refusal must come from git invoking the installed hook, which no in-process fixture reproduces` | push refused, stderr names the metric and `quality/baseline.tsv` | | |
 
 ## Definition of done
 
 | id | line | state | evidence |
 |----|------|-------|----------|
-| D-1 | `test_command` passes: `./tests/run.sh tests/unit` | | |
+| D-1 | `test_command` passes: `./tests/run.sh tests/unit` | met | 33 of 33 green, 2026-09-15 |
 | D-2 | `lint_command` passes: `./bin/doc-lint.sh --changed` | | |
 | D-3 | `delivery_command` passes: `./bin/gate.sh all <plan> --phase close --run` | | |
 
@@ -169,11 +169,11 @@ Stage boundaries are stated once, in `## Sequencing & dependencies`. Execute sta
 | W-10 | `lib/guard-install.sh` | create | Write | `guard_hooks_install remove status`; marker lines `# vault-guard-start` and `# vault-guard-end`; refuses to overwrite a non-marker hook body, reusing `install.sh:84-101` | SC-6 | `tests/unit/guard-hooks.bats` | WRITTEN — untracked, unproven |
 | W-11 | `templates/git-hooks/pre-push` | create | Write | consumes every stdin line before any exit; matches `<remote ref>`; skips a `(delete)` line; exports the local sha so W-9 measures a `git worktree add --detach` of it rather than the working directory | SC-3 SC-6 SC-7 | `tests/unit/guard-hooks.bats` | WRITTEN — untracked, unproven |
 | W-12 | `templates/git-hooks/pre-commit` | create | Write | runs `bin/guard.sh commit`; always exits 0 | SC-3 | `tests/unit/guard-hooks.bats` | WRITTEN — untracked, unproven |
-| W-14 | `tests/fixtures/guard/clover.xml` | create | Write | a two-file clover report with known covered and total statements | SC-2 | `tests/unit/guard-metrics.bats` | TODO |
-| W-15 | `tests/fixtures/guard/infection-log.json` | create | Write | `msi` is `null`, mirroring the live defect | SC-2 | `tests/unit/guard-metrics.bats` | TODO |
-| W-16 | `tests/fixtures/guard/jscpd-report.json` | create | Write | one clone, a known duplication percentage | SC-2 | `tests/unit/guard-metrics.bats` | TODO |
-| W-17 | `tests/unit/guard-metrics.bats` | create | Write | every absence assertion uses `run` then a status check, never `! grep`; every write assertion builds its tree under `mktemp -d` | SC-1 SC-2 SC-4 SC-5 | `./tests/run.sh tests/unit` | TODO |
-| W-18 | `tests/unit/guard-hooks.bats` | create | Write | feeds real four-field stdin lines and asserts the writer's status is 0 on the skip path | SC-3 | `./tests/run.sh tests/unit` | TODO |
+| W-14 | `tests/fixtures/guard/clover.xml` | create | Write | a two-file clover report with known covered and total statements | SC-2 | `tests/unit/guard-metrics.bats` | DONE |
+| W-15 | `tests/fixtures/guard/infection-log.json` and `infection-log-scored.json` | create | Write | the first carries `msi: null`, mirroring the live defect; the second a real score, so the parser is proven in both directions | SC-2 | `tests/unit/guard-metrics.bats` | DONE |
+| W-16 | `tests/fixtures/guard/jscpd-report.json` | create | Write | one clone, a known duplication percentage | SC-2 | `tests/unit/guard-metrics.bats` | DONE |
+| W-17 | `tests/unit/guard-metrics.bats` | create | Write | every absence assertion uses `run` then a status check, never `! grep`; every write assertion builds its tree under `mktemp -d` | SC-1 SC-2 SC-4 SC-5 SC-7 | `./tests/run.sh tests/unit` | DONE — 23 cases |
+| W-18 | `tests/unit/guard-hooks.bats` | create | Write | feeds real four-field stdin lines and asserts the writer's status is 0 on the skip path | SC-3 | `./tests/run.sh tests/unit` | DONE — 10 cases |
 | W-19 | `checks/guard-SC-1.sh` | create | Write | greps the bats output for the `@test` names it owns; exit 1 when they fail, exit 2 when the suite could not run | SC-1 | `./bin/gate.sh verdict <plan> --run` | DONE |
 | W-20 | `checks/guard-SC-2.sh` | create | Write | same shape as W-19, own `@test` names | SC-2 | `./bin/gate.sh verdict <plan> --run` | DONE |
 | W-21 | `checks/guard-SC-3.sh` | create | Write | same shape as W-19, own `@test` names | SC-3 | `./bin/gate.sh verdict <plan> --run` | DONE |
@@ -209,29 +209,25 @@ Stage boundaries are stated once, in `## Sequencing & dependencies`. Execute sta
 | W-53 | `/home/kdabrow/workspace/recycling-api/scripts/qa-status.php` | revert | Bash | it carries a second baseline comparison beside `guard_compare`, and reads ids `duplication-lines-pct` and `shadow-dependencies` that `quality/baseline.tsv` does not define, so both lookups return null. A per-repo emitter is the thing that reported `msi: null` as a pass for three months | — | `git diff scripts/qa-status.php` is empty and `composer qa:status` still runs | BLOCKED — 161 uncommitted lines; needs the operator's word before reverting |
 | W-50 | `/home/kdabrow/workspace/recycling-api/phpunit.xml:36-41` | edit | Edit | both an `<env … force="true"/>` and a `<server … force="true"/>` line for `MAIL_MAILER`; `<env force>` reaches `getenv()` and `$_ENV` but never `$_SERVER`, which keeps the container's `MAIL_MAILER: smtp` from `docker-compose.yml:26`, and Laravel's Env repository reads `$_SERVER` | — | one mailing test passes with the mailpit container stopped | DONE — `4da799ff`; `AdEligibilityTest` 8 errors to 12 green, 46s to 7.7s |
 | W-51 | `/home/kdabrow/workspace/recycling-api/storage/coverage/` then `quality/baseline.tsv` | measure | Bash | re-run `composer test:coverage` after W-50 with the stack up, then re-capture only the `coverage` and `tests-failing` rows; the run takes 57m36s, so the operator schedules it | SC-6 | `tests-failing` measures 0 and `coverage` comes from a clover file under 7 days old | TODO |
-| W-52 | `tests/run.sh` `tests/Dockerfile` | create | Write | copied from `$VAULT_FRAMEWORK_PATH/tests/`; mounts this repo read-only at `/code`; W-17 and W-18 have no harness to run in without it | SC-1 SC-2 SC-3 | `./tests/run.sh tests/unit` exits 0 on an empty suite | TODO |
+| W-52 | `tests/run.sh` `tests/Dockerfile` | create | Write | mounts this repo read-only at `/code`; the image carries gawk, jq and `libxml2-utils`, because busybox awk rounds differently and the clover and junit parsers call `xmllint`; missing Docker exits 2, never 1 | SC-1 SC-2 SC-3 | `./tests/run.sh tests/unit` | DONE — 33 of 33 green |
 
 ## Sequencing & dependencies
 
-Stage 1 — W-48, W-49. Commit what already runs, in both repos. No behaviour changes. It ends when
-`git status --short` reports no untracked runner path here and no staged quality path there.
+Stages 1 and 3 are closed: the runner is committed and SC-1 to SC-5 and SC-7 are met. What is left
+runs in this order.
 
-Stage 2 — W-50, W-51. Unblock the release gate in `recycling-api`. W-50 is a one-line edit; W-51 is
-a 57-minute measured run the operator schedules. It ends when `bin/guard.sh release` there exits 0
-with the stack up. Stage 2 is independent of stage 3 and can run in either order.
+Stage 2 — W-51, and W-53 once the operator rules on it. W-51 is a 57-minute measured run the
+operator schedules, with the `recycling-api` stack up. It ends when `bin/guard.sh release` there
+exits 0. Stage 2 is independent of stage 4 and can run in either order.
 
-Stage 3 — W-52, W-14 to W-18, then the SC verdicts. Prove the runner. Until it lands, SC-1 to SC-5
-and SC-7 are claimed and unverified: `checks/guard-SC-*.sh` grep a bats suite that does not exist,
-so each exits 2. It ends with `./bin/gate.sh verdict <plan> --run` green.
-
-Stage 4 — W-24, W-25, W-26. This repo gates itself, the two host-only rows only. It needs stage 1
-and stage 3. It ends with SC-6 met: a push to a release branch of a clone of this repo, refused.
+Stage 4 — W-24, W-25, W-26. This repo gates itself, the two host-only rows only. It ends with SC-6
+met: a push to a release branch of a clone of this repo, refused.
 
 Stage 5 — W-31 to W-35 and W-39 to W-47, the `/v-guard` onboarding command and the documents. It
 needs stage 4. W-5 joins this stage only when a Dart or JS repo is wired.
 
-No plan in this repo has completed more than 23 work items. Stage 3 is 7, stage 5 is 14 and splits
-again if it runs long.
+No plan in this repo has completed more than 23 work items. Stage 5 is 14 and splits again if it
+runs long.
 
 ## Rollback
 

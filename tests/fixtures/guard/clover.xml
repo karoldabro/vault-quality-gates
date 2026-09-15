@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="1789400000">
+  <project timestamp="1789400000">
+    <file name="/app/src/Alpha.php">
+      <metrics statements="120" coveredstatements="96"/>
+    </file>
+    <file name="/app/src/Beta.php">
+      <metrics statements="80" coveredstatements="54"/>
+    </file>
+    <metrics files="2" statements="200" coveredstatements="150"/>
+  </project>
+</coverage>

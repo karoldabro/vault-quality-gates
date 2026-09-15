@@ -30,7 +30,8 @@ guard_hooks_install() {
         printf 'installed %s\n' "$dst"
     done
 
-    local configured; configured="$(git config core.hooksPath 2>/dev/null)"
+    # `git config` exits 1 for a key that is not set, which is the normal case here.
+    local configured; configured="$(git config core.hooksPath 2>/dev/null || true)"
     if [ -n "$configured" ] && [ "$configured" != "$dir" ]; then
         guard_err "guard: core.hooksPath is ${configured}, so ${dir} is not what git runs"
         return 1

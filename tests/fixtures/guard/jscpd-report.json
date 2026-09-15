@@ -1,0 +1,25 @@
+{
+  "statistics": {
+    "total": {
+      "lines": 5000,
+      "tokens": 40000,
+      "sources": 40,
+      "clones": 1,
+      "duplicatedLines": 128,
+      "duplicatedTokens": 900,
+      "percentage": 2.56,
+      "percentageTokens": 2.25,
+      "newDuplicatedLines": 0,
+      "newClones": 0
+    }
+  },
+  "duplicates": [
+    {
+      "format": "php",
+      "lines": 128,
+      "tokens": 900,
+      "firstFile": {"name": "/app/src/Alpha.php", "start": 10, "end": 138},
+      "secondFile": {"name": "/app/src/Beta.php", "start": 4, "end": 132}
+    }
+  ]
+}

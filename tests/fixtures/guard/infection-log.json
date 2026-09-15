@@ -1,0 +1,12 @@
+{
+  "stats": {
+    "totalMutantsCount": 0,
+    "killedCount": 0,
+    "notCoveredCount": 0,
+    "escapedCount": 0,
+    "errorCount": 0,
+    "msi": null,
+    "mutationCodeCoverage": null,
+    "coveredCodeMsi": null
+  }
+}
