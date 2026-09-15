@@ -1,5 +1,5 @@
 id	value	commit	reason
 # Written by bin/guard.sh baseline. Every reason is cleared here, so an
 # accepted regression expires at the next whole-repo measurement.
-comment-density	0.257	7e639e4	-
-doc-lint	0	7e639e4	-
+comment-density	0.257	1d95822	-
+doc-lint	0	1d95822	-

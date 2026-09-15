@@ -9,4 +9,4 @@ id	scope	kind	command	parser	artifact	direction	threshold	gate
 # rule-count is deliberately absent. bin/rule-count.sh --assert already exits 1 on main,
 # so a row for it would refuse every push from the day it was written.
 comment-density	both	repo	mkdir -p quality-reports && cloc --json --quiet bin lib templates > quality-reports/cloc.json	cloc	quality-reports/cloc.json	down	0.02	refuse
-doc-lint	both	diff	{{files}} | tr '\0' '\n' | grep -E '\.md$' | xargs -r "${VAULT_FRAMEWORK_PATH:-$HOME/workspace/vault}"/bin/doc-lint.sh --quiet	exitcode	-	down	0	refuse
+doc-lint	both	diff	mkdir -p quality-reports; { {{files}} | tr '\0' '\n' | grep -E '\.md$' || true; } > quality-reports/md.txt; xargs -r -a quality-reports/md.txt "${VAULT_FRAMEWORK_PATH:-$HOME/workspace/vault}"/bin/doc-lint.sh --quiet || exit 1	exitcode	-	down	0	refuse
