@@ -55,7 +55,7 @@ against it.
 | SC-4 | WHEN the pushed tree lowers a `quality/baseline.tsv` row against the remote's copy with an empty `reason` THE SYSTEM SHALL exit 1 | unit | command | `checks/guard-SC-4.sh` | exit 0 | met | `./checks/guard-SC-4.sh` → rc 0, `guard-metrics.bats: 3 of 3 cases passing`, 2026-09-15 |
 | SC-5 | WHEN the tolerance comparison is deleted from `guard_compare` THE SYSTEM SHALL turn `tests/unit/guard-metrics.bats` red | unit | command | `checks/guard-SC-5.sh` | exit 0 | met | `./checks/guard-SC-5.sh` → rc 0; the planted copy drops `r + t` and the same 105-against-100-tolerating-5 input then exits 1, 2026-09-15 |
 | SC-7 | WHEN the hook runs with uncommitted edits in the working tree THE SYSTEM SHALL measure the commit being pushed and ignore those edits | unit | command | `checks/guard-SC-7.sh` | exit 0 | met | `./checks/guard-SC-7.sh` → rc 0; a tree with 8 uncommitted lines still measures the committed 3, 2026-09-15 |
-| SC-6 | WHEN a release branch of this repo is pushed with a metric made worse THE SYSTEM SHALL refuse the push and name the metric | delivery | observed | clone this repo to `mktemp -d`, install the hooks there, worsen `comment-density`, `git push --dry-run` to a bare clone; fails when the push succeeds, or when the refusal names no metric and no file path; `no-command: the refusal must come from git invoking the installed hook, which no in-process fixture reproduces` | push refused, stderr names the metric and `quality/baseline.tsv` | | |
+| SC-6 | WHEN a release branch of this repo is pushed with a metric made worse THE SYSTEM SHALL refuse the push and name the metric | delivery | observed | clone this repo to `mktemp -d`, install the hooks there, worsen `comment-density`, `git push --dry-run` to a bare clone; fails when the push succeeds, or when the refusal names no metric and no file path; `no-command: the refusal must come from git invoking the installed hook, which no in-process fixture reproduces` | push refused, stderr names the metric and `quality/baseline.tsv` | met | clone + bare repo under `mktemp -d`, hooks installed, 400 comment lines appended to `lib/guard-metrics.sh`. Control first: the unworsened push to `release/sc6` exits 0 and creates the branch. Worsened: exit 1, `comment-density 0.257 -> 0.956   baseline 0.257, tolerated 0.02`, `baseline: quality/baseline.tsv`, and `git --git-dir=<bare> branch --list` is empty. 2026-09-15 |
 
 ## Definition of done
 
@@ -180,9 +180,9 @@ Stage boundaries are stated once, in `## Sequencing & dependencies`. Execute sta
 | W-22 | `checks/guard-SC-4.sh` | create | Write | same shape as W-19, own `@test` names | SC-4 | `./bin/gate.sh verdict <plan> --run` | DONE |
 | W-23a | `checks/guard-SC-7.sh` | create | Write | same shape as W-19, own `@test` names | SC-7 | `./bin/gate.sh verdict <plan> --run` | DONE |
 | W-23 | `checks/guard-SC-5.sh` | create | Write | deletes the tolerance comparison from a copy of `lib/guard-metrics.sh`, runs the suite against it, and fails when it stays green | SC-5 | `./bin/gate.sh verdict <plan> --run` | DONE |
-| W-24 | `quality/checks.tsv` | create | Write | exactly two rows, both host-only: `comment-density` at `scope: both  kind: repo  parser: cloc  direction: down  threshold: 0.02  gate: refuse` over `bin lib scripts`, and `doc-lint` at `scope: both  kind: diff  parser: exitcode  threshold: 0  gate: refuse`. `rule-count` is excluded; it already exits 1 on `main` | SC-6 | `./bin/guard.sh release` | TODO |
-| W-25 | `quality/baseline.tsv` | create | Write | values come from one real `bin/guard.sh baseline` run, never typed | SC-6 | `./bin/guard.sh release` | TODO |
-| W-26 | `VAULT.md` | edit | Edit | add `guard_release_pattern: refs/heads/release/*` as a flat scalar | SC-6 | `grep` | TODO |
+| W-24 | `quality/checks.tsv` | create | Write | exactly two rows, both host-only: `comment-density` at `scope: both  kind: repo  parser: cloc  direction: down  threshold: 0.02  gate: refuse` over `bin lib templates`, and `doc-lint` at `scope: both  kind: diff  parser: exitcode  threshold: 0  gate: refuse`, whose command ends `|| exit 1` because `xargs` reports a failing child as 123 and the `exitcode` parser reads anything outside {0,1} as unmeasurable. `rule-count` is excluded; it already exits 1 on `main` | SC-6 | `./bin/guard.sh release` | DONE |
+| W-25 | `quality/baseline.tsv` | create | Write | values come from one real `bin/guard.sh baseline` run, never typed | SC-6 | `./bin/guard.sh release` | DONE — `comment-density 0.257`, `doc-lint 0` at `1d95822` |
+| W-26 | `VAULT.md` | edit | Edit | add `guard_release_pattern: refs/heads/release/*` as a flat scalar | SC-6 | `grep` | DONE |
 | W-27 | `.gitignore` | edit | Edit | add `quality-reports/` | SC-6 | `git check-ignore quality-reports/REPORT.md` | DONE |
 | W-28 | `/home/kdabrow/workspace/recycling-api/quality/checks.tsv` | create | Write | every command carries `docker compose exec -T server` and is run once before it is written; `cloc` scans `app` only; no row runs the whole suite | SC-6 | `bin/guard.sh release` in that repo | DONE — 16 rows |
 | W-29 | `/home/kdabrow/workspace/recycling-api/quality/baseline.tsv` | create | Write | written only after two consecutive `bin/guard.sh baseline` runs agree on every value | SC-6 | two runs compared | PARTIAL — 11 rows stand; `coverage` and `tests-failing` wait on W-50 |
@@ -213,18 +213,14 @@ Stage boundaries are stated once, in `## Sequencing & dependencies`. Execute sta
 
 ## Sequencing & dependencies
 
-Stages 1 and 3 are closed: the runner is committed and SC-1 to SC-5 and SC-7 are met. What is left
-runs in this order.
+Every success criterion is met. Two things remain.
 
 Stage 2 — W-51, and W-53 once the operator rules on it. W-51 is a 57-minute measured run the
 operator schedules, with the `recycling-api` stack up. It ends when `bin/guard.sh release` there
-exits 0. Stage 2 is independent of stage 4 and can run in either order.
+exits 0.
 
-Stage 4 — W-24, W-25, W-26. This repo gates itself, the two host-only rows only. It ends with SC-6
-met: a push to a release branch of a clone of this repo, refused.
-
-Stage 5 — W-31 to W-35 and W-39 to W-47, the `/v-guard` onboarding command and the documents. It
-needs stage 4. W-5 joins this stage only when a Dart or JS repo is wired.
+Stage 5 — W-31 to W-35 and W-39 to W-47, the `/v-guard` onboarding command and the documents. W-5
+joins this stage only when a Dart or JS repo is wired.
 
 No plan in this repo has completed more than 23 work items. Stage 5 is 14 and splits again if it
 runs long.
