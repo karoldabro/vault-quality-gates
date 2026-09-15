@@ -14,6 +14,7 @@ add_folders: [plans]
 
 ## behaviour
 capture_indications: true
+guard_release_pattern: refs/heads/release/*
 
 ## definition of done
 dod_profile: code
