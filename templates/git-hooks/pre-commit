@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# vault-guard-start
+# Reports on the commit being made. NEVER blocks: the gate that refuses is pre-push,
+# and only on a release branch.
+set -uo pipefail
+GUARD="__GUARD_SH__"
+[ -x "$GUARD" ] && "$GUARD" commit
+exit 0
+# vault-guard-end

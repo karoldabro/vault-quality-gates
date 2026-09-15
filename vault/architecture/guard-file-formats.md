@@ -134,13 +134,13 @@ Fix it, or accept it:
 
 | path | written by | read by | tracked |
 |---|---|---|---|
-| `quality-reports/status.json` | `guard_render_report` | `scripts/guard-report-hook.sh` at SessionStart | no |
+| `quality-reports/status.json` | `guard_render_report` | `~/vault/givore/quality/build-dashboard.mjs:57` | no |
 | `quality-reports/REPORT.md` | `guard_render_report` | the operator | no |
 | `quality/checks.tsv` | `/v-guard init`, or the operator | `guard_load_checks` | yes |
 | `quality/baseline.tsv` | `bin/guard.sh baseline` and `bin/guard.sh accept` | `guard_compare`, `guard_baseline_diff` | yes |
 
-`scripts/guard-report-hook.sh` reads `status.json`, not the markdown. A bash hook parsing prose
-headings breaks on the first reword, and the machine-readable file sits beside it.
+Nothing in this plugin reads either generated file. The gate reaches the agent through the
+`pre-push` hook's stderr, which the agent sees as the output of its own `git push`.
 
 `REPORT.md` carries exactly four headings, in this order: `## Open regressions`, `## Unmeasurable`,
 `## All metrics`, `## Absent`. The operator reads it; nothing parses it.

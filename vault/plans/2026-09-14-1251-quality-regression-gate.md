@@ -21,12 +21,13 @@ measured metric is worse than its committed baseline. Keywords: `guard`, `baseli
 
 | item | state |
 |---|---|
+| The whole runner — `bin/` `lib/` `templates/` — is untracked in this repo, and `recycling-api/.git/hooks/pre-push` calls it by absolute path. A `git clean -fd` here refuses every release push there. | open — W-48, do first |
+| `recycling-api`'s Docker stack is down; `docker compose ps` returns nothing. Ten of its sixteen rows run through `docker compose exec -T server`, so they measure nothing and the push is refused. Bring the stack up before any release push. | open — operational precondition |
+| The `2026-09-14 23:13` full run on `recycling-api` recorded 6513 tests, 1392 errors and 40 failures. All 1392 errors are one cause: `docker-compose.yml:26` sets `MAIL_MAILER: smtp`, and `phpunit.xml:36` lacks `force="true"`, so the container value wins and every mailing test dials `mailpit:1025`. | open — W-50, blocks W-51 |
+| The framework fix to `scripts/completion-hook.sh` lives in `~/workspace/vault` and is copied into the plugin cache at `~/.claude/plugins/cache/kdabro-vault/vault/1.8.0/`. A plugin re-release overwrites the cache copy, so the source change must ship before the next `/v-plugin` update. | open — outside this repo |
 | A whole-repo coverage run on `recycling-api` takes 57m36s. No hook runs it. `bin/guard.sh baseline` does, out of band, and the operator schedules it. Push-time checks are diff-scoped only. | open — needs the operator's agreement |
-| `/home/kdabrow/workspace/recycling-api` has no running container (`docker compose ps -a` shows one worker exited six weeks ago) and its vendor binaries need PHP >= 8.4.1 against a host 8.3.11.  W-28 starts the stack with `docker compose up -d --wait`; if it cannot start, every release push there is refused. | open — blocks W-28 |
-| That repo's last full run recorded `Errors: 2, Failures: 11` and `NotificationLogStatusLifecycleTest` fails 2 runs in 3 on identical code. No green baseline can be captured until that is fixed. | blocked — blocks W-29 |
 | Dart has no diff-scoped mutation tool. Flutter repos carry `mutation` as a `kind: absent` row. | open — no fix exists |
 | `~/vault/givore/quality/build-dashboard.mjs` parses `quality-reports/status.json`. W-9 keeps writing that file so the aggregator is untouched. Retiring it is a later decision. | deferred |
-| `bin/rule-count.sh --assert` exits 1 on `main` (`OVER: 175 rule lines, budget 173`). Session C adds command files and raises it further. | deferred — pre-existing |
 
 ## Open questions
 
@@ -81,16 +82,23 @@ against it.
   `echo ${PIPESTATUS[0]}` → `writer=141 hook=0`. 2026-09-14.
 - `git push --dry-run` runs the `pre-push` hook. Reproduced against a bare repo under `/tmp`,
   hook stderr printed, branch not created. 2026-09-14.
-- `recycling-api/storage/coverage/run.log` records `Time: 57:36.820` for `Tests: 3574`, and ends
-  `EXIT=2`. `grep -aoE 'Time: [0-9:.]+'`, 2026-09-14.
-- `recycling-api/quality-reports/2026-08-01-full-suite-failures.md` records `Errors: 2, Failures: 11`
-  and names `NotificationLogStatusLifecycleTest` as failing 2 runs in 3 on identical code.
-- `docker compose ps -a` in `recycling-api` returns one exited worker; `docker compose exec -T server
-  php -v` returns `service "server" is not running`. 2026-09-14.
+- `recycling-api/storage/coverage/run.log` records `Time: 57:36.820`, so a whole-repo suite there
+  costs 57 minutes. `grep -aoE 'Time: [0-9:.]+'`, 2026-09-14.
+- `recycling-api/storage/coverage/junit.xml`, written 2026-09-14 23:13, carries
+  `tests="6513" errors="1392" failures="40"` on its root `<testsuite>`. All 1392 errors share one
+  type, `Symfony\Component\Mailer\Exception\TransportException`, reaching for `mailpit:1025`:
+  `grep -o '<error type="[^"]*"' … | sort | uniq -c` returns exactly one line. 2026-09-15.
+- `docker-compose.yml:26` sets `MAIL_MAILER: smtp` in the server container's environment.
+  `phpunit.xml:36` sets it to `array` without `force="true"`, which PHPUnit does not apply over an
+  existing variable. `tests/Feature/Notifications/ProfileEmailFixture.php:132` already documents
+  this and works around it with `config(['mail.default' => 'array'])` per test. 2026-09-15.
+- `docker compose ps` in `recycling-api` returns nothing, so every row carrying
+  `docker compose exec -T server` is unmeasurable while the stack is down. 2026-09-15.
 - `~/vault/givore/quality/history.jsonl` holds 4 rows, all stamped `2026-06-22T13:11`.
   `/home/kdabrow/.givore-qa-nightly.log` holds 24 lines of `pnpm: not found`. A cron that never ran
   read as green for three months.
-- `recycling-api/quality-reports/status.json` records `"mutation": {"status": "pass", "msi": null}`.
+- `recycling-api/quality-reports/status.json` is written by `guard_render_report` and last read
+  `phpstan-errors` at 240 against a baseline of 245, so the comparison discriminates on real data.
 - `recycling-api/.gitignore:52` already carries `/quality-reports`.
 - `bin/gate.sh` runs a check with zero arguments, cwd at the repo root, and keeps only its last
   stdout line (`bin/gate.sh:642`). `VAULT.md` keys are read as flat scalars (`bin/gate.sh:439`).
@@ -100,8 +108,10 @@ against it.
   over `app` and 0.425 including `vendor`, so the scanned path must be pinned.
 - Infection supports `--git-diff-lines` and `--git-diff-base=<ref>` since 0.26.0. StrykerJS has no
   `--since`; it uses `--incremental` with `incrementalFile`. `phpcpd` is abandoned.
-- This framework installs no git hook today and has no marker-comment convention. `graphify` writes
-  `# graphify-hook-start` into `.git/hooks/post-commit`; that format is being copied, not reused.
+- `recycling-api/.git/hooks/pre-push` and `pre-commit` carry the `# vault-guard-start` block and
+  name `bin/guard.sh` by absolute path, so the gate breaks if this repo moves.
+- `extend/init.sh:54-64` writes the nine-column `quality/checks.tsv` header, with no rows, into the
+  repo being wired. A row is added only after its command has been run once.
 
 ## Decisions
 
@@ -131,30 +141,31 @@ ran, and fixing `recycling-api`'s failing tests.
 |---|---|---|---|---|
 | `quality/checks.tsv` | `guard_load_checks` in `lib/guard-metrics.sh`, which has no check list without it | `/v-guard init` step `commands/v-guard/steps/03-prove-and-write.md`, or the operator | `bin/guard.sh commit` and `bin/guard.sh release` | `bin/guard.sh` exits 2 naming the path; the hook refuses the push. A row with the wrong field count exits 2 and runs nothing |
 | `quality/baseline.tsv` | `guard_compare`, which has nothing to compare a `kind: repo` metric against | `bin/guard.sh baseline` and `bin/guard.sh accept` | `guard_compare`, and `guard_baseline_diff` against the remote copy | A `kind: repo` id with no row is recorded at `gate: record`; a malformed row exits 2; a row lowered without a reason exits 1 |
-| `quality-reports/status.json` | `scripts/guard-report-hook.sh`, which prints nothing without it | `guard_render_report` | `scripts/guard-report-hook.sh` at SessionStart, and `~/vault/givore/quality/build-dashboard.mjs:57` | The hook exits 0 and stays silent; the push gate never reads it |
+| `quality-reports/status.json` | `~/vault/givore/quality/build-dashboard.mjs:57`, which renders nothing without it | `guard_render_report` | that dashboard only | The dashboard loses this surface; no gate and no hook depends on it |
 | `quality-reports/REPORT.md` | the operator reading why a push was refused | `guard_render_report` | the operator only; no script parses it | The operator loses the detail; no gate and no hook depends on it |
 | `templates/git-hooks/pre-push` installed into a repo | `git push` to a ref matching `guard_release_pattern` | `guard_hooks_install` in `lib/guard-install.sh` | `git` | No gate at all; `bin/guard.sh hooks status` reports it absent |
 | `guard_release_pattern` in a repo's `VAULT.md` | `templates/git-hooks/pre-push`, which cannot tell a release push from any other | `/v-guard init`, or the operator | the installed `pre-push` | Falls back to `refs/heads/release/*` and names the fallback in the report |
 
 ## Work items
 
-Session boundaries are stated once, in `## Sequencing & dependencies`. Execute session A now.
+Stage boundaries are stated once, in `## Sequencing & dependencies`. Execute stage 1 now.
 
 | id | file (exact path) | action | tool | constraint | covers | verification | status |
 |----|-------------------|--------|------|------------|--------|--------------|--------|
-| W-1 | `lib/guard-metrics.sh` | create | Write | defines `guard_load_checks` `guard_parse_row` `guard_compare` `guard_baseline_diff` `guard_accept_count` `guard_render_report` `guard_refusal`; float comparison uses `awk`; a row whose field count differs from the header exits 2 | SC-1 SC-2 SC-4 | `tests/unit/guard-metrics.bats` | TODO |
-| W-2 | `lib/guard-parsers/clover.sh` | create | Write | one artifact argument, one float on stdout; exit 2 on absent file or zero statements | SC-2 | `tests/unit/guard-metrics.bats` | TODO |
-| W-3 | `lib/guard-parsers/infection.sh` | create | Write | reads `infection-log.json`; exit 2 when `msi` is null or absent | SC-2 | `tests/unit/guard-metrics.bats` | TODO |
-| W-4 | `lib/guard-parsers/jscpd.sh` | create | Write | reads `jscpd-report.json`; exit 2 on absent file | SC-2 | `tests/unit/guard-metrics.bats` | TODO |
-| W-5 | `lib/guard-parsers/lcov.sh` | create | Write | reads `lcov.info`; exit 2 on zero found lines | SC-2 | `tests/unit/guard-metrics.bats` | TODO |
-| W-6 | `lib/guard-parsers/cloc.sh` | create | Write | reads `cloc --json`; prints `SUM.comment / SUM.code`; exit 2 when `SUM.code` is zero | SC-2 | `tests/unit/guard-metrics.bats` | TODO |
-| W-7 | `lib/guard-parsers/exitcode.sh` | create | Write | prints `0` on status 0, `1` on status 1, exit 2 on any other status including 127 | SC-2 | `tests/unit/guard-metrics.bats` | TODO |
-| W-8 | `lib/guard-parsers/diffcover.sh` | create | Write | reads `diff-cover --json-report`; exit 2 when no lines changed | SC-2 | `tests/unit/guard-metrics.bats` | TODO |
-| W-9 | `bin/guard.sh` | create | Write | subcommands `commit release baseline report accept hooks`; measures the sha given in `GUARD_SHA` via a detached worktree when set, the working tree otherwise; exit 0 clean, 1 regression, 2 unmeasurable; writes `status.json` and `REPORT.md` | SC-1 SC-2 SC-7 | `tests/unit/guard-metrics.bats` | TODO |
-| W-10 | `lib/guard-install.sh` | create | Write | `guard_hooks_install remove status`; marker lines `# vault-guard-start` and `# vault-guard-end`; refuses to overwrite a non-marker hook body, reusing `install.sh:84-101` | SC-6 | `tests/unit/guard-hooks.bats` | TODO |
-| W-11 | `templates/git-hooks/pre-push` | create | Write | consumes every stdin line before any exit; matches `<remote ref>`; skips a `(delete)` line; exports the local sha so W-9 measures a `git worktree add --detach` of it rather than the working directory | SC-3 SC-6 SC-7 | `tests/unit/guard-hooks.bats` | TODO |
-| W-12 | `templates/git-hooks/pre-commit` | create | Write | runs `bin/guard.sh commit`; always exits 0 | SC-3 | `tests/unit/guard-hooks.bats` | TODO |
-| W-13 | `templates/quality-checks.tsv` | create | Write | header comment lists the nine columns in the order given in `## File formats` | SC-2 | `tests/unit/guard-metrics.bats` | TODO |
+| W-1 | `lib/guard-metrics.sh` | create | Write | defines `guard_load_checks` `guard_parse_row` `guard_compare` `guard_baseline_diff` `guard_accept_count` `guard_render_report` `guard_refusal`; float comparison uses `awk`; a row whose field count differs from the header exits 2 | SC-1 SC-2 SC-4 | `tests/unit/guard-metrics.bats` | WRITTEN — untracked, unproven |
+| W-2 | `lib/guard-parsers/clover.sh` | create | Write | one artifact argument, one float on stdout; exit 2 on absent file or zero statements | SC-2 | `tests/unit/guard-metrics.bats` | WRITTEN — untracked, unproven |
+| W-3 | `lib/guard-parsers/infection.sh` | create | Write | reads `infection-log.json`; exit 2 when `msi` is null or absent | SC-2 | `tests/unit/guard-metrics.bats` | WRITTEN — untracked, unproven |
+| W-4 | `lib/guard-parsers/jscpd.sh` | create | Write | reads `jscpd-report.json`; exit 2 on absent file | SC-2 | `tests/unit/guard-metrics.bats` | WRITTEN — untracked, unproven |
+| W-5 | `lib/guard-parsers/lcov.sh` | create | Write | reads `lcov.info`; exit 2 on zero found lines | SC-2 | `tests/unit/guard-metrics.bats` | TODO — needed only when a Dart or JS repo is wired |
+| W-6 | `lib/guard-parsers/cloc.sh` | create | Write | reads `cloc --json`; prints `SUM.comment / SUM.code`; exit 2 when `SUM.code` is zero | SC-2 | `tests/unit/guard-metrics.bats` | WRITTEN — untracked, unproven |
+| W-7 | `lib/guard-parsers/exitcode.sh` | create | Write | prints `0` on status 0, `1` on status 1, exit 2 on any other status including 127 | SC-2 | `tests/unit/guard-metrics.bats` | WRITTEN — untracked, unproven |
+| W-8 | `lib/guard-parsers/diffcover.sh` | create | Write | reads `diff-cover --json-report`; exit 2 when no lines changed | SC-2 | `tests/unit/guard-metrics.bats` | WRITTEN — untracked, unproven |
+| W-8a | `lib/guard-parsers/insights.sh` `phpstan.sh` `cda.sh` `junit.sh` `_lib.sh` | create | Write | four parsers the PHP stack needs, plus the shared helper every parser sources; each exports `LC_ALL=C` | SC-2 | `tests/unit/guard-metrics.bats` | WRITTEN — untracked, unproven |
+| W-9 | `bin/guard.sh` | create | Write | subcommands `commit release baseline report accept hooks`; measures the sha given in `GUARD_SHA` via a detached worktree when set, the working tree otherwise; exit 0 clean, 1 regression, 2 unmeasurable; writes `status.json` and `REPORT.md` | SC-1 SC-2 SC-7 | `tests/unit/guard-metrics.bats` | WRITTEN — untracked, unproven |
+| W-9a | `lib/guard-report.sh` `lib/guard-status.jq` | create | Write | the jq program lives in its own file; category matching is exact, never `startswith` | — | `tests/unit/guard-metrics.bats` | WRITTEN — untracked, unproven |
+| W-10 | `lib/guard-install.sh` | create | Write | `guard_hooks_install remove status`; marker lines `# vault-guard-start` and `# vault-guard-end`; refuses to overwrite a non-marker hook body, reusing `install.sh:84-101` | SC-6 | `tests/unit/guard-hooks.bats` | WRITTEN — untracked, unproven |
+| W-11 | `templates/git-hooks/pre-push` | create | Write | consumes every stdin line before any exit; matches `<remote ref>`; skips a `(delete)` line; exports the local sha so W-9 measures a `git worktree add --detach` of it rather than the working directory | SC-3 SC-6 SC-7 | `tests/unit/guard-hooks.bats` | WRITTEN — untracked, unproven |
+| W-12 | `templates/git-hooks/pre-commit` | create | Write | runs `bin/guard.sh commit`; always exits 0 | SC-3 | `tests/unit/guard-hooks.bats` | WRITTEN — untracked, unproven |
 | W-14 | `tests/fixtures/guard/clover.xml` | create | Write | a two-file clover report with known covered and total statements | SC-2 | `tests/unit/guard-metrics.bats` | TODO |
 | W-15 | `tests/fixtures/guard/infection-log.json` | create | Write | `msi` is `null`, mirroring the live defect | SC-2 | `tests/unit/guard-metrics.bats` | TODO |
 | W-16 | `tests/fixtures/guard/jscpd-report.json` | create | Write | one clone, a known duplication percentage | SC-2 | `tests/unit/guard-metrics.bats` | TODO |
@@ -169,18 +180,18 @@ Session boundaries are stated once, in `## Sequencing & dependencies`. Execute s
 | W-24 | `quality/checks.tsv` | create | Write | exactly two rows, both host-only: `comment-density` at `scope: both  kind: repo  parser: cloc  direction: down  threshold: 0.02  gate: refuse` over `bin lib scripts`, and `doc-lint` at `scope: both  kind: diff  parser: exitcode  threshold: 0  gate: refuse`. `rule-count` is excluded; it already exits 1 on `main` | SC-6 | `./bin/guard.sh release` | TODO |
 | W-25 | `quality/baseline.tsv` | create | Write | values come from one real `bin/guard.sh baseline` run, never typed | SC-6 | `./bin/guard.sh release` | TODO |
 | W-26 | `VAULT.md` | edit | Edit | add `guard_release_pattern: refs/heads/release/*` as a flat scalar | SC-6 | `grep` | TODO |
-| W-27 | `.gitignore` | edit | Edit | add `quality-reports/` | SC-6 | `git check-ignore quality-reports/REPORT.md` | TODO |
-| W-28 | `/home/kdabrow/workspace/recycling-api/quality/checks.tsv` | create | Write | every command carries `docker compose exec -T server` and is run once before it is written; `cloc` scans `app` only; no row runs the whole suite | SC-6 | `bin/guard.sh release` in that repo | TODO |
-| W-29 | `/home/kdabrow/workspace/recycling-api/quality/baseline.tsv` | create | Write | written only after two consecutive `bin/guard.sh baseline` runs agree on every value | SC-6 | two runs compared | TODO |
-| W-30 | `/home/kdabrow/workspace/recycling-api/VAULT.md` | edit | Edit | add `guard_release_pattern: refs/heads/release/*` | SC-6 | `grep` | TODO |
+| W-27 | `.gitignore` | edit | Edit | add `quality-reports/` | SC-6 | `git check-ignore quality-reports/REPORT.md` | DONE |
+| W-28 | `/home/kdabrow/workspace/recycling-api/quality/checks.tsv` | create | Write | every command carries `docker compose exec -T server` and is run once before it is written; `cloc` scans `app` only; no row runs the whole suite | SC-6 | `bin/guard.sh release` in that repo | DONE — 16 rows |
+| W-29 | `/home/kdabrow/workspace/recycling-api/quality/baseline.tsv` | create | Write | written only after two consecutive `bin/guard.sh baseline` runs agree on every value | SC-6 | two runs compared | PARTIAL — 11 rows stand; `coverage` and `tests-failing` wait on W-50 |
+| W-30 | `/home/kdabrow/workspace/recycling-api/VAULT.md` | edit | Edit | add `guard_release_pattern: refs/heads/release/*`, and `guard_measure_worktree: false` because that repo's toolchain is bound to the bind-mounted checkout path | SC-6 | `grep` | DONE |
 | W-31 | `commands/v-guard.md` | create | Write | dispatcher only; binds `_shared/communication.md` rather than restating it | — | `./bin/doc-lint.sh --changed` | TODO |
 | W-32 | `commands/v-guard/steps/01-detect.md` | create | Write | names the marker files it reads | — | `./bin/doc-lint.sh --changed` | TODO |
 | W-33 | `commands/v-guard/steps/02-research-propose.md` | create | Write | one tool question per check category, each option carrying its consequence | — | `./bin/doc-lint.sh --changed` | TODO |
 | W-34 | `commands/v-guard/steps/03-prove-and-write.md` | create | Write | a command that does not run is written as a `kind: absent` row with its reason, never as a live check | SC-2 | `./bin/doc-lint.sh --changed` | TODO |
 | W-35 | `commands/v-guard/steps/04-hooks.md` | create | Write | asks before installing; prints the exact hook paths it will write; gates the prompt on `[ -t 0 ]` | — | `./bin/doc-lint.sh --changed` | TODO |
-| W-36 | `scripts/guard-report-hook.sh` | create | Write | SessionStart; reads `quality-reports/status.json`, never the markdown; stdout and exit 0 only; silent when the file is absent or unparseable | — | `tests/unit/guard-hooks.bats` | TODO |
-| W-37 | `hooks/hooks.json` | edit | Edit | register `guard-report-hook.sh` on SessionStart, 5s timeout | — | `./tests/run.sh tests/unit` | TODO |
-| W-38 | `install.sh` | edit | Edit | one `HOOK_ROWS` row with an off-switch | — | `./tests/run.sh tests/unit` | TODO |
+| W-36 | `scripts/guard-report-hook.sh` | delete | Bash | the operator asked for git hooks, not Claude Code hooks; the `pre-push` stderr already reaches the agent, which reads the output of its own `git push` | — | `git status` shows the path gone | DONE |
+| W-37 | `hooks/hooks.json` | — | — | not created; W-36 removes the only hook it would register | — | — | DROPPED with W-36 |
+| W-38 | `install.sh` | — | — | not created; W-36 removes the only `HOOK_ROWS` row it would carry | — | — | DROPPED with W-36 |
 | W-39 | `vault/indications/git-hooks-may-refuse.md` | create | Write | states the git-hook rule, including the stdin-drain requirement, and references its Claude Code sibling in one line | E-5 | `./bin/doc-lint.sh --changed` | TODO |
 | W-40 | `vault/indications/hooks-never-fail-their-host.md` | edit | Edit | scope the title rule to Claude Code hooks; record the two exit-2 paths the shipped scripts already take | E-5 | `./bin/doc-lint.sh --changed` | TODO |
 | W-41 | `vault/indications/_index.md` | edit | Edit | one row for `git-hooks-may-refuse` | E-5 | `./bin/doc-lint.sh --changed` | TODO |
@@ -190,21 +201,33 @@ Session boundaries are stated once, in `## Sequencing & dependencies`. Execute s
 | W-45 | `templates/VAULT.md` | edit | Edit | document `guard_release_pattern` as a flat scalar | — | `./bin/doc-lint.sh --changed` | TODO |
 | W-46 | `README.md` | edit | Edit | one row for `/v-guard` in the command table | — | `./bin/doc-lint.sh --changed` | TODO |
 | W-47 | `.claude-plugin/plugin.json` | edit | Edit | bump `version` | — | `./bin/release-check.sh` | TODO |
+| W-48 | `bin/` `lib/` `templates/` in this repo | commit | Bash | every one is untracked today, and `recycling-api/.git/hooks/pre-push` calls `bin/guard.sh` by absolute path; a `git clean -fd` here disarms the gate there | — | `git status --short` reports no `??` under those paths | TODO |
+| W-49 | `/home/kdabrow/workspace/recycling-api/quality/` `VAULT.md` `CLAUDE.md` `composer.json` `infection.json5` `scripts/qa-status.php` | commit | Bash | the six tool configs and the two TSVs are staged but uncommitted; review the `qa-status.php` and `composer.json` diffs before committing, because the earlier hand-rolled runner touched both | — | `git status --short` clean in that repo | TODO |
+| W-50 | `/home/kdabrow/workspace/recycling-api/phpunit.xml:36` | edit | Edit | `<env name="MAIL_MAILER" value="array" force="true"/>`; without `force` PHPUnit leaves the container's `MAIL_MAILER: smtp` from `docker-compose.yml:26` in place, and every mailing test reaches for `mailpit:1025` | — | one mailing test passes with the mailpit container stopped | TODO |
+| W-51 | `/home/kdabrow/workspace/recycling-api/storage/coverage/` then `quality/baseline.tsv` | measure | Bash | re-run `composer test:coverage` after W-50 with the stack up, then re-capture only the `coverage` and `tests-failing` rows; the run takes 57m36s, so the operator schedules it | SC-6 | `tests-failing` measures 0 and `coverage` comes from a clover file under 7 days old | TODO |
+| W-52 | `tests/run.sh` `tests/Dockerfile` | create | Write | copied from `$VAULT_FRAMEWORK_PATH/tests/`; mounts this repo read-only at `/code`; W-17 and W-18 have no harness to run in without it | SC-1 SC-2 SC-3 | `./tests/run.sh tests/unit` exits 0 on an empty suite | TODO |
 
 ## Sequencing & dependencies
 
-Session A is W-1 to W-18, the library, the parsers, the fixtures and the tests. It ends with SC-1
-through SC-5 and SC-7 met and nothing installed.
+Stage 1 — W-48, W-49. Commit what already runs, in both repos. No behaviour changes. It ends when
+`git status --short` reports no untracked runner path here and no staged quality path there.
 
-Session B is W-19 to W-27, the gate scripts and this repo's own config. It ends with SC-6 met: a
-push to a release branch of a clone of this repo, refused.
+Stage 2 — W-50, W-51. Unblock the release gate in `recycling-api`. W-50 is a one-line edit; W-51 is
+a 57-minute measured run the operator schedules. It ends when `bin/guard.sh release` there exits 0
+with the stack up. Stage 2 is independent of stage 3 and can run in either order.
 
-Session C is W-28 to W-30, `recycling-api`. It needs W-11 and a running container there.
+Stage 3 — W-52, W-14 to W-18, then the SC verdicts. Prove the runner. Until it lands, SC-1 to SC-5
+and SC-7 are claimed and unverified: `checks/guard-SC-*.sh` grep a bats suite that does not exist,
+so each exits 2. It ends with `./bin/gate.sh verdict <plan> --run` green.
 
-Session D is W-31 to W-47, the onboarding command and the documents. It needs W-9.
+Stage 4 — W-24, W-25, W-26. This repo gates itself, the two host-only rows only. It needs stage 1
+and stage 3. It ends with SC-6 met: a push to a release branch of a clone of this repo, refused.
 
-No plan in this repo has completed more than 23 work items. Session A is 18, B is 9, C is 3, D is 17.
-Session D is documents and splits again if it runs long.
+Stage 5 — W-31 to W-35 and W-39 to W-47, the `/v-guard` onboarding command and the documents. It
+needs stage 4. W-5 joins this stage only when a Dart or JS repo is wired.
+
+No plan in this repo has completed more than 23 work items. Stage 3 is 7, stage 5 is 14 and splits
+again if it runs long.
 
 ## Rollback
 
@@ -214,64 +237,8 @@ from each installed git hook and leaves any other body intact. Deleting `quality
 
 ## Test plan
 
-Bats, in Docker, via `./tests/run.sh tests/unit`. `tests/unit/guard-metrics.bats` drives
-`lib/guard-metrics.sh` against `tests/fixtures/guard/`. `tests/unit/guard-hooks.bats` feeds
-`templates/git-hooks/pre-push` real four-field stdin lines through a pipe and asserts the writer's
-exit status. Every test that asserts a write builds its tree under `mktemp -d`, because the repo is
-mounted read-only and a write assertion against the mount passes vacuously.
-
-## Test design dossier
-
-**Decision table — `guard_compare`, one row.**
-
-| kind | baseline row | measured | beyond threshold | outcome |
-|---|---|---|---|---|
-| repo | present | value | yes | exit 1, named in the brief |
-| repo | present | value | no | exit 0 |
-| repo | present | unmeasurable | — | exit 2 |
-| repo | absent | value | — | exit 0, appended at `gate: record` |
-| diff | ignored | value past the floor | — | exit 1 |
-| absent | ignored | none | — | exit 0, rendered as absent, never executed |
-
-**Fault hypotheses.** A parser prints an empty string and the comparison reads it as zero, turning a
-missing measurement into the worst score. A tool leaves a previous run's artifact in place and the
-parser reports a stale number as current. A hook exits before draining stdin and `git push` dies with
-141 while the hook reports success. `awk` is compiled without float support in a minimal container.
-
-**Boundary partitions.** A delta exactly equal to `threshold` passes. A baseline of `0` with
-`direction: down` must not divide by zero. A value of `100` against a baseline of `100` with
-`direction: up` is not a regression. A `checks.tsv` with only comment lines yields no checks and
-exits 2 rather than reporting a clean run.
-
-## Test backlog
-
-| id | source | kind | target (exact path) | intent | priority | disposition |
-|----|--------|------|---------------------|--------|----------|-------------|
-| T-1 | SC-1 | unit | `tests/unit/guard-metrics.bats` | a worse value exits 1 and the brief names the metric, both values and the tolerance | must | |
-| T-2 | SC-2 | unit | `tests/unit/guard-metrics.bats` | a null `msi` exits 2 and is never rendered as a pass | must | |
-| T-3 | SC-2 | unit | `tests/unit/guard-metrics.bats` | an absent artifact exits 2, not 0 | must | |
-| T-4 | SC-2 | unit | `tests/unit/guard-metrics.bats` | an empty parser result exits 2 rather than comparing as zero | must | |
-| T-5 | SC-2 | unit | `tests/unit/guard-metrics.bats` | a check command exiting 127 exits 2, never a recorded metric | must | |
-| T-6 | consumer | unit | `tests/unit/guard-metrics.bats` | a row whose field count differs from the header exits 2 and runs no command | must | |
-| T-7 | consumer | unit | `tests/unit/guard-metrics.bats` | `templates/quality-checks.tsv` parses through `guard_load_checks` and its header lists exactly the fields the parser binds | must | |
-| T-8 | consumer | unit | `tests/unit/guard-metrics.bats` | a `kind: absent` row is rendered in the report, never executed, never compared | must | |
-| T-9 | dossier | unit | `tests/unit/guard-metrics.bats` | a delta exactly equal to `threshold` passes | must | |
-| T-10 | dossier | unit | `tests/unit/guard-metrics.bats` | a baseline of `0` with `direction: down` does not divide by zero | should | |
-| T-11 | SC-5 | unit | `tests/unit/guard-metrics.bats` | deleting the tolerance comparison from `guard_compare` turns the suite red | must | |
-| T-12 | SC-4 | unit | `tests/unit/guard-metrics.bats` | a pushed tree lowering a baseline row with an empty `reason` exits 1, and a populated reason passes | must | |
-| T-13 | E-4 | unit | `tests/unit/guard-metrics.bats` | a fourth baseline row carrying an accept reason exits 1 | should | |
-| T-14 | skeptic | unit | `tests/unit/guard-metrics.bats` | `accept --reason` writes the row under `mktemp -d` while bare `accept` leaves the file byte-identical | must | |
-| T-15 | SC-3 | unit | `tests/unit/guard-hooks.bats` | a skipped non-release push leaves the writer at exit 0, not 141 | must | |
-| T-16 | SC-3 | unit | `tests/unit/guard-hooks.bats` | `refs/heads/release/1.17.0` on stdin runs the release suite | must | |
-| T-17 | SC-3 | unit | `tests/unit/guard-hooks.bats` | a `(delete)` line runs no check and still drains stdin | should | |
-| T-18 | quality | unit | `tests/unit/guard-hooks.bats` | a `VAULT.md` omitting `guard_release_pattern` still gates `refs/heads/release/*` and names the fallback | should | |
-| T-19 | quality | unit | `tests/unit/guard-metrics.bats` | editing one source file between two runs changes the metric, catching a parser reading a stale artifact | must | |
-| T-20 | consumer | unit | `tests/unit/guard-metrics.bats` | a `{{files}}` substitution for a two-file diff, one path containing a space, runs the tool exactly once | must | |
-| T-21 | consumer | unit | `tests/unit/guard-metrics.bats` | a file whose line 1 is not the literal header exits 2, and a commented-out header is not accepted as one | must | |
-| T-22 | consumer | unit | `tests/unit/guard-metrics.bats` | a `baseline.tsv` row whose `value` is not a number exits 2 and never scores as clean | must | |
-| T-23 | skeptic | unit | `tests/unit/guard-hooks.bats` | an all-zeroes remote sha skips `guard_baseline_diff`, prints that it skipped, and returns 0 | must | |
-| T-24 | SC-7 | unit | `tests/unit/guard-metrics.bats` | an uncommitted edit in the working tree does not change the metric measured for the pushed sha | must | |
-| T-25 | consumer | unit | `tests/unit/guard-metrics.bats` | a `kind: absent` row carrying `-` in scope, direction, threshold and gate parses, renders, and runs nothing | should | |
+The harness, the decision table, the fault hypotheses, the boundary partitions and the 27-row test
+backlog are in the sibling `2026-09-14-1251-quality-regression-gate.test-design.md`.
 
 ## Refs
 

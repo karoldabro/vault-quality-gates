@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# vault-guard-start
+# Refuses a push whose remote ref matches guard_release_pattern and whose measured
+# quality is worse than quality/baseline.tsv. Every other push exits 0 untouched.
+#
+# It reads EVERY stdin line before any exit. A hook that exits early leaves git
+# writing into a closed pipe: the writer dies with 141 while the hook reports 0,
+# so the push fails and nothing says why.
+#
+# GUARD_SHA is exported so guard.sh measures a detached worktree of the commit
+# being pushed, not the working directory. Uncommitted edits cannot move the gate.
+
+set -uo pipefail
+
+GUARD="__GUARD_SH__"
+REMOTE_NAME="${1:-}"
+ZERO='0000000000000000000000000000000000000000'
+
+repo_root="$(git rev-parse --show-toplevel)"
+pattern="$(sed -n 's/^guard_release_pattern:[[:space:]]*//p' "${repo_root}/VAULT.md" 2>/dev/null | head -1)"
+if [ -z "$pattern" ]; then
+    pattern='refs/heads/release/*'
+    printf 'vault-guard: VAULT.md names no guard_release_pattern, using %s\n' "$pattern" >&2
+fi
+
+gated_ref=''
+gated_sha=''
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+    [ -n "${remote_ref:-}" ] || continue
+    [ "$local_sha" = "$ZERO" ] && continue        # a branch deletion measures nothing
+    # shellcheck disable=SC2254
+    case "$remote_ref" in
+        $pattern) gated_ref="$remote_ref"; gated_sha="$local_sha" ;;
+    esac
+done
+
+[ -n "$gated_ref" ] || exit 0
+
+[ -x "$GUARD" ] || {
+    printf 'vault-guard: %s is not executable — push refused rather than passed unmeasured\n' "$GUARD" >&2
+    exit 1
+}
+
+GUARD_SHA="$gated_sha" "$GUARD" release "$gated_ref"
+# vault-guard-end

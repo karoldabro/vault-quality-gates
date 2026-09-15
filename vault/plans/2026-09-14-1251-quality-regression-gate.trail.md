@@ -20,6 +20,8 @@ Record class, so chronology belongs here and nowhere else. Its contract document
 | Mutation scoped to changed lines via `--git-diff-lines` | Whole-repo mutation on release push | A whole-repo Infection run on `recycling-api` was estimated at 11 nights at 2 threads. |
 | `quality/baseline.tsv` committed, report gitignored | Baseline in the vault beside `history.jsonl` | A baseline in the vault does not travel with a branch and is invisible in review. |
 | Comment density measured with `cloc --json` | A framework-owned regex line counter | `cloc 1.98` is already on the host and is language-aware across all four stacks. |
+| `extend/init.sh` writes the `checks.tsv` header into the repo being wired | A shipped `templates/quality-checks.tsv` copied at install time, which W-13 specified | The scaffolder already writes the header and the brief that explains it. A second copy in `templates/` would be a second source of truth for the nine columns. W-13 was deleted, not marked. |
+| The test design moved to a sibling file | Keeping the dossier and the 27-row backlog inside the contract | The contract hit 295 lines against a 300 cap, so adding current truth meant deleting constraints. Splitting cost one reference line. |
 
 ## Findings & dispositions
 
