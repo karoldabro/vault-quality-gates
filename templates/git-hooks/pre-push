@@ -18,20 +18,33 @@ ZERO='0000000000000000000000000000000000000000'
 
 repo_root="$(git rev-parse --show-toplevel)"
 pattern="$(sed -n 's/^guard_release_pattern:[[:space:]]*//p' "${repo_root}/VAULT.md" 2>/dev/null | head -1)"
+# Prettier escapes `*` in VAULT.md as `\*`; left in, the glob matches only a literal `*` and no
+# release push is ever gated.
+pattern="${pattern//\\/}"
 if [ -z "$pattern" ]; then
     pattern='refs/heads/release/*'
     printf 'vault-guard: VAULT.md names no guard_release_pattern, using %s\n' "$pattern" >&2
 fi
+# `a|b` in a variable is one glob with a literal `|`, not a case alternation, so split it here.
+IFS='|' read -ra release_globs <<< "$pattern"
+
+is_release_ref() {
+    local glob
+    for glob in "${release_globs[@]}"; do
+        # shellcheck disable=SC2254
+        case "$1" in $glob) return 0 ;; esac
+    done
+    return 1
+}
 
 gated_ref=''
 gated_sha=''
 while read -r _local_ref local_sha remote_ref _remote_sha; do
     [ -n "${remote_ref:-}" ] || continue
     [ "$local_sha" = "$ZERO" ] && continue        # a branch deletion measures nothing
-    # shellcheck disable=SC2254
-    case "$remote_ref" in
-        $pattern) gated_ref="$remote_ref"; gated_sha="$local_sha" ;;
-    esac
+    if is_release_ref "$remote_ref"; then
+        gated_ref="$remote_ref"; gated_sha="$local_sha"
+    fi
 done
 
 [ -n "$gated_ref" ] || exit 0

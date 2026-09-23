@@ -80,6 +80,23 @@ push_through_hook() {
     [[ "$output" == *'hook=1'* ]]
 }
 
+@test "a Prettier-escaped pattern still gates release" {
+    printf 'guard_release_pattern: refs/heads/release/\\*\n' > VAULT.md
+    run push_through_hook 1 refs/heads/release/1.18.0 aaaa1111
+    [[ "$output" == *'hook=0'* ]]
+    grep -q 'STUB release refs/heads/release/1.18.0' "$RAN"
+}
+
+@test "each alternative of an a|b pattern gates release" {
+    printf 'guard_release_pattern: refs/heads/release/*|refs/heads/realse/*\n' > VAULT.md
+    run push_through_hook 1 refs/heads/release/2.0.0 aaaa1111
+    grep -q 'STUB release refs/heads/release/2.0.0' "$RAN"
+    run push_through_hook 1 refs/heads/realse/2.0.1 bbbb2222
+    grep -q 'STUB release refs/heads/realse/2.0.1' "$RAN"
+    run push_through_hook 1 refs/heads/feature/x cccc3333
+    ! grep -q 'feature/x' "$RAN"
+}
+
 @test "a VAULT.md without the pattern still gates release and names the fallback" {
     rm -f VAULT.md
     run push_through_hook 1 refs/heads/release/9.9.9 aaaa1111
