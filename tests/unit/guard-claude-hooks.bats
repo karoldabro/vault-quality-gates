@@ -456,3 +456,14 @@ no_bad() {
     bash_case deny  'quality/bin/check.sh'
     no_bad
 }
+
+@test "a \${...} expansion holding quotes and nested expansions is one word, and what it hides is still scanned" {
+    bash_case allow 'echo ${args[@]+"${args[@]}"} done'
+    bash_case allow 'echo "${x:-"${y}"}" ${z#*}'
+    bash_case allow 'echo ${HOME}/x'
+    bash_case deny  'echo ${x:-$(git commit --no-verify -m y)}'
+    bash_case deny  'echo "${x:-"$(git commit -n -m y)"}"'
+    printf '#!/usr/bin/env bash\nrun() { :; }\nrun ${archargs[@]+"${archargs[@]}"}\necho "done"\n' > ok.sh
+    bash_case allow 'bash ok.sh'
+    no_bad
+}

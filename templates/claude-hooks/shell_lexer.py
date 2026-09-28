@@ -147,6 +147,16 @@ class Lexer:
             self.substitution()
             out.append(s[start:self.i])
             return
+        if s.startswith('${', self.i):
+            start = self.i
+            self.braced()
+            text = s[start:self.i]
+            if text == '${HOME}':
+                out.append(HOME)
+            else:
+                meta['dynamic'] = True
+                out.append(text)
+            return
         m = VAR.match(s, self.i)
         if not m:
             out.append('$')
@@ -158,6 +168,35 @@ class Lexer:
             meta['dynamic'] = True
             out.append(m.group(0))
         self.i = m.end()
+
+    def braced(self):
+        """Skips a ${...} expansion to its matching brace. Quotes, nested ${...} and $(...) inside it
+        (as in ${a[@]+"${a[@]}"}) belong to the expansion, so a `}` inside them does not close it."""
+        s, quote = self.s, None
+        self.i += 2
+        while self.i < len(s):
+            c = s[self.i]
+            if c == '\\' and quote != "'":
+                self.i += 2
+            elif quote == "'":
+                quote = None if c == "'" else quote
+                self.i += 1
+            elif s.startswith('$(', self.i):
+                self.substitution()
+            elif s.startswith('${', self.i):
+                self.braced()
+            elif c == '"':
+                quote = None if quote else '"'
+                self.i += 1
+            elif c == "'" and not quote:
+                quote = "'"
+                self.i += 1
+            elif c == '}' and not quote:
+                self.i += 1
+                return
+            else:
+                self.i += 1
+        self.fail('a ${ has no closing }')
 
     def quoted_char(self, out, meta):
         s, c = self.s, self.s[self.i]
