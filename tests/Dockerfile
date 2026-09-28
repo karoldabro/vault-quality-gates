@@ -4,7 +4,8 @@ FROM bats/bats:1.11.0
 # runtime has to be here, or a test failure reads as a defect in the code under test.
 #
 # gawk, not busybox awk: guard_is_number and every threshold comparison run through
-# awk, and the two differ on printf rounding.
+# awk, and the two differ on printf rounding. mawk sits beside it at /usr/bin/mawk, the awk
+# of Debian and Ubuntu hosts; the guard-added-lines tests run the grep under both.
 # libxml2-utils carries xmllint, which the clover and junit parsers use.
 # python3 runs the Claude Code hooks in templates/claude-hooks/; util-linux-misc carries
 # script(1), which gives the override tests a real /dev/tty.
@@ -15,6 +16,7 @@ RUN apk add --no-cache \
     findutils \
     coreutils \
     gawk \
+    mawk \
     jq \
     libxml2-utils \
     python3 \

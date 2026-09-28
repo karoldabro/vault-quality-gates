@@ -91,11 +91,31 @@ guard_gate() {
     done
 
     guard_render_report
-    # The refusal reads the reports inside the tree; the lock stays held until it has.
+    # The warnings and the refusal read the reports inside the tree; the lock stays held until
+    # they have.
+    guard_commit_warnings "$worst" "$cfg"
     [ "$worst" -eq 0 ] || guard_commit_refusal "$target" "$cfg"
     exec 9>&-
     rm -rf "$cfg"
     return "$worst"
+}
+
+# guard_commit_warnings <worst> <config dir> -> prints the hits of every `warn` row above 0.
+# Never changes the exit status.
+guard_commit_warnings() {
+    local line id value status ids='' heading='vault-guard: warnings (the commit goes through)'
+    for line in "${GUARD_RESULTS[@]:-}"; do
+        IFS='|' read -r id value _ status _ <<<"$line"
+        [ "$status" = warn ] && guard_gt "$value" 0 && ids+="$id "
+    done
+    [ -n "$ids" ] || return 0
+    [ "$1" -eq 0 ] || heading='vault-guard: warnings (these alone would not refuse the commit)'
+    printf '\n' >&2
+    "${GUARD_BIN_DIR}/guard-report-errors.sh" --rows "${ids% }" --tree "${GUARD_TREE_DIR:--}" \
+        --map "$2/rules.tsv" --checks "$2/checks.tsv" --bases "$GUARD_BASES" --target "$GUARD_TARGET" \
+        --heading "$heading" >&2 \
+        || printf 'vault-guard: quality/rules.tsv is unreadable; warnings from %s are not printed\n' "${ids% }" >&2
+    return 0
 }
 
 guard_commit_refusal() {  # guard_commit_refusal <target> <config dir>

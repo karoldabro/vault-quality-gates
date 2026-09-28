@@ -168,3 +168,24 @@ XML
     [ "$status" -eq 0 ]
     [ -z "$output" ]
 }
+
+@test "a Dart suppression row prints each hit with its fixed action; a generated file prints nothing" {
+    write_checks $'dart-suppressions\tcommit\tdiff\t"{{guard}}/guard-added-lines.sh" --ext dart --exclude \'\\.(g|freezed|mocks|config)\\.dart$\' --grep \'//[[:space:]]*ignore(_for_file)?:\' --bases "{{bases}}" --target "{{target}}"\t-\t-\tdown\t0\trefuse'
+    commit_all 'dart row'
+    mkdir -p lib
+    printf 'x // ignore: foo\n' > lib/a.dart
+    printf '// ignore_for_file: type=lint\n' > lib/a.g.dart
+    git add lib
+    run report --rows dart-suppressions
+    [ "$output" = 'dart-suppressions lib/a.dart:1 x // ignore: foo → remove the suppression and fix the code' ]
+}
+
+@test "--heading prints before the first line and not at all when nothing prints" {
+    printf 'x\n// @phpstan-ignore-next-line\n' > app/S.php
+    git add app/S.php
+    run report --rows suppressions-added --heading 'vault-guard: warnings (the commit goes through)'
+    [ "$output" = "$(printf 'vault-guard: warnings (the commit goes through)\n\nsuppressions-added app/S.php:2 // @phpstan-ignore-next-line → remove the suppression and fix the code')" ]
+    git reset -q
+    run report --rows suppressions-added --heading 'vault-guard: warnings (the commit goes through)'
+    [ -z "$output" ]
+}

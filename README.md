@@ -36,7 +36,8 @@ a release date or it is not made.
 - The `pre-commit`, `pre-merge-commit` and `pre-applypatch` hooks run `guard.sh commit` on a copy of
   the index and **refuse** the commit when a `commit` row is worse or unmeasurable. The refusal lists
   each new finding with its row id and, through `quality/rules.tsv`, the catalog rule to read. A pass
-  writes a pass record.
+  writes a pass record. A `warn` row's new findings print in the same form under
+  `vault-guard: warnings` and never refuse the commit.
 - A `pre-push` hook refuses any pushed commit that never passed the commit gate, such as a
   cherry-pick or a revert; `guard.sh verify <range>` measures and records those. On a release branch
   it also measures the branch against its merge-base and **refuses** the push when a gated metric got
@@ -61,7 +62,7 @@ gets bypassed. Slow measurements carry `scope: baseline` and run out of band.
 |---|---|
 | `bin/guard.sh` | subcommands `commit verify release baseline report accept hooks` |
 | `bin/guard-added-lines.sh`, `bin/guard-baseline-growth.sh`, `bin/guard-protected-paths.sh` | the counts commit rows compare: findings on added lines, baseline growth, protected paths touched |
-| `bin/guard-report-errors.sh` | the refusal lines a refused commit prints |
+| `bin/guard-report-errors.sh` | the finding lines a refused commit and a `warn` row print |
 | `lib/guard-metrics.sh` | `guard_load_checks` `guard_parse_row` `guard_compare` `guard_baseline_diff` `guard_accept_count` `guard_substitute` |
 | `lib/guard-commit.sh`, `lib/guard-tree.sh`, `lib/guard-diff.sh`, `lib/guard-pass.sh` | the commit gate, the measured tree copy, added-line diffs, parents and pass records |
 | `lib/guard-baseline-neon.awk`, `lib/guard-baseline-phpmd.awk` | baseline entry keys, and the generator-shape check that makes a hand-edited baseline unmeasurable |

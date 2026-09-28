@@ -130,3 +130,50 @@ checkstyle() {
     run added
     [ "$status" -eq 2 ]
 }
+
+# with_mawk <cmd>... — runs the command with `awk` resolving to /usr/bin/mawk.
+with_mawk() {
+    [ -x /usr/bin/mawk ] || { echo 'the test image has no /usr/bin/mawk' >&2; return 1; }
+    mkdir -p "$WORK/mawk"
+    ln -sf /usr/bin/mawk "$WORK/mawk/awk"
+    PATH="$WORK/mawk:$PATH" "$@"
+}
+
+DART_EXCLUDE='\.(g|freezed|mocks|config)\.dart$'
+DART_IGNORE='//[[:space:]]*ignore(_for_file)?:'
+
+@test "--ext dart counts a Dart suppression on an added line and skips a generated file, under gawk and mawk" {
+    mkdir -p lib
+    printf 'x // ignore: foo\ny //ignore_for_file: bar\n' > lib/a.dart
+    printf '// ignore_for_file: type=lint\n' > lib/a.g.dart
+    printf '<?php // ignore: foo\n' > app/Ignored.php
+    git add lib app
+    for runner in '' with_mawk; do
+        run $runner bash /code/bin/guard-added-lines.sh --ext dart --exclude "$DART_EXCLUDE" --grep "$DART_IGNORE"
+        [ "$status" -eq 0 ]
+        [ "$output" = 2 ]
+        GUARD_LIST=1 run $runner bash /code/bin/guard-added-lines.sh --ext dart --exclude "$DART_EXCLUDE" --grep "$DART_IGNORE"
+        [ "$output" = "$(printf 'lib/a.dart:1 x // ignore: foo\nlib/a.dart:2 y //ignore_for_file: bar')" ]
+    done
+}
+
+@test "--exclude repeats; the PHPStan fixture skip applies only to --ext php" {
+    mkdir -p lib/generated tests/PHPStan/Rules/Fixtures
+    printf '// ignore: a\n' > lib/generated/l10n.dart
+    printf '// ignore: b\n' > tests/PHPStan/Rules/Fixtures/f.dart
+    printf '// ignore: c\n' > lib/b.dart
+    git add lib tests
+    run with_mawk bash /code/bin/guard-added-lines.sh --ext dart --exclude "$DART_EXCLUDE" --exclude '^lib/generated/' --grep "$DART_IGNORE"
+    [ "$output" = 2 ]
+    run with_mawk bash /code/bin/guard-added-lines.sh --ext dart --exclude '^lib/generated/' --exclude '^tests/' --grep "$DART_IGNORE"
+    [ "$output" = 1 ]
+}
+
+@test "without --ext the grep reads only *.php, as before" {
+    mkdir -p lib
+    printf '// @phpstan-ignore-line\n' > lib/a.dart
+    printf '<?php // @phpstan-ignore-line\n' > app/New.php
+    git add lib app
+    run with_mawk bash /code/bin/guard-added-lines.sh --grep '@phpstan-ignore'
+    [ "$output" = 1 ]
+}

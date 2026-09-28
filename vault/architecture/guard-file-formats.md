@@ -44,7 +44,7 @@ id	scope	kind	command	parser	artifact	direction	threshold	gate
 | `artifact` | a path, `-`, or the reason text when `kind` is `absent` | what the parser reads |
 | `direction` | `up` · `down` · `-` | `up` when a higher number is better |
 | `threshold` | a number, or `-` | for `kind: repo` the worsening tolerated against the baseline; for `kind: diff` the floor (`up`) or ceiling (`down`) |
-| `gate` | `refuse` · `warn` · `record` · `-` | `refuse` exits 1; `warn` records and exits 0; `record` stores the number only |
+| `gate` | `refuse` · `warn` · `record` · `-` | `refuse` exits 1; `warn` records and exits 0, and at commit prints its hits (`vault/architecture/guard-commit-gate.md`); `record` stores the number only |
 
 **Which subcommand runs which row.** `bin/guard.sh commit` and `bin/guard.sh verify` run `scope` of
 `commit` or `both`; `vault/architecture/guard-commit-gate.md` defines what they measure. `bin/guard.sh release`

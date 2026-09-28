@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Prints what a refused commit must fix: one line per new finding, each starting with the
-# row id, so the committing agent never has to guess which rule fired.
+# Prints what a refused commit must fix, and what a `warn` row found: one line per new finding,
+# each starting with the row id, so the committing agent never has to guess which rule fired.
 #
 #   guard-report-errors.sh --rows "<id> <id>" --tree <dir|-> --map <rules.tsv|-> \
-#       [--checks <checks.tsv>] [--bases "<sha>..."] [--target <commit>|:index]
+#       [--checks <checks.tsv>] [--bases "<sha>..."] [--target <commit>|:index] [--heading <text>]
 #
 # Line: <row> <file>:<line> <identifier> <message> → quality/RULES.md "### <rule id>"
+# --heading prints <text> and a blank line before the first line, and nothing when no line prints.
 #
 # Reads each row's artifact: PHPStan JSON (file-less errors[] included), PHPMD JSON, or
 # checkstyle filtered to added lines (a line-less error, as Pint writes, prints for any changed
@@ -23,11 +24,12 @@ GUARD_LIB_DIR="$(cd "${BIN}/../lib" && pwd)"
 . "${GUARD_LIB_DIR}/guard-pass.sh"
 . "${GUARD_LIB_DIR}/guard-diff.sh"
 
-rows='' tree='-' map='-' checks='' bases='' target=':index'
+rows='' tree='-' map='-' checks='' bases='' target=':index' heading=''
 while [ $# -gt 0 ]; do
     case "$1" in
         --rows) rows="${2:-}" ;; --tree) tree="${2:-}" ;; --map) map="${2:-}" ;;
         --checks) checks="${2:-}" ;; --bases) bases="${2:-}" ;; --target) target="${2:-}" ;;
+        --heading) heading="${2:-}" ;;
         *) guard_err "guard-report-errors: unknown argument $1"; exit 2 ;;
     esac
     shift 2 || break
@@ -156,5 +158,7 @@ awk -F'\t' '
         if ($6 != "") line = line " → " $6
         else if (id != "") line = line " → quality/RULES.md \"### " id "\""
         print line
-    }' "$WORK/map" "$WORK/records"
+    }' "$WORK/map" "$WORK/records" > "$WORK/lines"
+[ -z "$heading" ] || [ ! -s "$WORK/lines" ] || printf '%s\n\n' "$heading"
+cat "$WORK/lines"
 exit 0

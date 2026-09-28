@@ -56,7 +56,7 @@ similarity, so a moved and rewritten file keeps its unchanged lines and entries 
 | helper | counts |
 |---|---|
 | `bin/guard-added-lines.sh --checkstyle <file>` | checkstyle errors on added lines; a leading `/app/` is stripped from report paths |
-| `bin/guard-added-lines.sh --grep <regex>` | added lines matching the extended regex, in `*.php` outside `tests/PHPStan/Rules/Fixtures/` |
+| `bin/guard-added-lines.sh [--ext <ext>] [--exclude <regex>]... --grep <regex>` | added lines matching the extended regex, in files ending `.<ext>` (default `php`) whose path matches no `--exclude` extended regex; with `php`, also outside `tests/PHPStan/Rules/Fixtures/`. It runs under gawk and mawk, so write classes as POSIX brackets (`[[:space:]]`), never `\s` |
 | `bin/guard-baseline-growth.sh [--phpstan <neon>] [--phpmd <xml>]` | baseline entries that grew: new, a higher count, or a higher accepted cognitive-complexity score |
 | `bin/guard-protected-paths.sh` | paths under `guard_protected_paths` that differ from every base |
 
@@ -77,7 +77,7 @@ tab or newline inside a path prints as a space.
 ## What a refused commit prints
 
 `guard.sh commit` writes this to stderr: one summary line per worse or unmeasurable row, then the
-lines of `bin/guard-report-errors.sh`, which start with the row id.
+lines of `bin/guard-report-errors.sh`, which start with the row id. Warnings, below, print before it.
 
 ```
 vault-guard: the staged commit refused
@@ -98,7 +98,24 @@ PHPMD JSON, or checkstyle filtered to added lines. An error in a file the target
 unmatched-ignore message adds `run composer stan:baseline`. Rows running
 `guard-added-lines.sh --grep`, `guard-baseline-growth.sh` or `guard-protected-paths.sh` are re-run
 with `GUARD_LIST=1` and print a fixed action. `-` for `--map` or a missing `--checks` reads the file
-from `HEAD`. An identifier with no `quality/rules.tsv` row prints without a pointer.
+from `HEAD`. An identifier with no `quality/rules.tsv` row prints without a pointer. `--heading <text>`
+prints `<text>` and a blank line before the first line, and nothing when no line prints.
+
+## What a warning prints
+
+After the rows run, `guard.sh commit` passes every row whose `gate` is `warn` and whose value is above
+0 to `guard-report-errors.sh --heading`, on stderr. The exit status stays the one the rows set. The
+heading is `vault-guard: warnings (the commit goes through)` when no row refuses, and
+`vault-guard: warnings (these alone would not refuse the commit)` when the refusal follows:
+
+```
+vault-guard: warnings (the commit goes through)
+
+lint-warn-new lib/a.dart:2 avoid_print Avoid print. → quality/RULES.md "### debug-print"
+```
+
+A `quality/rules.tsv` that cannot be read prints `vault-guard: quality/rules.tsv is unreadable;
+warnings from <ids> are not printed` instead.
 
 ## Hooks, pass records and the override
 
