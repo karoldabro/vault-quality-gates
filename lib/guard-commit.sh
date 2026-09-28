@@ -63,10 +63,11 @@ guard_gate() {
     local target="$1" bases="$2" cfg first rc worst=0 row id scope kind command artifact
     first="${bases%% *}"
     cfg="$(mktemp -d)"
-    # A commit on a branch that predates the gate has no rules map at HEAD: nothing defines what to
-    # judge, so it is not gated. The merge that brings the gate in is judged from its own HEAD.
-    if ! guard_config_show quality/rules.tsv >/dev/null 2>&1; then
-        printf 'vault-guard: HEAD has no quality/rules.tsv, so this branch predates the commit gate; not gated\n' >&2
+    # A commit whose parent predates the gate has no rules map to be judged by, so it is not gated. The
+    # decision reads the judged commit's first parent, never HEAD, so `verify` run from an old checkout
+    # cannot pass a commit whose parent carries the gate. A first commit (no parent) is always gated.
+    if [ "$first" != "$(guard_empty_tree)" ] && ! git cat-file -e "${first}:quality/rules.tsv" 2>/dev/null; then
+        printf 'vault-guard: the parent commit has no quality/rules.tsv, so this branch predates the commit gate; not gated\n' >&2
         rm -rf "$cfg"; return 0
     fi
     guard_gate_config "$cfg" && guard_load_checks "$cfg/checks.tsv" || { rm -rf "$cfg"; return 2; }

@@ -223,7 +223,7 @@ line ${step}"
     [[ "$output" == *'quality/checks.tsv'* ]]
 }
 
-@test "HEAD without quality/rules.tsv predates the gate: not gated, even when the working tree has one" {
+@test "a parent without quality/rules.tsv predates the gate: not gated, even when the working tree has one" {
     new_repo "$WORK/repo"
     write_checks "$BAD_ROW"
     commit_all init
@@ -231,6 +231,33 @@ line ${step}"
     run bash /code/bin/guard.sh commit
     [ "$status" -eq 0 ]
     [[ "$output" == *'predates the commit gate; not gated'* ]]
+}
+
+@test "verify from a pre-gate checkout never passes a commit whose parent carries the gate" {
+    new_repo "$WORK/repo"
+    write_checks "$BAD_ROW"
+    commit_all old
+    old="$(git rev-parse HEAD)"
+    write_rules
+    commit_all gated
+    mkdir -p app && printf 'BAD\n' > app/x
+    commit_all bad
+    bad="$(git rev-parse HEAD)"
+    git checkout -q --detach "$old"
+    run bash /code/bin/guard.sh verify "${bad}^!"
+    [ "$status" -ne 0 ]
+    [[ "$output" != *'not gated'* ]]
+    [ ! -e "$(git rev-parse --path-format=absolute --git-common-dir)/guard-pass/$( . /code/lib/guard-pass.sh; guard_pass_key_of_commit "$bad")" ]
+}
+
+@test "a first commit is gated even when its index lacks quality/rules.tsv" {
+    new_repo "$WORK/repo"
+    write_checks "$BAD_ROW"
+    mkdir -p app && printf 'BAD\n' > app/x
+    git add quality/checks.tsv app/x
+    run bash /code/bin/guard.sh commit
+    [[ "$output" != *'not gated'* ]]
+    [ "$status" -ne 0 ]
 }
 
 @test "the printer never turns a failing row into exit 0" {
