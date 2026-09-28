@@ -440,3 +440,19 @@ no_bad() {
     edit_case allow "$WORK/elsewhere/config"
     no_bad
 }
+
+@test "a committed, unmodified script under a protected path runs even when it names gate state" {
+    mkdir -p quality/bin other
+    printf 'guard_protected_paths: quality/bin VAULT.md\n' > VAULT.md
+    printf '#!/usr/bin/env bash\nC="$(git rev-parse --git-common-dir)/guard-cache"\necho "$C"\n' > quality/bin/check.sh
+    cp quality/bin/check.sh other/check.sh
+    chmod +x quality/bin/check.sh other/check.sh
+    git add VAULT.md quality/bin/check.sh other/check.sh
+    git commit -q -m scripts -- VAULT.md quality/bin/check.sh other/check.sh
+    bash_case allow 'quality/bin/check.sh'
+    bash_case allow 'bash quality/bin/check.sh'
+    bash_case deny  'other/check.sh'
+    printf '\n# edited\n' >> quality/bin/check.sh
+    bash_case deny  'quality/bin/check.sh'
+    no_bad
+}

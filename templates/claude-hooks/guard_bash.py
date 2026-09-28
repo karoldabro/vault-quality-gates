@@ -292,7 +292,34 @@ def read_script(path, ctx):
         raise Deny(f'{path} runs as a script but the hook cannot read it')
 
 
+def protected_prefixes(repo):
+    try:
+        vault = subprocess.run(['git', '-C', repo, 'show', 'HEAD:VAULT.md'], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    m = re.search(r'^guard_protected_paths:[ \t]*(.*)$', vault, re.M)
+    return m.group(1).split() if m else []
+
+
+def trusted_script(path, ctx):
+    # A committed, unmodified script under a protected path was reviewed; changing it needs the human override.
+    p = os.path.realpath(os.path.join(ctx.cwd, path))
+    if not ctx.repo or p in ctx.written or not p.startswith(ctx.repo + '/'):
+        return False
+    rel = p[len(ctx.repo) + 1:]
+    if not any(rel == pre or rel.startswith(pre.rstrip('/') + '/') for pre in protected_prefixes(ctx.repo)):
+        return False
+    try:
+        tracked = subprocess.run(['git', '-C', ctx.repo, 'ls-files', '--error-unmatch', '--', rel], capture_output=True, timeout=5).returncode == 0
+        clean = subprocess.run(['git', '-C', ctx.repo, 'diff', '--quiet', 'HEAD', '--', rel], capture_output=True, timeout=5).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return tracked and clean
+
+
 def run_file(path, ctx, depth, shell):
+    if trusted_script(path, ctx):
+        return
     text = read_script(path, ctx)
     if shell or re.match(r'#!.*\b(ba|z|da|k)?sh\b', text):
         scan_script(text, ctx, depth + 1)
