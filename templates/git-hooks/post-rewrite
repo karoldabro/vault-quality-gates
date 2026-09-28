@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# vault-guard-start
+# After `git commit --amend`, measures the amended commit against its own parents with
+# `guard.sh verify`, which records a pass only when it passes. Never blocks.
+set -uo pipefail
+GUARD="__GUARD_SH__"
+# shellcheck source=../../lib/guard-hook.sh
+. "$(dirname "$GUARD")/../lib/guard-hook.sh" 2>/dev/null || { cat >/dev/null; exit 0; }
+guard_post_rewrite "${1:-}"
+exit 0
+# vault-guard-end

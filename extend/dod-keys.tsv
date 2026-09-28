@@ -1,2 +1,4 @@
 key	why
 guard_release_pattern	the git ref pattern whose push the gate refuses on, e.g. refs/heads/release/*
+guard_commit_paths	space-separated path prefixes whose change makes the commit gate run its {{tree}} rows; absent gates every path
+guard_protected_paths	space-separated path prefixes a commit may change only with a human override

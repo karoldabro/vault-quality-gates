@@ -2,8 +2,12 @@
 # Per-repo code-quality runner. Reads quality/checks.tsv, runs the rows a subcommand
 # selects, compares each number against quality/baseline.tsv, writes the report.
 #
-#   guard.sh commit              rows scoped commit|both, against HEAD~1
-#   guard.sh release [<ref>]     rows scoped release|both, against the merge-base
+#   guard.sh commit              rows scoped commit|both, on the index git is about to
+#                                commit, against every parent; config read from HEAD
+#   guard.sh verify <range>      the same for each commit `git rev-list <range>` lists,
+#                                against its own parents; writes its pass record
+#   guard.sh release [<ref>]     rows scoped release|both, against the merge-base; checks.tsv,
+#                                baseline.tsv and VAULT.md read from GUARD_SHA (else HEAD)
 #   guard.sh baseline [--skip <regex>]
 #                                rows scoped baseline plus every kind: repo row,
 #                                then rewrites quality/baseline.tsv. --skip omits
@@ -12,7 +16,7 @@
 #                                schedule without blocking every other measurement.
 #   guard.sh report              re-render from quality-reports/
 #   guard.sh accept <id> --reason "<why>"
-#   guard.sh hooks install|remove|status
+#   guard.sh hooks install [--claude]|remove|status
 #
 # Exit 0 measured and acceptable, 1 measured and worse, 2 could not measure.
 #
@@ -26,6 +30,11 @@
 # that uncommitted edits can move a metric.
 
 set -uo pipefail
+
+# git hands hooks a relative GIT_INDEX_FILE; pin it before anything changes directory.
+if [ -n "${GIT_INDEX_FILE:-}" ] && [ "${GIT_INDEX_FILE#/}" = "$GIT_INDEX_FILE" ]; then
+    export GIT_INDEX_FILE="${PWD}/${GIT_INDEX_FILE}"
+fi
 
 GUARD_BIN_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 GUARD_LIB_DIR="$(cd "${GUARD_BIN_DIR}/../lib" && pwd)"
@@ -46,16 +55,37 @@ guard_default_branch() {
         && printf '%s' "${b#origin/}" || printf 'master'
 }
 
+# GUARD_CONFIG_REV, set by `release`, is the commit whose VAULT.md, checks.tsv and baseline.tsv
+# the release gate reads, so an uncommitted edit cannot loosen the gate that judges a push.
+GUARD_CONFIG_REV=''
+
+guard_vault_md() {
+    if [ -n "$GUARD_CONFIG_REV" ]; then git show "${GUARD_CONFIG_REV}:VAULT.md" 2>/dev/null
+    else cat "${REPO_ROOT}/VAULT.md" 2>/dev/null; fi
+}
+
 guard_accept_limit() {
     local v
-    v="$(sed -n 's/^guard_accept_limit:[[:space:]]*//p' "${REPO_ROOT}/VAULT.md" 2>/dev/null | head -1)"
+    v="$(guard_vault_md | sed -n 's/^guard_accept_limit:[[:space:]]*//p' | head -1)"
     if guard_is_number "${v:-}"; then printf '%s' "$v"; else printf '%s' "$GUARD_ACCEPT_LIMIT_DEFAULT"; fi
 }
 
 guard_measure_worktree() {
     local v
-    v="$(sed -n 's/^guard_measure_worktree:[[:space:]]*//p' "${REPO_ROOT}/VAULT.md" 2>/dev/null | head -1)"
+    v="$(guard_vault_md | sed -n 's/^guard_measure_worktree:[[:space:]]*//p' | head -1)"
     [ "$v" != 'false' ]
+}
+
+# guard_release_config <rev> -> points CHECKS and BASELINE at copies of the committed files.
+guard_release_config() {
+    local dir
+    GUARD_CONFIG_REV="$(git rev-parse -q --verify "${1}^{commit}")" || { guard_err "guard: cannot read commit ${1}"; exit 2; }
+    dir="$(mktemp -d)"
+    GUARD_CONFIG_DIR="$dir"
+    git show "${GUARD_CONFIG_REV}:quality/checks.tsv" > "${dir}/checks.tsv" 2>/dev/null \
+        || { guard_err "guard: ${1} has no quality/checks.tsv; the release gate reads it from the pushed commit"; exit 2; }
+    git show "${GUARD_CONFIG_REV}:quality/baseline.tsv" > "${dir}/baseline.tsv" 2>/dev/null || rm -f "${dir}/baseline.tsv"
+    CHECKS="${dir}/checks.tsv" BASELINE="${dir}/baseline.tsv"
 }
 
 GUARD_WORKTREE=''
@@ -79,7 +109,8 @@ guard_leave_tree() {
     git worktree remove --force "$GUARD_WORKTREE" >/dev/null 2>&1
     GUARD_WORKTREE=''
 }
-trap guard_leave_tree EXIT
+GUARD_CONFIG_DIR=''
+trap 'guard_leave_tree; [ -z "$GUARD_CONFIG_DIR" ] || rm -rf "$GUARD_CONFIG_DIR"' EXIT
 
 # guard_run <scope> <base ref>  ->  0 clean, 1 worse, 2 unmeasurable
 guard_run() {
@@ -219,12 +250,17 @@ cmd_accept() {
 }
 
 case "${1:-}" in
-    commit)
-        cmd_measure 'commit' "$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)" '-' ;;
+    commit)   . "${GUARD_LIB_DIR}/guard-commit.sh"; guard_gate ':index' "$(guard_default_bases)" ;;
+    verify)
+        shift
+        [ $# -gt 0 ] || { guard_err 'usage: guard.sh verify <revision range>'; exit 2; }
+        . "${GUARD_LIB_DIR}/guard-commit.sh"; guard_verify "$@" ;;
     release)
-        base="$(git merge-base "origin/$(guard_default_branch)" HEAD 2>/dev/null \
-                || git merge-base "$(guard_default_branch)" HEAD 2>/dev/null \
-                || git rev-parse HEAD)"
+        rev="${GUARD_SHA:-HEAD}"
+        base="$(git merge-base "origin/$(guard_default_branch)" "$rev" 2>/dev/null \
+                || git merge-base "$(guard_default_branch)" "$rev" 2>/dev/null \
+                || git rev-parse "$rev")"
+        guard_release_config "${GUARD_SHA:-HEAD}"
         cmd_measure 'release' "$base" "${2:--}" ;;
     baseline)
         shift
@@ -233,5 +269,5 @@ case "${1:-}" in
     report)   cat "${REPORTS}/REPORT.md" 2>/dev/null || { guard_err 'guard: no report yet'; exit 2; } ;;
     accept)   shift; cmd_accept "$@" ;;
     hooks)    shift; . "${GUARD_LIB_DIR}/guard-install.sh"; guard_hooks "$@" ;;
-    *)        guard_err 'usage: guard.sh commit|release|baseline|report|accept|hooks'; exit 2 ;;
+    *)        guard_err 'usage: guard.sh commit|verify|release|baseline|report|accept|hooks'; exit 2 ;;
 esac

@@ -173,10 +173,19 @@ guard_parse_row() {
 # {{base}} becomes the base ref. {{files}} becomes the NUL-separated changed paths,
 # which the command must consume with xargs -0: a newline-separated list terminates
 # the command at the first path and executes the second path as a command name.
+# {{tree}}, {{cache}}, {{bases}}, {{target}} and {{guard}} come from GUARD_TREE_DIR,
+# GUARD_CACHE_DIR, GUARD_BASES, GUARD_TARGET and GUARD_BIN_DIR, which `guard.sh commit`
+# and `verify` set; a token whose variable is unset stays as written.
 guard_substitute() {
-    local cmd="$1" base="$2" files="$3"
-    cmd="${cmd//\{\{base\}\}/$base}"
-    cmd="${cmd//\{\{files\}\}/cat $files}"
+    local cmd="$1" base="$2" files="$3" token var
+    cmd="${cmd//\{\{base\}\}/"$base"}"
+    cmd="${cmd//\{\{files\}\}/"cat $files"}"
+    for token in tree:GUARD_TREE_DIR cache:GUARD_CACHE_DIR bases:GUARD_BASES \
+                 target:GUARD_TARGET guard:GUARD_BIN_DIR; do
+        var="${token#*:}"
+        [ -n "${!var:-}" ] || continue
+        cmd="${cmd//\{\{${token%%:*}\}\}/"${!var}"}"
+    done
     printf '%s' "$cmd"
 }
 
@@ -193,6 +202,7 @@ guard_run_row() {
         return 0
     fi
 
+    artifact="$(guard_substitute "$artifact" "$base" "$files")"
     local status=0 stdout
     stdout="$(eval "$(guard_substitute "$command" "$base" "$files")" 2>&1)" || status=$?
 

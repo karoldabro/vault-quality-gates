@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 # vault-guard-start
-# Refuses a push whose remote ref matches guard_release_pattern and whose measured
-# quality is worse than quality/baseline.tsv. Every other push exits 0 untouched.
+# Two checks, in order:
+#   1. Every pushed commit not yet on any remote must carry a pass record, written when the
+#      commit hooks passed it or by `guard.sh verify`. A cherry-pick, revert or scripted
+#      commit runs no pre-commit hook and has none. One unrecorded commit refuses the whole
+#      push, unless a human at a terminal overrides with QG_SKIP_REASON. Overrides logged
+#      since the last push are printed.
+#   2. A push whose remote ref matches guard_release_pattern is refused when its measured
+#      quality is worse than quality/baseline.tsv, also after an override of check 1.
 #
 # It reads EVERY stdin line before any exit. A hook that exits early leaves git
 # writing into a closed pipe: the writer dies with 141 while the hook reports 0,
@@ -16,17 +22,56 @@ GUARD="__GUARD_SH__"
 REMOTE_NAME="${1:-}"
 ZERO='0000000000000000000000000000000000000000'
 
-repo_root="$(git rev-parse --show-toplevel)"
-pattern="$(sed -n 's/^guard_release_pattern:[[:space:]]*//p' "${repo_root}/VAULT.md" 2>/dev/null | head -1)"
-# Prettier escapes `*` in VAULT.md as `\*`; left in, the glob matches only a literal `*` and no
-# release push is ever gated.
-pattern="${pattern//\\/}"
-if [ -z "$pattern" ]; then
-    pattern='refs/heads/release/*'
-    printf 'vault-guard: VAULT.md names no guard_release_pattern, using %s\n' "$pattern" >&2
+pushed=()
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ -n "${remote_ref:-}" ] || continue
+    pushed+=("${local_ref} ${local_sha} ${remote_ref} ${remote_sha:-}")
+done
+
+# shellcheck source=../../lib/guard-hook.sh
+. "$(dirname "$GUARD")/../lib/guard-hook.sh" 2>/dev/null || {
+    printf 'vault-guard: %s has no lib/guard-hook.sh beside it; push refused rather than passed unchecked\n' "$GUARD" >&2
+    exit 1
+}
+
+shas=()
+for line in "${pushed[@]}"; do
+    read -r _ local_sha _ _ <<<"$line"
+    [ "$local_sha" = "$ZERO" ] || shas+=("$local_sha")   # a branch deletion pushes no commit
+done
+
+if [ "${#shas[@]}" -gt 0 ]; then
+    unrecorded="$(guard_push_unrecorded "${shas[@]}")"
+    if [ -n "$unrecorded" ]; then
+        printf '\nvault-guard: push refused, these commits never passed the commit gate:\n' >&2
+        while IFS= read -r c; do
+            printf '  %s\n' "$(git log -1 --format='%h %s' "$c" 2>/dev/null || printf '%s (cannot read)' "$c")" >&2
+        done <<<"$unrecorded"
+        printf '\nMeasure them and record the passes, then push again:\n  %s verify %s --not --remotes\n\n' \
+            "$GUARD" "${shas[*]}" >&2
+        guard_override_used "pre-push to ${REMOTE_NAME}: $(wc -l <<<"$unrecorded") unrecorded commits" || exit 1
+    fi
 fi
-# `a|b` in a variable is one glob with a literal `|`, not a case alternation, so split it here.
-IFS='|' read -ra release_globs <<< "$pattern"
+guard_print_bypass_log
+
+# release_globs_of <sha> -> sets release_globs from guard_release_pattern in the VAULT.md of
+# the pushed commit, never the working tree: an uncommitted edit cannot un-gate a release push.
+globs_sha=''
+release_globs_of() {
+    local pattern
+    [ "$1" != "$globs_sha" ] || return 0
+    globs_sha="$1"
+    pattern="$(git show "${1}:VAULT.md" 2>/dev/null | sed -n 's/^guard_release_pattern:[[:space:]]*//p' | head -1)"
+    # Prettier escapes `*` in VAULT.md as `\*`; left in, the glob matches only a literal `*` and no
+    # release push is ever gated.
+    pattern="${pattern//\\/}"
+    if [ -z "$pattern" ]; then
+        pattern='refs/heads/release/*'
+        printf 'vault-guard: VAULT.md names no guard_release_pattern, using %s\n' "$pattern" >&2
+    fi
+    # `a|b` in a variable is one glob with a literal `|`, not a case alternation, so split it here.
+    IFS='|' read -ra release_globs <<< "$pattern"
+}
 
 is_release_ref() {
     local glob
@@ -39,9 +84,10 @@ is_release_ref() {
 
 gated_ref=''
 gated_sha=''
-while read -r _local_ref local_sha remote_ref _remote_sha; do
-    [ -n "${remote_ref:-}" ] || continue
+for line in "${pushed[@]}"; do
+    read -r _ local_sha remote_ref _ <<<"$line"
     [ "$local_sha" = "$ZERO" ] && continue        # a branch deletion measures nothing
+    release_globs_of "$local_sha"
     if is_release_ref "$remote_ref"; then
         gated_ref="$remote_ref"; gated_sha="$local_sha"
     fi

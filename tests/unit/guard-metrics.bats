@@ -196,7 +196,7 @@ init_repo() {  # init_repo <dir>
     [ "$(guard_accept_count quality/baseline.tsv)" -eq 1 ]
 }
 
-# --- SC-7: the gate measures the pushed commit, not the working tree ---------
+# --- SC-7: the push gate measures the pushed commit, not the working tree ----
 
 @test "uncommitted edit does not change the measured value" {
     init_repo "$WORK/repo"
@@ -208,9 +208,33 @@ init_repo() {  # init_repo <dir>
     [ "$(wc -l < data.txt)" -eq 8 ]
 
     export GUARD_SHA="$(git rev-parse HEAD)"
-    run bash /code/bin/guard.sh commit
+    run bash /code/bin/guard.sh release
     [ "$status" -eq 0 ]
     grep -qE '^\| lines \| 3 \|' quality-reports/REPORT.md
+}
+
+@test "release reads checks.tsv, baseline.tsv and VAULT.md from the pushed commit" {
+    init_repo "$WORK/repo"
+    printf 'one\ntwo\nthree\n' > data.txt
+    printf '%s\n' "$GUARD_CHECKS_HEADER" > quality/checks.tsv
+    printf 'lines\trelease\trepo\twc -l < data.txt\t-\t-\tdown\t0\trefuse\n' >> quality/checks.tsv
+    write_baseline quality/baseline.tsv lines 2 -
+    printf 'guard_accept_limit: 0\n' > VAULT.md
+    git add -A && git commit -qm base
+    export GUARD_SHA="$(git rev-parse HEAD)"
+    run bash /code/bin/guard.sh release refs/heads/release/1
+    [ "$status" -eq 1 ]
+    printf '%s\n' "$GUARD_CHECKS_HEADER" > quality/checks.tsv
+    printf 'lines\trelease\trepo\twc -l < data.txt\t-\t-\tdown\t100\trefuse\n' >> quality/checks.tsv
+    write_baseline quality/baseline.tsv lines 3 'loosened in the working tree'
+    printf 'guard_accept_limit: 5\n' > VAULT.md
+    run bash /code/bin/guard.sh release refs/heads/release/1
+    [ "$status" -eq 1 ]
+    [[ "$output" == *'lines'* ]]
+    git add -A && git commit -qm loosened
+    export GUARD_SHA="$(git rev-parse HEAD)"
+    run bash /code/bin/guard.sh release refs/heads/release/1
+    [ "$status" -eq 0 ]
 }
 
 # --- consumer: the {{files}} substitution ------------------------------------
@@ -236,4 +260,50 @@ init_repo() {  # init_repo <dir>
     # The same input "delta equal to threshold passes" asserts is clean.
     run bash -c ". '$WORK/planted.sh'; guard_compare coverage repo 105 down 5 refuse '$WORK/baseline.tsv'"
     [ "$status" -eq 1 ]
+}
+
+# --- commit-gate tokens and parsers -------------------------------------------
+
+@test "tree, cache, bases, target and guard tokens substitute; an unset one stays" {
+    GUARD_TREE_DIR=/g/tree GUARD_CACHE_DIR=/g/cache GUARD_BASES='a1 b2' GUARD_TARGET=':index' GUARD_BIN_DIR=/p/bin \
+        run guard_substitute '{{guard}}/x --tree {{tree}} --cache {{cache}} --bases "{{bases}}" --target {{target}}' HEAD "$WORK/f"
+    [ "$output" = '/p/bin/x --tree /g/tree --cache /g/cache --bases "a1 b2" --target :index' ]
+    unset GUARD_TREE_DIR
+    run guard_substitute 'ls {{tree}}' HEAD "$WORK/f"
+    [ "$output" = 'ls {{tree}}' ]
+}
+
+@test "the artifact cell is substituted before the parser reads it" {
+    mkdir -p "$WORK/t"
+    printf '{"totals":{"errors":0,"file_errors":2}}' > "$WORK/t/phpstan.json"
+    : > "$WORK/files"
+    row=$'phpstan-new\tcommit\tdiff\ttrue\tphpstan-all\t{{tree}}/phpstan.json\tdown\t0\trefuse'
+    GUARD_TREE_DIR="$WORK/t" guard_run_row "$row" "$WORK/none.tsv" HEAD "$WORK/files" || true
+    [[ "${GUARD_RESULTS[0]}" == 'phpstan-new|2|0|worse|'* ]]
+}
+
+@test "phpstan-all counts a file-less error the file_errors parser misses" {
+    printf '{"totals":{"errors":1,"file_errors":0},"files":{},"errors":["boot failed"]}' > "$WORK/p.json"
+    run guard_parse_row phpstan-all "$WORK/p.json" 1
+    [ "$status" -eq 0 ]
+    [ "$output" = 1 ]
+    run guard_parse_row phpstan "$WORK/p.json" 1
+    [ "$output" = 0 ]
+    printf '{"files":{}}' > "$WORK/q.json"
+    run guard_parse_row phpstan-all "$WORK/q.json" 1
+    [ "$status" -eq 2 ]
+}
+
+@test "phpmd counts violations and refuses a report with a parse error, naming the file" {
+    printf '{"files":[{"file":"a.php","violations":[{"rule":"X"},{"rule":"Y"}]},{"file":"b.php","violations":[]}]}' > "$WORK/m.json"
+    run guard_parse_row phpmd "$WORK/m.json" 2
+    [ "$status" -eq 0 ]
+    [ "$output" = 2 ]
+    printf '{"files":[],"errors":[{"fileName":"/app/app/New.php","message":"Unexpected token"}]}' > "$WORK/e.json"
+    run guard_parse_row phpmd "$WORK/e.json" 3
+    [ "$status" -eq 2 ]
+    [[ "$output" == *'/app/app/New.php'* ]]
+    printf 'not json' > "$WORK/x.json"
+    run guard_parse_row phpmd "$WORK/x.json" 0
+    [ "$status" -eq 2 ]
 }
