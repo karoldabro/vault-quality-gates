@@ -190,11 +190,9 @@ the commit refusal text, the five hooks, pass records, the override and the Clau
 | `<git-common-dir>/guard-bypass.log` | `lib/guard-override.sh` | `pre-push`, which prints new lines | no |
 | `<git-common-dir>/guard-bypass.printed` | `pre-push` | `pre-push`: how many log lines it already printed | no |
 
-Nothing in this plugin reads `status.json` or `REPORT.md`. The gate reaches the agent through the
-hooks' stderr, which the agent sees as the output of its own `git commit` or `git push`.
-
-`REPORT.md` carries exactly four headings, in this order: `## Open regressions`, `## Unmeasurable`,
-`## All metrics`, `## Absent`. The operator reads it; nothing parses it.
+Nothing in this plugin reads `status.json` or `REPORT.md`; the gate reaches the agent through the hooks'
+stderr. `REPORT.md` carries exactly four headings, in this order: `## Open regressions`,
+`## Unmeasurable`, `## All metrics`, `## Absent`. The operator reads it; nothing parses it.
 
 **`status.json` keeps the six category keys** `codeQuality`, `tests`, `coverage`, `e2e`, `nightly` and
 `mutation` that `~/vault/givore/quality/build-dashboard.mjs:45` fixes. A `checks.tsv` id that is not
