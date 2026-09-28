@@ -6,6 +6,9 @@ from shell_lexer import Lexer
 RAW_PLUGIN = sys.argv[1].rstrip('/') or '/'
 PLUGIN = os.path.realpath(RAW_PLUGIN)
 HOME = os.path.expanduser('~')
+# Code Claude Code installed as plugins. guard-edit and the write checks below deny agents every write
+# there, so a script under it runs as installed and is not scanned.
+INSTALLED = os.path.realpath(os.path.join(HOME, '.claude', 'plugins', 'cache'))
 GUARD_SH = os.path.join(PLUGIN, 'bin', 'guard.sh')
 # Any of these in a word of a command that is not a read denies it (compared lower-case, // collapsed).
 NEEDLES = ('.git/hooks', '.git/config', 'guard-pass', 'guard_pass', 'guard-bypass', 'guard_bypass', 'guard-tree', 'guard_tree',
@@ -98,7 +101,7 @@ def protected(tok, ctx):
         return True
     for c in glob.glob(os.path.join(ctx.cwd, tok)) if re.search(r'[*?[]', tok) else [tok]:
         p = os.path.realpath(os.path.join(ctx.cwd, c))
-        if needle(p) or p == PLUGIN or p.startswith(PLUGIN + '/'):
+        if needle(p) or p == PLUGIN or p.startswith(PLUGIN + '/') or p.startswith(INSTALLED + '/'):
             return True
         if os.path.basename(p) == '.git' and not in_tmp_elsewhere(p, ctx):
             return True
@@ -317,8 +320,13 @@ def trusted_script(path, ctx):
     return tracked and clean
 
 
+def installed_script(path, ctx):
+    p = os.path.realpath(os.path.join(ctx.cwd, path))
+    return p.startswith(INSTALLED + '/') and p not in ctx.written
+
+
 def run_file(path, ctx, depth, shell):
-    if trusted_script(path, ctx):
+    if trusted_script(path, ctx) or installed_script(path, ctx):
         return
     text = read_script(path, ctx)
     if shell or re.match(r'#!.*\b(ba|z|da|k)?sh\b', text):

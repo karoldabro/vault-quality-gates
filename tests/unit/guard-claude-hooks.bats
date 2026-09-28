@@ -467,3 +467,17 @@ no_bad() {
     bash_case allow 'bash ok.sh'
     no_bad
 }
+
+@test "installed plugin code runs unscanned, and no agent may write or edit it" {
+    local inst="$HOME/.claude/plugins/cache/demo/1.0/bin"
+    mkdir -p "$inst"
+    printf '#!/usr/bin/env bash\n. "${ROOT}/lib/helper.sh"\necho "${a[@]+"${a[@]}"}"\n' > "$inst/run.sh"
+    bash_case allow "bash $inst/run.sh"
+    bash_case allow "$inst/run.sh --flag"
+    bash_case deny  "cp x $inst/run.sh"
+    bash_case deny  "rm $inst/run.sh"
+    edit_case deny  "$inst/run.sh"
+    edit_case deny  "$inst/new.sh" Write
+    rm -rf "$HOME/.claude/plugins/cache/demo"
+    no_bad
+}

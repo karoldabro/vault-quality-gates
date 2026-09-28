@@ -150,3 +150,8 @@ and matcher `Edit|Write|MultiEdit|NotebookEdit` runs `templates/claude-hooks/gua
 absolute path from the plugin checkout. An entry already naming the same command is kept, not
 duplicated; foreign entries are never removed. `hooks status` reports the five git hooks and both
 entries. `hooks remove` removes the git hooks only; delete the two entries by hand.
+
+`guard-bash.sh` reads every script a command runs or sources and scans it like the command. Two kinds
+run unscanned: a committed, unmodified script under `guard_protected_paths`, and code installed under
+`~/.claude/plugins/cache/`. Both hooks deny an agent any write or edit there, which is what makes
+that code safe to run as installed.

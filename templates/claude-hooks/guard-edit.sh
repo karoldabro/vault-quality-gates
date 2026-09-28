@@ -8,6 +8,7 @@ command -v python3 >/dev/null 2>&1 || { echo "guard-edit: python3 is missing, so
 IFS= read -r -d '' SRC <<'PY'
 import fnmatch, json, os, subprocess, sys
 PLUGIN = os.path.realpath(sys.argv[1])
+INSTALLED = os.path.realpath(os.path.expanduser('~/.claude/plugins/cache'))
 
 def git_dirs(start):
     while start and not os.path.isdir(start):
@@ -31,6 +32,8 @@ def reason(path, cwd):
             return 'it is a git config file'
         if p == PLUGIN or p.startswith(PLUGIN + '/'):
             return 'it is inside the vault-quality-gates plugin checkout'
+        if p.startswith(INSTALLED + '/'):
+            return 'it is installed Claude Code plugin code, which runs without being scanned'
     real = os.path.realpath(ab)
     for d in set(git_dirs(cwd) + git_dirs(os.path.dirname(ab))):
         if real == d or real.startswith(d + '/'):
