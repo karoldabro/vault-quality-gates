@@ -8,7 +8,8 @@
 # Line: <row> <file>:<line> <identifier> <message> → quality/RULES.md "### <rule id>"
 #
 # Reads each row's artifact: PHPStan JSON (file-less errors[] included), PHPMD JSON, or
-# checkstyle filtered to added lines. Rows that run guard-added-lines.sh --grep,
+# checkstyle filtered to added lines (a line-less error, as Pint writes, prints for any changed
+# file). An exitcode row whose artifact cell names a report prints that report. Rows that run guard-added-lines.sh --grep,
 # guard-baseline-growth.sh or guard-protected-paths.sh are re-run with GUARD_LIST=1 and
 # print a fixed action. A leading /app/ is stripped from every path. `--map -` and a missing
 # --checks read the file from HEAD. An identifier with no map row prints without a pointer.
@@ -95,12 +96,15 @@ print_phpmd() {
                     | map(tostring | gsub("[\t\n\u001f]"; " ")) | join("\u001f")' "$2" 2>/dev/null)
 }
 
-print_checkstyle() {
+print_checkstyle() {  # errors on added lines, plus line-less errors (Pint) in changed files
     local row="$1" file line src msg
     while IFS=$'\037' read -r file line src msg; do
-        record "$row" "${file}:${line}" "$src" "$msg" '' ''
-    done < <(awk -F'\t' 'NR == FNR { hit[$1 "\t" $2] = 1; next } ($1 "\t" $2) in hit' \
-                 <(added) <(guard_checkstyle_rows "$2" 2>/dev/null) | tr '\t' '\037')
+        record "$row" "${file}${line:+:${line}}" "$src" "$msg" '' ''
+    done < <(awk -F'\t' -v OFS='\t' 'FILENAME == ARGV[1] { hit[$1 "\t" $2] = 1; next }
+                                     FILENAME == ARGV[2] { changed[$0] = 1; next }
+                                     ($1 "\t" $2) in hit { print; next }
+                                     $2 == 0 && $1 in changed { $2 = ""; print }' \
+                 <(added) <(tr '\0' '\n' < "$WORK/files") <(guard_checkstyle_rows "$2" 2>/dev/null) | tr '\t' '\037')
 }
 
 print_listed() {  # print_listed <row> <command> <action>

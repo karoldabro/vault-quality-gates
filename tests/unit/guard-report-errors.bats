@@ -16,6 +16,7 @@ setup() {
         $'phpstan-new\tcommit\tdiff\ttrue\tphpstan-all\t{{tree}}/phpstan.json\tdown\t0\trefuse' \
         $'phpmd-new\tcommit\tdiff\ttrue\tphpmd\t{{tree}}/phpmd.json\tdown\t0\trefuse' \
         $'phpcs-new\tcommit\tdiff\t{{guard}}/guard-added-lines.sh --checkstyle {{tree}}/phpcs.xml\t-\t{{tree}}/phpcs.xml\tdown\t0\trefuse' \
+        $'format-staged\tcommit\tdiff\ttrue\texitcode\t{{tree}}/pint.xml\tdown\t0\trefuse' \
         "$SUPPRESS_ROW" "$GROWTH_ROW" "$PROTECT_ROW"
     printf 'guard_protected_paths: quality\n' > VAULT.md
     commit_all init
@@ -122,6 +123,24 @@ XML
     run report --rows phpcs-new
     [ "$output" = 'phpcs-new app/Legacy.php:3 Squiz.PHP.CommentedOutCode.Found This comment is 60% valid code → quality/RULES.md "### commented-out-code"' ]
     [ "$(wc -l <<<"$output")" -eq "$(bash /code/bin/guard-added-lines.sh --checkstyle "$TREE/phpcs.xml")" ]
+}
+
+@test "checkstyle: a line-less Pint error names each changed file, never an unchanged one" {
+    sed -i '3i //' app/Legacy.php
+    git add app/Legacy.php
+    cat > "$TREE/pint.xml" <<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="PHP CS Fixer 3.95.1">
+  <file name="app/Legacy.php">
+    <error severity="warning" source="PHP-CS-Fixer.no_extra_blank_lines" message="Found violation(s) of type: no_extra_blank_lines"/>
+  </file>
+  <file name="app/Untouched.php">
+    <error severity="warning" source="PHP-CS-Fixer.braces_position" message="Found violation(s) of type: braces_position"/>
+  </file>
+</checkstyle>
+XML
+    run report --rows format-staged
+    [ "$output" = 'format-staged app/Legacy.php PHP-CS-Fixer.no_extra_blank_lines Found violation(s) of type: no_extra_blank_lines' ]
 }
 
 @test "the three gate rows print their fixed actions" {
