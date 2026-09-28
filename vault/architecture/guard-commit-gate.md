@@ -21,8 +21,9 @@ parents, and writes its pass record when it passes.
 
 **Configuration comes from `HEAD`.** Both subcommands read `quality/checks.tsv`, `quality/rules.tsv`,
 `quality/baseline.tsv` and the `VAULT.md` keys with `git show HEAD:<path>`, never from the working
-tree, so an edit cannot loosen the gate that judges it. A `HEAD` without `quality/checks.tsv` or
-`quality/rules.tsv` is exit 2 naming the file. A first commit, with no `HEAD`, reads them from the
+tree, so an edit cannot loosen the gate that judges it. A `HEAD` without `quality/rules.tsv` is a
+branch that predates the gate: the commit is not gated, exits 0 and says so on stderr. A `HEAD` that
+has `quality/rules.tsv` but no `quality/checks.tsv` is exit 2 naming the file. A first commit, with no `HEAD`, reads them from the
 index. A commit that changes the gate configuration is measured by the old configuration.
 
 **Bases.** The parents of the commit being made: `HEAD`, every `MERGE_HEAD` line, and every

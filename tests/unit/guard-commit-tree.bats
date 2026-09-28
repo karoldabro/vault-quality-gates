@@ -223,14 +223,14 @@ line ${step}"
     [[ "$output" == *'quality/checks.tsv'* ]]
 }
 
-@test "HEAD without quality/rules.tsv exits 2 naming it, even when the working tree has one" {
+@test "HEAD without quality/rules.tsv predates the gate: not gated, even when the working tree has one" {
     new_repo "$WORK/repo"
     write_checks "$BAD_ROW"
     commit_all init
     write_rules
     run bash /code/bin/guard.sh commit
-    [ "$status" -eq 2 ]
-    [[ "$output" == *'quality/rules.tsv'* ]]
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'predates the commit gate; not gated'* ]]
 }
 
 @test "the printer never turns a failing row into exit 0" {
