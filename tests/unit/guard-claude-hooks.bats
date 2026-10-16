@@ -481,3 +481,16 @@ no_bad() {
     rm -rf "$HOME/.claude/plugins/cache/demo"
     no_bad
 }
+
+@test "upstream retargeting and husky hook files are denied; a plain branch delete and push -u pass" {
+    bash_case deny  'git branch -u main'
+    bash_case deny  'git branch --set-upstream-to=origin/x'
+    bash_case deny  'git config branch.feat.remote .'
+    bash_case deny  'rm .husky/pre-commit'
+    bash_case deny  'echo "export HUSKY=0" > ~/.config/husky/init.sh'
+    bash_case allow 'git branch -d old'
+    bash_case allow 'git push -u origin feat/x'
+    edit_case deny  "$PWD/.husky/pre-commit" Write
+    edit_case deny  "$HOME/.config/husky/init.sh" Write
+    no_bad
+}

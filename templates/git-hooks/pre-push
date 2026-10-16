@@ -6,8 +6,9 @@
 #      commit runs no pre-commit hook and has none. One unrecorded commit refuses the whole
 #      push, unless a human at a terminal overrides with QG_SKIP_REASON. Overrides logged
 #      since the last push are printed.
-#   2. A push whose remote ref matches guard_release_pattern is refused when its measured
-#      quality is worse than quality/baseline.tsv, also after an override of check 1.
+#   2. Each pushed ref that matches guard_release_pattern is measured with `guard.sh release`;
+#      the push is refused when any is worse than quality/baseline.tsv, or loosens that file
+#      against the remote ref's old tip, also after an override of check 1.
 #
 # It reads EVERY stdin line before any exit. A hook that exits early leaves git
 # writing into a closed pipe: the writer dies with 141 while the hook reports 0,
@@ -82,23 +83,44 @@ is_release_ref() {
     return 1
 }
 
-gated_ref=''
-gated_sha=''
+# baseline_base <local sha> <remote sha> -> the commit whose quality/baseline.tsv this push may
+# not loosen: the remote ref's old tip when git has it, else the parent of the oldest pushed
+# commit on no remote (the fork point of a new branch), else the pushed commit itself.
+baseline_base() {
+    local oldest
+    if [ -n "${2:-}" ] && [ "$2" != "$ZERO" ] && git cat-file -e "${2}^{commit}" 2>/dev/null; then
+        printf '%s' "$2"; return
+    fi
+    oldest="$(git rev-list --topo-order --reverse "$1" --not --remotes 2>/dev/null | head -1)"
+    if [ -n "$oldest" ] && git rev-parse -q --verify "${oldest}^" >/dev/null 2>&1; then
+        git rev-parse "${oldest}^"
+    else
+        printf '%s' "$1"
+    fi
+}
+
+# Every pushed ref that matches the pattern is measured, each on its own commit; one refusal
+# refuses the whole push.
+gated=()
 for line in "${pushed[@]}"; do
-    read -r _ local_sha remote_ref _ <<<"$line"
+    read -r _ local_sha remote_ref remote_sha <<<"$line"
     [ "$local_sha" = "$ZERO" ] && continue        # a branch deletion measures nothing
     release_globs_of "$local_sha"
-    if is_release_ref "$remote_ref"; then
-        gated_ref="$remote_ref"; gated_sha="$local_sha"
-    fi
+    is_release_ref "$remote_ref" && gated+=("${remote_ref} ${local_sha} ${remote_sha:-}")
 done
 
-[ -n "$gated_ref" ] || exit 0
+[ "${#gated[@]}" -gt 0 ] || exit 0
 
 [ -x "$GUARD" ] || {
     printf 'vault-guard: %s is not executable — push refused rather than passed unmeasured\n' "$GUARD" >&2
     exit 1
 }
 
-GUARD_SHA="$gated_sha" "$GUARD" release "$gated_ref"
+status=0
+for line in "${gated[@]}"; do
+    read -r gated_ref gated_sha remote_sha <<<"$line"
+    printf 'vault-guard: measuring %s (%s); this can take several minutes\n' "$gated_ref" "${gated_sha:0:12}" >&2
+    GUARD_SHA="$gated_sha" GUARD_BASE="$(baseline_base "$gated_sha" "$remote_sha")" "$GUARD" release "$gated_ref" || status=1
+done
+exit "$status"
 # vault-guard-end

@@ -373,7 +373,40 @@ stage_change() { printf 'staged\n' >> file.txt; git add file.txt; }
     jq -e '.hooks.PreToolUse[] | select(.matcher == "Read")' "$f" >/dev/null
     [ "$(jq -r '.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[0].command' "$f")" = /code/templates/claude-hooks/guard-bash.sh ]
     [ "$(jq -r '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|MultiEdit|NotebookEdit") | .hooks[0].command' "$f")" = /code/templates/claude-hooks/guard-edit.sh ]
+    [ "$(jq '.hooks.Stop | length' "$f")" -eq 1 ]
+    [ "$(jq -r '.hooks.Stop[0].hooks[0].command' "$f")" = /code/templates/claude-hooks/guard-stop.sh ]
     run guard_hooks_status
     [[ "$output" == *'guard-bash'*'installed'* ]]
     [[ "$output" == *'guard-edit'*'installed'* ]]
+    [[ "$output" == *'guard-stop'*'installed'* ]]
+}
+
+@test "pre-commit runs hooks/pre-commit.user first, and its failure refuses the commit" {
+    printf '#!/usr/bin/env bash\necho USER >> %s\nexit 1\n' "$RAN" > .git/hooks/pre-commit.user
+    chmod +x .git/hooks/pre-commit.user
+    printf 'more\n' >> file.txt; git add file.txt
+    run "$WORK/hooks/pre-commit"
+    [ "$status" -eq 1 ]
+    grep -q USER "$RAN"
+    run grep -q 'STUB commit' "$RAN"
+    [ "$status" -ne 0 ]
+}
+
+# --- pre-push: every gated ref is measured -----------------------------------
+
+@test "a two-ref push measures both refs and refuses when the first is worse" {
+    BAD="$(new_commit bad)"
+    git switch -q -c other "$SHA"
+    GOOD="$(new_commit good)"
+    record "$BAD"; record "$GOOD"
+    {
+        printf '#!/usr/bin/env bash\n'
+        printf 'printf "STUB %%s GUARD_SHA=%%s GUARD_BASE=%%s\\n" "$*" "${GUARD_SHA:-unset}" "${GUARD_BASE:-unset}" >> %s\n' "$RAN"
+        printf '[ "$GUARD_SHA" = %s ] && exit 1\nexit 0\n' "$BAD"
+    } > "$PLUGIN/bin/guard.sh"
+    chmod +x "$PLUGIN/bin/guard.sh"
+    run bash -c "printf '%s\n' 'refs/heads/a ${BAD} refs/heads/release/a 0000000000000000000000000000000000000000' 'refs/heads/b ${GOOD} refs/heads/release/b 0000000000000000000000000000000000000000' | '${HOOK}' origin"
+    [ "$status" -eq 1 ]
+    [ "$(grep -c '^STUB release' "$RAN")" -eq 2 ]
+    grep -q "GUARD_SHA=${BAD} GUARD_BASE=" "$RAN"
 }

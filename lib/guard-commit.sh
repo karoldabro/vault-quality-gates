@@ -63,6 +63,11 @@ guard_gate() {
     local target="$1" bases="$2" cfg first rc worst=0 row id scope kind command artifact
     first="${bases%% *}"
     cfg="$(mktemp -d)"
+    # The configuration that judges this commit: the pinned revision, else the judged
+    # commit's first parent. `commit` judges the index, whose first parent is HEAD.
+    if [ -n "${GUARD_CONFIG_PIN:-}" ]; then GUARD_CONFIG_AT="$GUARD_CONFIG_PIN"
+    elif [ "$target" != ':index' ] && [ "$first" != "$(guard_empty_tree)" ]; then GUARD_CONFIG_AT="$first"
+    else GUARD_CONFIG_AT=''; fi
     # A commit whose parent predates the gate has no rules map to be judged by, so it is not gated. The
     # decision reads the judged commit's first parent, never HEAD, so `verify` run from an old checkout
     # cannot pass a commit whose parent carries the gate. A first commit (no parent) is always gated.
@@ -96,6 +101,9 @@ guard_gate() {
         guard_run_row "$row" "$cfg/baseline.tsv" "$first" "$cfg/files" || rc=$?
         [ "$rc" -gt "$worst" ] && worst="$rc"
     done
+    rc=0
+    guard_gate_locked "$first" "$target" "$cfg" || rc=$?
+    [ "$rc" -gt "$worst" ] && worst="$rc"
 
     guard_render_report
     # The warnings and the refusal read the reports inside the tree; the lock stays held until
@@ -105,6 +113,38 @@ guard_gate() {
     exec 9>&-
     rm -rf "$cfg"
     return "$worst"
+}
+
+# guard_show <treeish> <path> -> the file at that tree; `:index` reads the staged copy.
+guard_show() {
+    if [ "$1" = ':index' ]; then git show ":$2" 2>/dev/null; else git show "$1:$2" 2>/dev/null; fi
+}
+
+# guard_gate_locked <base> <target> <config dir> -> 0, or 1 with a `worse` result. Built in,
+# so no checks.tsv row can drop it: the target may not delete quality/checks.tsv or
+# quality/rules.tsv, and may not loosen quality/baseline.tsv against the base
+# (guard_baseline_diff). A first commit has nothing to loosen.
+guard_gate_locked() {
+    local base="$1" target="$2" cfg="$3" f gone='' lines rc=0
+    [ "$base" != "$(guard_empty_tree)" ] || return 0
+    for f in quality/checks.tsv quality/rules.tsv; do
+        if git cat-file -e "${base}:${f}" 2>/dev/null && ! guard_show "$target" "$f" >/dev/null; then gone+="${f} "; fi
+    done
+    if [ -n "$gone" ]; then
+        GUARD_RESULTS+=("gate-config-deleted|1|0|worse|deletes ${gone% }"); rc=1
+    fi
+    if git cat-file -e "${base}:quality/baseline.tsv" 2>/dev/null; then
+        git show "${base}:quality/baseline.tsv" > "$cfg/baseline.old"
+        guard_show "$target" quality/baseline.tsv > "$cfg/baseline.new" || rm -f "$cfg/baseline.new"
+        if [ ! -e "$cfg/baseline.new" ]; then
+            GUARD_RESULTS+=("baseline-loosened|1|0|worse|deletes quality/baseline.tsv"); rc=1
+        elif lines="$(guard_baseline_diff "$cfg/baseline.old" "$cfg/baseline.new" "$cfg/checks.tsv")"; then :
+        else
+            GUARD_RESULTS+=("baseline-loosened|$(wc -l <<<"$lines")|0|worse|$(awk -F'\t' '{ printf "%s%s %s -> %s (%s)", (NR > 1 ? "; " : ""), $1, $2, $3, $4 }' <<<"$lines")")
+            rc=1
+        fi
+    fi
+    return "$rc"
 }
 
 # guard_commit_warnings <worst> <config dir> -> prints the hits of every `warn` row above 0.
@@ -136,8 +176,12 @@ guard_commit_refusal() {  # guard_commit_refusal <target> <config dir>
             unmeasurable) printf '  %-20s could not measure: %s\n' "$id" "$detail" >&2; ids+="$id " ;;
         esac
     done
+    case " $ids " in *' baseline-loosened '*|*' gate-config-deleted '*)
+        printf '  Restore them: git checkout HEAD -- quality/baseline.tsv quality/checks.tsv quality/rules.tsv. A tighter baseline value is allowed; a looser one never.\n' >&2 ;;
+    esac
+    ids="$(printf '%s' "$ids" | tr ' ' '\n' | grep -vxE 'baseline-loosened|gate-config-deleted|' | tr '\n' ' ')"
     printf '\n' >&2
-    "${GUARD_BIN_DIR}/guard-report-errors.sh" --rows "${ids% }" --tree "${GUARD_TREE_DIR:--}" \
+    [ -z "${ids// /}" ] || "${GUARD_BIN_DIR}/guard-report-errors.sh" --rows "${ids% }" --tree "${GUARD_TREE_DIR:--}" \
         --map "$cfg/rules.tsv" --checks "$cfg/checks.tsv" --bases "$GUARD_BASES" --target "$GUARD_TARGET" >&2 || prc=$?
     [ "$prc" -eq 0 ] || printf 'vault-guard: quality/rules.tsv is unreadable; the lines above carry no catalog pointer\n' >&2
     printf '\nFix the code. Never bypass the hook; only a human at a terminal may override once, with QG_SKIP_REASON.\n\n' >&2

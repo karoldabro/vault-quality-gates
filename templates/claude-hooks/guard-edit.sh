@@ -30,6 +30,8 @@ def reason(path, cwd):
             return 'it is a Claude Code settings file that installs the guard hooks'
         if parts[-1] == '.gitconfig' or p.endswith('/.config/git/config'):
             return 'it is a git config file'
+        if '.husky' in parts or parts[-1] == '.huskyrc' or '/.config/husky/' in p + '/':
+            return 'it is a husky hook file, which git runs as a commit hook'
         if p == PLUGIN or p.startswith(PLUGIN + '/'):
             return 'it is inside the vault-quality-gates plugin checkout'
         if p.startswith(INSTALLED + '/'):

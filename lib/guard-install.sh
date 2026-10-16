@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # guard_hooks install [--claude]|remove|status — writes the templates into .git/hooks and,
-# with --claude, the two PreToolUse entries into <repo>/.claude/settings.json.
+# with --claude, the two PreToolUse entries and the Stop entry into <repo>/.claude/settings.json.
+# A repo's own pre-commit step (lint-staged, say) goes in .git/hooks/pre-commit.user, which the
+# pre-commit template runs first and this never touches.
 #
 # Every body written carries the marker lines below. Anything else in a hook file
 # was written by someone else, and this refuses to overwrite it.
@@ -70,15 +72,19 @@ guard_hooks_install_claude() {
     [ -s "$file" ] || printf '{}\n' > "$file"
     tmp="$(mktemp)"
     jq --arg bash "${plugin}/templates/claude-hooks/guard-bash.sh" \
-       --arg edit "${plugin}/templates/claude-hooks/guard-edit.sh" '
+       --arg edit "${plugin}/templates/claude-hooks/guard-edit.sh" \
+       --arg stop "${plugin}/templates/claude-hooks/guard-stop.sh" '
         def add($matcher; $cmd):
             if any(.hooks.PreToolUse[]?; any(.hooks[]?; .command == $cmd)) then .
             else .hooks.PreToolUse += [{matcher: $matcher, hooks: [{type: "command", command: $cmd}]}] end;
-        .hooks //= {} | .hooks.PreToolUse //= []
-        | add("Bash"; $bash) | add("Edit|Write|MultiEdit|NotebookEdit"; $edit)' "$file" > "$tmp" \
+        def addstop($cmd):
+            if any(.hooks.Stop[]?; any(.hooks[]?; .command == $cmd)) then .
+            else .hooks.Stop += [{hooks: [{type: "command", command: $cmd, timeout: 30}]}] end;
+        .hooks //= {} | .hooks.PreToolUse //= [] | .hooks.Stop //= []
+        | add("Bash"; $bash) | add("Edit|Write|MultiEdit|NotebookEdit"; $edit) | addstop($stop)' "$file" > "$tmp" \
         || { rm -f "$tmp"; guard_err "guard: ${file} is not valid JSON — leaving it alone"; return 2; }
     mv "$tmp" "$file"
-    printf 'installed PreToolUse guard-bash.sh and guard-edit.sh into %s\n' "$file"
+    printf 'installed PreToolUse guard-bash.sh and guard-edit.sh, and Stop guard-stop.sh, into %s\n' "$file"
 }
 
 guard_hooks_remove() {
@@ -99,9 +105,9 @@ guard_hooks_status() {
     done
     printf '%-16s %s\n' 'hooksPath' "$(git config core.hooksPath || printf '(default)')"
     file="$(guard_claude_settings)"
-    for name in guard-bash guard-edit; do
+    for name in guard-bash guard-edit guard-stop; do
         cmd="$(guard_plugin_dir)/templates/claude-hooks/${name}.sh"
-        if jq -e --arg c "$cmd" 'any(.hooks.PreToolUse[]?; any(.hooks[]?; .command == $c))' "$file" >/dev/null 2>&1; then
+        if jq -e --arg c "$cmd" 'any((.hooks.PreToolUse[]?, .hooks.Stop[]?); any(.hooks[]?; .command == $c))' "$file" >/dev/null 2>&1; then
             printf '%-16s installed  %s\n' "$name" "$file"
         else
             printf '%-16s absent     %s\n' "$name" "$file"

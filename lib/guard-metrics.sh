@@ -95,46 +95,47 @@ guard_accept_count() {
     awk -F'\t' 'NR > 1 && $0 !~ /^#/ && NF >= 4 && $4 != "-" && $4 != "" { n++ } END { print n + 0 }' "$1"
 }
 
-# guard_baseline_diff <baseline path> <remote ref> <remote sha> <checks path>
+# guard_baseline_diff <old baseline> <new baseline> <checks>
 #
-# Refuses a row the pushed tree moved in the worse direction while its reason is
-# still '-'. Without it a branch passes the gate its own file defines.
+# Compares two copies of quality/baseline.tsv, each a file path; a missing old file means
+# there is nothing to loosen. Prints one `id<TAB>old<TAB>new<TAB>why` line per row the new
+# copy loosens and returns 1 when it printed any, 0 otherwise. A row is loosened when:
+#   - its value moved in the worse direction (`direction` column of checks.tsv; down by
+#     default), whatever its reason column says;
+#   - its reason column changed to anything but `-` (an accepted regression is a loosening);
+#   - it disappeared, or its value is not a number, while checks.tsv gives it kind repo.
+# A tighter value, a cleared reason and a new row pass. The gate refuses a loosening for an
+# agent; only a human override (QG_SKIP_REASON at a terminal) commits or pushes one.
 guard_baseline_diff() {
-    local path="$1" remote_ref="$2" remote_sha="$3" checks="$4" remote_copy rc=0
-
-    case "$remote_sha" in
-        *[!0]*) ;;
-        *)  printf 'baseline check skipped: %s does not exist on the remote\n' "$remote_ref"
-            return 0 ;;
-    esac
-
-    remote_copy="$(git show "${remote_sha}:${path}" 2>/dev/null)" || {
-        printf 'baseline check skipped: %s carries no %s\n' "$remote_ref" "$path"
-        return 0
-    }
-
-    local id local_v remote_v direction
-    while IFS=$'\t' read -r id remote_v _ _; do
-        [ -n "$id" ] && [ "${id:0:1}" != '#' ] && [ "$id" != 'id' ] || continue
-        guard_is_number "$remote_v" || continue
-
-        local_v="$(guard_baseline_value "$path" "$id")" || continue
-        direction="$(awk -F'\t' -v id="$id" 'NR > 1 && $1 == id { print $7; exit }' "$checks")"
-
-        local worse=1
-        if [ "$direction" = 'up' ]; then
-            guard_gt "$remote_v" "$local_v" && worse=0
-        else
-            guard_gt "$local_v" "$remote_v" && worse=0
-        fi
-
-        if [ "$worse" -eq 0 ] && [ "$(guard_baseline_reason "$path" "$id")" = '-' ]; then
-            guard_err "guard: ${path} lowers '${id}' from ${remote_v} to ${local_v} with no reason"
-            rc=1
-        fi
-    done <<<"$remote_copy"
-
-    return "$rc"
+    local old="$1" new="$2" checks="$3"
+    [ -r "$old" ] || return 0
+    [ -r "$new" ] || new=/dev/null
+    awk -F'\t' -v OFS='\t' '
+        FILENAME == ARGV[1] { if (FNR > 1 && $1 !~ /^#/) { kind[$1] = $3; dir[$1] = $7 } next }
+        FILENAME == ARGV[2] { if (FNR > 1 && $1 !~ /^#/ && $1 != "") { ov[$1] = $2; orsn[$1] = ($4 == "" ? "-" : $4); order[++n] = $1 } next }
+        { if (FNR > 1 && $1 !~ /^#/ && $1 != "") { nv[$1] = $2; nrsn[$1] = ($4 == "" ? "-" : $4); seen[$1] = 1 } }
+        function num(v) { return v ~ /^-?[0-9]+(\.[0-9]+)?$/ }
+        END {
+            bad = 0
+            for (i = 1; i <= n; i++) {
+                id = order[i]
+                if (!(id in seen)) {
+                    if (kind[id] == "repo") { print id, ov[id], "-", "row removed"; bad = 1 }
+                    continue
+                }
+                if (!num(nv[id])) {
+                    if (kind[id] == "repo" || num(ov[id])) { print id, ov[id], nv[id], "value is not a number"; bad = 1 }
+                    continue
+                }
+                if (num(ov[id])) {
+                    if (dir[id] == "up" ? nv[id] + 0 < ov[id] + 0 : nv[id] + 0 > ov[id] + 0) {
+                        print id, ov[id], nv[id], (dir[id] == "up" ? "lower is worse" : "higher is worse"); bad = 1; continue
+                    }
+                }
+                if (nrsn[id] != orsn[id] && nrsn[id] != "-") { print id, ov[id], nv[id], "reason column set to \"" nrsn[id] "\""; bad = 1 }
+            }
+            exit bad
+        }' "$checks" "$old" "$new"
 }
 
 # --- running one row ---------------------------------------------------------

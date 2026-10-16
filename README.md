@@ -39,13 +39,28 @@ a release date or it is not made.
   writes a pass record. A `warn` row's new findings print in the same form under
   `vault-guard: warnings` and never refuse the commit.
 - A `pre-push` hook refuses any pushed commit that never passed the commit gate, such as a
-  cherry-pick or a revert; `guard.sh verify <range>` measures and records those. On a release branch
-  it also measures the branch against its merge-base and **refuses** the push when a gated metric got
-  worse, naming the metric, both values, the tolerance, and the command that accepts the change.
+  cherry-pick or a revert; `guard.sh verify <range>` measures and records those. For every pushed
+  ref that matches `guard_release_pattern` it runs `guard.sh release` on that ref's commit and
+  **refuses** the push when a gated metric got worse, naming the metric and both values. Set
+  `guard_release_pattern: refs/*` to gate every push.
+- **A baseline only gets tighter.** Built into the commit gate and the release gate, so no
+  `checks.tsv` row can drop it: a `quality/baseline.tsv` row with a worse value, a changed reason
+  column, or a removed `kind: repo` row is refused, and so is deleting `quality/checks.tsv` or
+  `quality/rules.tsv`. The commit gate compares against the parent, the release gate against
+  `GUARD_BASE` (the remote ref's old tip, or the fork point of a new branch). `guard.sh accept`
+  refuses an agent.
+- The configuration that judges a commit is its parent's; `GUARD_CONFIG_REV=<sha>` pins it for
+  every subcommand, which the agent factory uses so a build cannot loosen its own gate.
 - Only a human at a terminal can override a refusal, once, with `QG_SKIP_REASON="<why>"`. Every
   override is logged to `<git-common-dir>/guard-bypass.log` and printed at the next push.
 - `hooks install --claude` adds two Claude Code `PreToolUse` hooks that deny an agent the commands
-  and edits that would skip or disable the git hooks. Both need `python3` on `PATH`: the Bash guard
+  and edits that would skip or disable the git hooks, and a `Stop` hook (`guard-stop.sh`) that
+  blocks the end of a turn once while HEAD carries commits on no remote, telling the agent to push
+  so the full gate runs while it can still fix the result. On the default branch, `development`,
+  `develop` or a detached HEAD it asks for a new branch instead. It gives up after 5 blocks on the
+  same commit and logs that to `guard-bypass.log`.
+- A repo's own pre-commit step, such as `lint-staged`, goes in `.git/hooks/pre-commit.user`; the
+  installed `pre-commit` runs it first and a reinstall never touches it. Both need `python3` on `PATH`: the Bash guard
   tokenises the command with real shell quoting (`$'..'`, heredocs, `$(...)`), which a shell
   pattern match cannot do. Without `python3` each hook denies every call.
 - Metrics are per repo: coverage, mutation score, duplication, comment density, lint, static
@@ -71,7 +86,7 @@ gets bypassed. Slow measurements carry `scope: baseline` and run out of band.
 | `lib/guard-install.sh` | `hooks install [--claude] remove status`, marker-guarded |
 | `lib/guard-parsers/*.sh` | clover, junit, infection, jscpd, insights, phpstan, phpstan-all, phpmd, cda, cloc, diffcover, exitcode |
 | `templates/git-hooks/*` | `pre-commit`, `pre-merge-commit`, `pre-applypatch`, `pre-push`, `post-rewrite` |
-| `templates/claude-hooks/*` | the `PreToolUse` guards `guard-bash.sh` and `guard-edit.sh` |
+| `templates/claude-hooks/*` | the `PreToolUse` guards `guard-bash.sh` and `guard-edit.sh`, the `Stop` hook `guard-stop.sh` |
 | `extend/` | the framework extension points — `init` scaffolds a repo, `dod-keys` declares its `VAULT.md` keys |
 
 **The git hooks are written into `.git/hooks/`.** An agent sees a refusal because it ran
@@ -97,13 +112,15 @@ writes that repo's own brief.
   `bin/guard.sh verify <range>` measures and records it. An amend is measured again by `post-rewrite`,
   which runs `guard.sh verify` on the new commit, so every amend costs a second gate run.
 - **The gate is client-side.** An agent that runs a script file which commits with hooks disabled and
-  pushes without hooks passes it. The Claude Code hooks deny the forms typed directly; only a
-  server-side required check closes the rest.
+  pushes without hooks passes it, including through `make`, `pnpm run` or an interpreter script.
+  The Claude Code hooks deny the forms typed directly, and only in a session whose project is the
+  gated repo; only a server-side required check closes the rest.
 
 - **A repo whose toolchain is bound to its checkout path cannot be measured from a detached
   worktree.** `GUARD_SHA` checks the pushed commit out under `/tmp`, which has no `vendor/`, no
   `node_modules` and no container bind-mount. Set `guard_measure_worktree: false` in that repo's
-  `VAULT.md` to measure the working tree instead, and accept that uncommitted edits then count.
+  `VAULT.md` to measure the working tree instead. A push is then refused while tracked files are
+  dirty or HEAD is not the pushed commit, so the tree measured is the tree pushed.
 - `/v-guard`, the onboarding command that would fill `checks.tsv` interactively, does not exist.
   Filling it is a session's job, following the four steps above.
 

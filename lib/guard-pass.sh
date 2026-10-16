@@ -66,10 +66,15 @@ guard_pass_write() {  # guard_pass_write <key> <content: ok | override <reason>>
 
 guard_pass_read() { cat "$(guard_pass_file "$1")" 2>/dev/null; }
 
-# guard_config_show <path> -> the file as committed at HEAD; from the index on a first
-# commit, when no HEAD exists. The gate never reads its configuration from the working tree.
+# guard_config_show <path> -> the file as committed at GUARD_CONFIG_AT, else at HEAD; from
+# the index on a first commit, when no HEAD exists. The gate never reads its configuration
+# from the working tree. guard_gate sets GUARD_CONFIG_AT to GUARD_CONFIG_PIN (the caller's GUARD_CONFIG_REV) when it
+# pins it (the agent factory pins its build's base commit), else to the judged commit's
+# first parent, so a commit cannot loosen the configuration that judges it.
 guard_config_show() {
-    if git rev-parse -q --verify HEAD >/dev/null 2>&1; then
+    if [ -n "${GUARD_CONFIG_AT:-}" ]; then
+        git show "${GUARD_CONFIG_AT}:$1" 2>/dev/null
+    elif git rev-parse -q --verify HEAD >/dev/null 2>&1; then
         git show "HEAD:$1" 2>/dev/null
     else
         git show ":$1" 2>/dev/null

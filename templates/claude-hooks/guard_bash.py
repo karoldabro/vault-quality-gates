@@ -14,7 +14,7 @@ GUARD_SH = os.path.join(PLUGIN, 'bin', 'guard.sh')
 NEEDLES = ('.git/hooks', '.git/config', 'guard-pass', 'guard_pass', 'guard-bypass', 'guard_bypass', 'guard-tree', 'guard_tree',
            'guard-cache', 'guard_cache', 'hookspath', 'send-pack', 'http-push', 'receive-pack', 'receivepack', 'fast-import',
            'fsmonitor', 'sshcommand', 'git_exec_path', 'git_config', 'qg_skip_reason', 'claudecode', 'ai_agent', '--no-veri',
-           '.claude/settings', '.gitconfig', '.config/git/config', 'includeif', 'include.path')
+           '.claude/settings', '.gitconfig', '.husky', '.huskyrc', 'config/husky', 'guard-stop', '.config/git/config', 'includeif', 'include.path')
 PLUGIN_RE = re.compile('(%s)(/|\\Z)' % '|'.join(re.escape(p.lower()) for p in {PLUGIN, RAW_PLUGIN}))
 ENV_REDIRECT = {'HOME', 'XDG_CONFIG_HOME', 'PATH'}
 WRITERS = {'rm', 'mv', 'cp', 'ln', 'chmod', 'chown', 'chgrp', 'touch', 'tee', 'truncate', 'unlink', 'rmdir', 'install', 'rsync', 'shred', 'dd', 'mkdir', 'mkfifo', 'setfacl', 'chattr'}
@@ -143,6 +143,8 @@ def check_git(a, ctx, cwd):
         raise Deny(f'git {sub} writes objects or refs, or runs hooks, outside the commit path the gate checks')
     if sub == 'config':
         check_git_config(rest)
+    if sub == 'branch' and any(t in ('-u', '--set-upstream-to') or str(t).startswith('--set-upstream-to=') or str(t).startswith('-u') and len(str(t)) > 2 and not str(t).startswith('--') for t in rest):
+        raise Deny('git branch -u retargets the upstream the stop hook reads; push with git push -u instead')
     if sub in VERIFY_SUBS:
         check_no_verify(sub, rest)
     check_ref_writers(sub, rest, ctx, cwd)
@@ -208,6 +210,8 @@ def check_git_key(key):
     k = key.lower()
     if k in ('core.hookspath', 'include.path', 'core.fsmonitor', 'core.sshcommand') or k.startswith(('alias.', 'includeif.')) or k.endswith('receivepack'):
         raise Deny(f'git config key {key} can disable or reroute the hooks')
+    if k.startswith('branch.') and k.endswith(('.remote', '.merge', '.pushremote')):
+        raise Deny(f'git config key {key} retargets a branch upstream, which the stop hook reads; push with git push -u instead')
 
 
 def git_config_is_read(rest):

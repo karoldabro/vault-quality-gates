@@ -146,40 +146,83 @@ init_repo() {  # init_repo <dir>
     [[ "${GUARD_RESULTS[0]}" == *'|absent|'* ]]
 }
 
-# --- SC-4: a lowered baseline is a refusal, not a pass -----------------------
+# --- SC-4: a loosened baseline is a refusal, whatever its reason column says --
 
-@test "lowered baseline without reason exits 1" {
-    init_repo "$WORK/repo"
-    printf '%s\n' "$GUARD_CHECKS_HEADER" > quality/checks.tsv
-    printf 'coverage\trelease\trepo\ttrue\tclover\ta\tup\t0\trefuse\n' >> quality/checks.tsv
-    write_baseline quality/baseline.tsv coverage 80 -
-    git add -A && git commit -qm base
-    sha="$(git rev-parse HEAD)"
-    write_baseline quality/baseline.tsv coverage 70 -
-    run guard_baseline_diff quality/baseline.tsv refs/heads/release/1.0 "$sha" quality/checks.tsv
+baseline_checks() {  # baseline_checks <dir>: coverage up/repo, phpstan down/repo, format down/diff
+    printf '%s\n' "$GUARD_CHECKS_HEADER" > "$1/checks.tsv"
+    printf 'coverage\trelease\trepo\ttrue\tclover\ta\tup\t0.5\trefuse\n' >> "$1/checks.tsv"
+    printf 'phpstan\trelease\trepo\ttrue\t-\t-\tdown\t0\trefuse\n' >> "$1/checks.tsv"
+    printf 'format\trelease\tdiff\ttrue\t-\t-\tdown\t0\trefuse\n' >> "$1/checks.tsv"
+}
+
+baseline_rows() {  # baseline_rows <path> <coverage> <phpstan> [<coverage reason>]
+    printf 'id\tvalue\tcommit\treason\ncoverage\t%s\tabc\t%s\nphpstan\t%s\tabc\t-\nformat\t1\tabc\t-\n' \
+        "$2" "${4:--}" "$3" > "$1"
+}
+
+@test "lowered up-metric is loosened, whatever the reason column says" {
+    baseline_checks "$WORK"
+    baseline_rows "$WORK/old" 80 10
+    baseline_rows "$WORK/new" 70 10 'agreed: the suite lost a package'
+    run guard_baseline_diff "$WORK/old" "$WORK/new" "$WORK/checks.tsv"
+    [ "$status" -eq 1 ]
+    [[ "$output" == coverage$'\t'80$'\t'70$'\t'* ]]
+}
+
+@test "raised down-metric is loosened; lowered down-metric and raised up-metric pass" {
+    baseline_checks "$WORK"
+    baseline_rows "$WORK/old" 80 10
+    baseline_rows "$WORK/new" 80 11
+    run guard_baseline_diff "$WORK/old" "$WORK/new" "$WORK/checks.tsv"
+    [ "$status" -eq 1 ]
+    [[ "$output" == phpstan* ]]
+    baseline_rows "$WORK/new" 85 7
+    run guard_baseline_diff "$WORK/old" "$WORK/new" "$WORK/checks.tsv"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "a reason set on an unchanged value is loosened; a cleared reason passes" {
+    baseline_checks "$WORK"
+    baseline_rows "$WORK/old" 80 10
+    baseline_rows "$WORK/new" 80 10 'accepted for now'
+    run guard_baseline_diff "$WORK/old" "$WORK/new" "$WORK/checks.tsv"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *'reason column'* ]]
+    run guard_baseline_diff "$WORK/new" "$WORK/old" "$WORK/checks.tsv"
+    [ "$status" -eq 0 ]
+}
+
+@test "a removed kind repo row is loosened; a removed kind diff row passes" {
+    baseline_checks "$WORK"
+    baseline_rows "$WORK/old" 80 10
+    printf 'id\tvalue\tcommit\treason\ncoverage\t80\tabc\t-\nphpstan\t10\tabc\t-\n' > "$WORK/no-format"
+    run guard_baseline_diff "$WORK/old" "$WORK/no-format" "$WORK/checks.tsv"
+    [ "$status" -eq 0 ]
+    printf 'id\tvalue\tcommit\treason\ncoverage\t80\tabc\t-\nformat\t1\tabc\t-\n' > "$WORK/no-phpstan"
+    run guard_baseline_diff "$WORK/old" "$WORK/no-phpstan" "$WORK/checks.tsv"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *'row removed'* ]]
+}
+
+@test "no old baseline has nothing to loosen; a missing new one loosens every repo row" {
+    baseline_checks "$WORK"
+    baseline_rows "$WORK/new" 80 10
+    run guard_baseline_diff "$WORK/absent" "$WORK/new" "$WORK/checks.tsv"
+    [ "$status" -eq 0 ]
+    run guard_baseline_diff "$WORK/new" "$WORK/absent" "$WORK/checks.tsv"
     [ "$status" -eq 1 ]
 }
 
-@test "lowered baseline with reason passes" {
+@test "accept refuses an agent" {
     init_repo "$WORK/repo"
     printf '%s\n' "$GUARD_CHECKS_HEADER" > quality/checks.tsv
-    printf 'coverage\trelease\trepo\ttrue\tclover\ta\tup\t0\trefuse\n' >> quality/checks.tsv
     write_baseline quality/baseline.tsv coverage 80 -
-    git add -A && git commit -qm base
-    sha="$(git rev-parse HEAD)"
-    write_baseline quality/baseline.tsv coverage 70 'agreed: the suite lost a package'
-    run guard_baseline_diff quality/baseline.tsv refs/heads/release/1.0 "$sha" quality/checks.tsv
-    [ "$status" -eq 0 ]
-}
-
-@test "all-zeroes remote sha skips and returns 0" {
-    init_repo "$WORK/repo"
-    write_baseline quality/baseline.tsv coverage 80 -
-    printf '%s\n' "$GUARD_CHECKS_HEADER" > quality/checks.tsv
-    run guard_baseline_diff quality/baseline.tsv refs/heads/release/1.0 \
-        0000000000000000000000000000000000000000 quality/checks.tsv
-    [ "$status" -eq 0 ]
-    [[ "$output" == *'skipped'* ]]
+    before="$(cat quality/baseline.tsv)"
+    CLAUDECODE=1 run bash /code/bin/guard.sh accept coverage --reason 'it is fine'
+    [ "$status" -eq 2 ]
+    [[ "$output" == *'human at a terminal'* ]]
+    [ "$(cat quality/baseline.tsv)" = "$before" ]
 }
 
 @test "accept writes a reason and bare accept refuses without one" {

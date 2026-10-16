@@ -57,6 +57,11 @@ guard_default_branch() {
 
 # GUARD_CONFIG_REV, set by `release`, is the commit whose VAULT.md, checks.tsv and baseline.tsv
 # the release gate reads, so an uncommitted edit cannot loosen the gate that judges a push.
+# GUARD_CONFIG_PIN is the caller's GUARD_CONFIG_REV, read before this file reuses the name: the
+# agent factory pins every run to its build's base commit, so a build cannot loosen the
+# configuration that judges it.
+GUARD_CONFIG_PIN="${GUARD_CONFIG_REV:-}"
+export GUARD_CONFIG_PIN
 GUARD_CONFIG_REV=''
 
 guard_vault_md() {
@@ -161,20 +166,51 @@ guard_refusal() {
         IFS='|' read -r id value base status detail <<<"$line"
         case "$status" in
             worse)
-                printf '  %-18s %s -> %s   %s\n' "$id" "$base" "$value" "$detail" >&2
-                printf '  %-18s baseline: quality/baseline.tsv\n' '' >&2
+                printf '  %-22s %s -> %s   %s\n' "$id" "$base" "$value" "$detail" >&2
                 worse=$((worse + 1)) ;;
             unmeasurable)
-                printf '  %-18s could not measure\n' "$id" >&2
-                printf '  %-18s %s\n' '' "$detail" >&2
+                printf '  %-22s could not measure\n' "$id" >&2
+                printf '  %-22s %s\n' '' "$detail" >&2
                 bad=$((bad + 1)) ;;
         esac
     done
-    printf '\n%d worse, %d unmeasurable. quality/baseline.tsv carries %s accepted rows; the limit is %s.\n' \
-        "$worse" "$bad" "$(guard_accept_count "$BASELINE")" "$(guard_accept_limit)" >&2
-    printf '\nFix it, or accept it:\n' >&2
-    printf '  bin/guard.sh accept <metric> --reason "<why this is acceptable>"\n' >&2
-    printf '  bin/guard.sh report\n\n' >&2
+    printf '\n%d worse, %d unmeasurable.\n\n' "$worse" "$bad" >&2
+    [ "$worse" -eq 0 ] || printf 'Fix each worse metric in the code, commit, and push again.\n' >&2
+    [ "$bad" -eq 0 ] || printf 'For a metric that could not be measured, start the service or tool named above; if you cannot, stop and report it to the operator.\n' >&2
+    printf 'Never edit quality/baseline.tsv, quality/checks.tsv or VAULT.md to pass: the gate refuses a looser baseline.\n' >&2
+    printf 'Measure again without pushing: GUARD_SHA=%s %s release\n\n' "$(git rev-parse --short "${GUARD_SHA:-HEAD}" 2>/dev/null)" "${GUARD_BIN_DIR}/guard.sh" >&2
+}
+
+# guard_release_tree_matches -> 1 with the reason when `guard_measure_worktree: false` would
+# measure something other than the pushed commit: a dirty tracked file, or HEAD elsewhere.
+guard_release_tree_matches() {
+    [ -n "${GUARD_SHA:-}" ] && ! guard_measure_worktree || return 0
+    if [ "$(git -C "$REPO_ROOT" rev-parse HEAD)" != "$(git rev-parse "${GUARD_SHA}^{commit}")" ]; then
+        guard_err "vault-guard: push refused: this repo measures its working tree, and HEAD is not the pushed commit ${GUARD_SHA}."
+        guard_err '  Check out the branch you are pushing, then push again.'
+        return 1
+    fi
+    if [ -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no)" ]; then
+        guard_err 'vault-guard: push refused: this repo measures its working tree, and tracked files have uncommitted changes.'
+        guard_err '  Commit or stash them, then push again.'
+        return 1
+    fi
+}
+
+# guard_release_locked <row base> -> 1 with a `worse` result when the measured baseline.tsv
+# loosens the one at GUARD_BASE (the pre-push hook passes the remote ref's old sha, or the parent of the
+# oldest commit on no remote), else the merge-base the rows use.
+guard_release_locked() {
+    local old new lines
+    old="$(mktemp)" new="$(mktemp)"
+    if git show "${GUARD_BASE:-$1}:quality/baseline.tsv" > "$old" 2>/dev/null; then
+        [ -r "$BASELINE" ] && cp "$BASELINE" "$new" || : > "$new"
+        if ! lines="$(guard_baseline_diff "$old" "$new" "$CHECKS")"; then
+            GUARD_RESULTS+=("baseline-loosened|$(wc -l <<<"$lines")|0|worse|$(awk -F'\t' '{ printf "%s%s %s -> %s (%s)", (NR > 1 ? "; " : ""), $1, $2, $3, $4 }' <<<"$lines")")
+            rm -f "$old" "$new"; return 1
+        fi
+    fi
+    rm -f "$old" "$new"
 }
 
 cmd_measure() {
@@ -183,6 +219,10 @@ cmd_measure() {
     guard_enter_tree
     guard_run "$scope" "$base" || rc=$?
     guard_leave_tree
+    if [ "$scope" = 'release' ]; then
+        local lrc=0; guard_release_locked "$base" || lrc=$?
+        [ "$lrc" -gt "$rc" ] && rc="$lrc"
+    fi
     guard_render_report
 
     if [ "$ref" != '-' ]; then
@@ -237,6 +277,9 @@ cmd_baseline() {
 
 cmd_accept() {
     local id="${1:-}" reason=''
+    if [ -n "${CLAUDECODE+set}" ] || [ -n "${AI_AGENT+set}" ]; then
+        guard_err 'guard: accept is for a human at a terminal. An agent fixes the metric in code.'; exit 2
+    fi
     shift || true
     [ "${1:-}" = '--reason' ] && reason="${2:-}"
     if [ -z "$id" ] || [ -z "$reason" ]; then
@@ -260,7 +303,8 @@ case "${1:-}" in
         base="$(git merge-base "origin/$(guard_default_branch)" "$rev" 2>/dev/null \
                 || git merge-base "$(guard_default_branch)" "$rev" 2>/dev/null \
                 || git rev-parse "$rev")"
-        guard_release_config "${GUARD_SHA:-HEAD}"
+        guard_release_config "${GUARD_CONFIG_PIN:-$rev}"
+        guard_release_tree_matches || exit 2
         cmd_measure 'release' "$base" "${2:--}" ;;
     baseline)
         shift
