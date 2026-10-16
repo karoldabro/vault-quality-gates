@@ -100,3 +100,12 @@ set_cov() { printf 'id\tvalue\tcommit\treason\ncov\t%s\tabc\t%s\n' "$1" "${2:--}
     [ "$status" -eq 2 ]
     [[ "$output" == *'uncommitted changes'* ]]
 }
+
+@test "release: with guard_measure_worktree false a dirty file outside guard_commit_paths does not block" {
+    printf 'guard_commit_paths: app\nguard_protected_paths: quality\nguard_measure_worktree: false\n' > VAULT.md
+    mkdir -p docs; printf 'x\n' > docs/graph.json
+    commit_all measure-worktree
+    printf 'rewritten\n' > docs/graph.json
+    GUARD_SHA="$(git rev-parse HEAD)" run bash /code/bin/guard.sh release refs/heads/feat/x
+    [ "$status" -eq 0 ]
+}

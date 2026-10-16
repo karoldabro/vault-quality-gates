@@ -190,8 +190,18 @@ guard_release_tree_matches() {
         guard_err '  Check out the branch you are pushing, then push again.'
         return 1
     fi
-    if [ -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no)" ]; then
-        guard_err 'vault-guard: push refused: this repo measures its working tree, and tracked files have uncommitted changes.'
+    # Only paths under guard_commit_paths count: a tool that rewrites a tracked file outside them
+    # (graphify-out/, say) cannot move a metric, and must not block every push.
+    local prefixes dirty
+    read -ra prefixes <<<"$(guard_vault_md | sed -n 's/^guard_commit_paths:[[:space:]]*//p' | head -1)"
+    dirty="$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no | cut -c4- | sed 's/.* -> //' \
+        | while IFS= read -r p; do
+            [ "${#prefixes[@]}" -eq 0 ] && { printf '%s\n' "$p"; continue; }
+            for x in "${prefixes[@]}"; do x="${x%/}"; { [ "$p" = "$x" ] || [[ "$p" == "$x"/* ]]; } && { printf '%s\n' "$p"; break; }; done
+        done)"
+    if [ -n "$dirty" ]; then
+        guard_err 'vault-guard: push refused: this repo measures its working tree, and these tracked files have uncommitted changes:'
+        guard_err "$(printf '%s\n' "$dirty" | head -10 | sed 's/^/    /')"
         guard_err '  Commit or stash them, then push again.'
         return 1
     fi
