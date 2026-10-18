@@ -61,7 +61,7 @@ Record class. Its contract document is `2026-10-18-1121-qg-common-interface.md`.
 
 ### Round 2
 
-| persona | id | severity | grounding | issue | disposition |
+| persona | id | severity | grounding | issue | plan change |
 |---------|----|----------|-----------|-------|-------------|
 | harness-engineer | harness-9 | BLOCKER | confirmed | live today: `GUARD_SKIP=. git push` skips every push row; `GUARD_CONFIG_REV=<old>` picks an older config | applied: W-1 ships alone first; W-9, W-17 unset; SC-9 |
 | solution-architect | sa-11 | BLOCKER | confirmed | every-ref release runs the tree check and refuses ungated pushes in 3 repos | applied: W-8 select rows first, exit 0 when none |
@@ -79,6 +79,30 @@ Record class. Its contract document is `2026-10-18-1121-qg-common-interface.md`.
 | consumer | consumer-2 | MINOR | confirmed | rules.tsv has no join to row ids; no environment cue | applied: fallback why only, W-16 first line |
 | harness-engineer | harness-11 | MINOR | advisory | exact realpath match and git-dir scope | applied: W-21 |
 | skeptic | skeptic-18 | MINOR | confirmed | S1 worktree unprotected before cut-over | applied: W-27 diff review |
+
+### Diff review, round 1
+
+| reviewer | id | severity | grounding | issue | code change |
+|----------|----|----------|-----------|-------|-------------|
+| correctness | correctness-1 | BLOCKER | confirmed | empty v2 cell shifts fields; ceiling-0 row passes 99 | applied: loader refuses empty cells and unknown kind/direction/gate; guard_row_field splits on US |
+| correctness | correctness-2 | MAJOR | confirmed | empty why loads | applied: blank why refused |
+| correctness | correctness-3 | MAJOR | confirmed | shell eval not isolated; `cd`/`exit` rows change verdict vs 43d7082 | applied: `( eval … )` |
+| correctness | correctness-4 | MAJOR | confirmed | option without value loops forever | applied: value checks in guard.sh, qg, qg-migrate |
+| correctness | correctness-5..11 | MINOR/NIT | mixed | rounding, UTF-8 cut, migrate absent why, baseline_diff on load failure, verify wording, pin without checks, tail order and stale output | applied |
+| solution-architect | sa-16 | MAJOR | confirmed | blank cell / typo gate turns refuse into warn | applied (same fix as correctness-1) |
+| solution-architect | sa-17 | MINOR | confirmed | report-errors child reads HEAD config | applied: export GUARD_CONFIG_AT |
+| solution-architect | sa-18 | MINOR | confirmed | driver runtime inside guard-metrics.sh (540 lines) | deferred: split into lib/qg-driver.sh in S2 before new drivers land |
+| solution-architect | sa-19 | MINOR | confirmed | explain formats findings separately; push refusal lists no driver findings | deferred: S2, when the first driver push row exists |
+| solution-architect | sa-20 | NIT | confirmed | plan says output_tail, code writes output.txt | applied in plan text |
+| harness-engineer | harness-12 | MAJOR | confirmed | writes into another repo's .git allowed | applied: target_git_dirs, any .git path outside temp |
+| harness-engineer | harness-13 | MINOR | confirmed | `--only` run reports a plain pass | applied: partial flag and message |
+| harness-engineer | harness-14 | MINOR | confirmed | hash-object -w -t commit, mktree allowed | applied |
+| harness-engineer | harness-15 | MINOR | advisory | S6 exemption keyed to cwd too broad | applied: S6 row narrowed |
+| skeptic | skeptic-19 | MAJOR | confirmed | SC-8 compared commit rows only | applied: SC-8 --release pass |
+| skeptic | skeptic-20 | MINOR | confirmed | lint-staged re-stage invalidates token | applied: qg override runs pre-commit.user first |
+| skeptic | skeptic-21 | MINOR | confirmed | v1 rows print the fallback why | rejected: rules.tsv is keyed by rule id, no join to row ids exists; S2–S4 write each why |
+| skeptic | skeptic-22 | MINOR | confirmed | plugin repo's own pre-commit never refuses | applied: already in W-29's repo list |
+| consumer | consumer nits | — | — | runner mount rule; commit from a terminal after override | applied: contract constraint, footer wording |
 
 ## Metrics
 
