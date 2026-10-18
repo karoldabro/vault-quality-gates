@@ -136,15 +136,15 @@ result() { jq -r "$1" "$QG_OUT/result.json"; }
     [ "$(result '.findings[0].file')" = app/One.php ]
 }
 
-@test "pnpm receives dlx jscpd@5.3.2 <tree>/app ... --reporters json --output <empty folder>/out" {
+@test "pnpm receives dlx jscpd@5.3.2 <tree>/app ... --absolute --reporters json --output <empty folder>/out" {
     clone app/One.php 31 35 app/Two.php 1 5 | report
     "$DRIVER" run > /dev/null
     local out; out="$(cut -d'|' -f2 "$FAKE_SEEN")"
-    [ "$(cat "$FAKE_ARGV")" = "dlx jscpd@5.3.2 $WORK/repo/app --reporters json --output $out --silent --no-colors" ]
+    [ "$(cat "$FAKE_ARGV")" = "dlx jscpd@5.3.2 $WORK/repo/app --absolute --reporters json --output $out --silent --no-colors" ]
     rm -f "$FAKE_ARGV" "$FAKE_SEEN"
     QG_ARGS='version=4.0.0 min-lines=10 min-tokens=70 format=php ignore=**/Docs/** -- --exitCode 0' "$DRIVER" run > /dev/null
     out="$(cut -d'|' -f2 "$FAKE_SEEN")"
-    [ "$(cat "$FAKE_ARGV")" = "dlx jscpd@4.0.0 $WORK/repo/app --min-lines 10 --min-tokens 70 --format php --ignore **/Docs/** --reporters json --output $out --silent --no-colors --exitCode 0" ]
+    [ "$(cat "$FAKE_ARGV")" = "dlx jscpd@4.0.0 $WORK/repo/app --min-lines 10 --min-tokens 70 --format php --ignore **/Docs/** --absolute --reporters json --output $out --silent --no-colors --exitCode 0" ]
 }
 
 @test "jscpd runs from an empty folder outside the tree, with the public registry, and the folder is removed" {

@@ -95,10 +95,10 @@ result() { jq -r "$1" "$QG_OUT/result.json"; }
 
 @test "without bin= pnpm receives dlx jscpd@5.3.2 <tree>/. and config= as -c <tree>/<config>" {
     QG_ARGS='metric=clones' "$DRIVER" run > /dev/null
-    [[ "$(cat "$FAKE_ARGV")" == "dlx jscpd@5.3.2 $TREE/. --reporters json --output "*"/out --silent --no-colors" ]]
+    [[ "$(cat "$FAKE_ARGV")" == "dlx jscpd@5.3.2 $TREE/. --absolute --reporters json --output "*"/out --silent --no-colors" ]]
     rm -f "$FAKE_ARGV"
     QG_ARGS='metric=clones version=5.0.9 config=quality/jscpd.json paths=app,server' "$DRIVER" run > /dev/null
-    [[ "$(cat "$FAKE_ARGV")" == "dlx jscpd@5.0.9 $TREE/app $TREE/server -c $TREE/quality/jscpd.json --reporters json --output "* ]]
+    [[ "$(cat "$FAKE_ARGV")" == "dlx jscpd@5.0.9 $TREE/app $TREE/server -c $TREE/quality/jscpd.json --absolute --reporters json --output "* ]]
 }
 
 @test "two rows of one run that differ only in metric= make one jscpd call" {
@@ -115,7 +115,7 @@ result() { jq -r "$1" "$QG_OUT/result.json"; }
 @test "bin= with a runner runs the installed jscpd through it, calls no pnpm dlx, and passes config= as -c" {
     fake_runner "$WORK/runner"
     QG_RUNNER="$WORK/runner" QG_ARGS='bin=node_modules/.bin/jscpd metric=clones config=quality/jscpd.json' "$DRIVER" run > /dev/null
-    [ "$(cat "$FAKE_ARGV")" = 'runner node_modules/.bin/jscpd . -c quality/jscpd.json --reporters json --output .qg-jscpd-duplication --silent --no-colors' ]
+    [ "$(cat "$FAKE_ARGV")" = 'runner node_modules/.bin/jscpd . -c quality/jscpd.json --absolute --reporters json --output .qg-jscpd-duplication --silent --no-colors' ]
     ! grep -q 'dlx' "$FAKE_ARGV"
     [ "$(result .status)" = measured ] && [ "$(result .metric)" = 147 ]
     [ ! -e "$TREE/.qg-jscpd-duplication" ]
@@ -124,7 +124,7 @@ result() { jq -r "$1" "$QG_OUT/result.json"; }
 @test "bin= without a runner runs that path from the tree" {
     QG_ARGS='bin=node_modules/.bin/jscpd config=quality/jscpd.json' "$DRIVER" run > /dev/null
     # The installed fake records its argv without its own name; pnpm is never called.
-    [ "$(cat "$FAKE_ARGV")" = '. -c quality/jscpd.json --reporters json --output .qg-jscpd-duplication --silent --no-colors' ]
+    [ "$(cat "$FAKE_ARGV")" = '. -c quality/jscpd.json --absolute --reporters json --output .qg-jscpd-duplication --silent --no-colors' ]
     [ "$(result .metric)" = 2.32 ]
     [ ! -e "$TREE/.qg-jscpd-duplication" ]
 }

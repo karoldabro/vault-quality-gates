@@ -196,8 +196,10 @@ qg_jscpd_report() {
         out=".qg-jscpd-${QG_ROW:-row}"; report="${QG_TREE}/${out}/jscpd-report.json"
         rm -rf "${QG_TREE:?}/${out}"
     fi
+    # --absolute: with several scan roots jscpd otherwise names each file relative to its own root,
+    # and app/x.ts and server/x.ts would both read x.ts.
     QG_TOOL_DIR="${work:-$QG_TREE}" qg_tool - 0 "${cmd[@]}" "${scan[@]}" "${opts[@]}" \
-        --reporters json --output "$out" --silent --no-colors "${argv[@]}" || rc=1
+        --absolute --reporters json --output "$out" --silent --no-colors "${argv[@]}" || rc=1
     if [ "$rc" -eq 0 ] && [ ! -s "$report" ]; then QG_ERROR="jscpd exited ${QG_RC} and wrote no report"; rc=1; fi
     [ "$rc" -ne 0 ] || cp "$report" "${QG_OUT}/jscpd.json"
     if [ -n "$work" ]; then rm -rf "$work"; else rm -rf "${QG_TREE:?}/${out}"; fi

@@ -44,7 +44,7 @@ case "${1:-}" in
         # Both sides of each clone, named relative to the tree: a single scanned directory may be
         # reported relative to itself.
         jq -r --arg t "${QG_TREE}/" --arg p "${QG_PATH_LIST[0]}" --argjson one "$([ "${#QG_PATH_LIST[@]}" -eq 1 ] && echo true || echo false)" '
-            def norm: ltrimstr($t) | ltrimstr("./") | if ($one and $p != "." and (startswith($p + "/") | not)) then $p + "/" + . else . end;
+            def norm: ltrimstr($t) | ltrimstr("/app/") | ltrimstr("./") | if ($one and $p != "." and (startswith($p + "/") | not)) then $p + "/" + . else . end;
             (.duplicates // [])[]
             | (.firstFile | .name |= norm) as $a | (.secondFile | .name |= norm) as $b
             | ([$a, $b], [$b, $a])
