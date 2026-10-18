@@ -31,6 +31,10 @@
 
 set -uo pipefail
 
+# GUARD_SKIP drops rows from a run. Only `baseline --skip` sets it, below; a value inherited from
+# the caller would let `GUARD_SKIP=. git push` skip every gated row.
+unset GUARD_SKIP
+
 # git hands hooks a relative GIT_INDEX_FILE; pin it before anything changes directory.
 if [ -n "${GIT_INDEX_FILE:-}" ] && [ "${GIT_INDEX_FILE#/}" = "$GIT_INDEX_FILE" ]; then
     export GIT_INDEX_FILE="${PWD}/${GIT_INDEX_FILE}"
@@ -59,8 +63,10 @@ guard_default_branch() {
 # the release gate reads, so an uncommitted edit cannot loosen the gate that judges a push.
 # GUARD_CONFIG_PIN is the caller's GUARD_CONFIG_REV, read before this file reuses the name: the
 # agent factory pins every run to its build's base commit, so a build cannot loosen the
-# configuration that judges it.
+# configuration that judges it. The factory sets the pin outside any agent session; under
+# CLAUDECODE or AI_AGENT the pin is ignored, so an agent cannot pick an older, looser config.
 GUARD_CONFIG_PIN="${GUARD_CONFIG_REV:-}"
+if [ -n "${CLAUDECODE+set}" ] || [ -n "${AI_AGENT+set}" ]; then GUARD_CONFIG_PIN=''; fi
 export GUARD_CONFIG_PIN
 GUARD_CONFIG_REV=''
 

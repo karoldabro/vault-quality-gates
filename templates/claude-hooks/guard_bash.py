@@ -14,7 +14,10 @@ GUARD_SH = os.path.join(PLUGIN, 'bin', 'guard.sh')
 NEEDLES = ('.git/hooks', '.git/config', 'guard-pass', 'guard_pass', 'guard-bypass', 'guard_bypass', 'guard-tree', 'guard_tree',
            'guard-cache', 'guard_cache', 'hookspath', 'send-pack', 'http-push', 'receive-pack', 'receivepack', 'fast-import',
            'fsmonitor', 'sshcommand', 'git_exec_path', 'git_config', 'qg_skip_reason', 'claudecode', 'ai_agent', '--no-veri',
-           '.claude/settings', '.gitconfig', '.husky', '.huskyrc', 'config/husky', 'guard-stop', '.config/git/config', 'includeif', 'include.path')
+           '.claude/settings', '.gitconfig', '.husky', '.huskyrc', 'config/husky', 'guard-stop', '.config/git/config', 'includeif', 'include.path',
+           'guard_skip', 'guard_config_rev', 'guard_config_pin', 'guard_config_at')
+# The gate reads these from its environment; a value an agent sets would steer which rows run or which config judges.
+GATE_VAR = re.compile(r'(GUARD|QG)_\w*\Z')
 PLUGIN_RE = re.compile('(%s)(/|\\Z)' % '|'.join(re.escape(p.lower()) for p in {PLUGIN, RAW_PLUGIN}))
 ENV_REDIRECT = {'HOME', 'XDG_CONFIG_HOME', 'PATH'}
 WRITERS = {'rm', 'mv', 'cp', 'ln', 'chmod', 'chown', 'chgrp', 'touch', 'tee', 'truncate', 'unlink', 'rmdir', 'install', 'rsync', 'shred', 'dd', 'mkdir', 'mkfifo', 'setfacl', 'chattr'}
@@ -109,6 +112,8 @@ def protected(tok, ctx):
 
 
 def check_var(name, value, ctx):
+    if GATE_VAR.match(name):
+        raise Deny(f'{name} is read by the commit gate; an agent may not set it')
     if name == 'HUSKY' and value == '0':
         raise Deny('HUSKY=0 switches the hooks off')
     if name in ENV_REDIRECT:
