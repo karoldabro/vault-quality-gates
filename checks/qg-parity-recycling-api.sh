@@ -110,9 +110,9 @@ cp "$LIVE/storage/coverage/clover.xml" "$WORK/clover.base.xml" || die "${LIVE}/s
 
 # --- the seeds ---------------------------------------------------------------------------------
 
-php_file() {  # php_file <path> <class> <body> — a PHP class file
+php_file() {  # php_file <path under the clone $d> <class> <body> — a PHP class file
     mkdir -p "$(dirname "$1")"
-    local ns; ns="$(dirname "$1" | sed 's#^app#App#; s#^tests#Tests#; s#/#\\#g')"
+    local ns; ns="$(dirname "${1#"$d"/}" | sed 's#^app#App#; s#^tests#Tests#; s#/#\\#g')"
     printf '<?php\n\ndeclare(strict_types=1);\n\nnamespace %s;\n\n%s\n' "$ns" "$3" > "$1"
 }
 
@@ -194,8 +194,9 @@ final class Smell${i}Test extends TestCase
 {
 }"
         done
-        # PHP Insights architecture: thirty classes, each with a trait and a method over the length limit
-        local body=''; for k in $(seq 1 30); do body+="        \$total += $k;"$'\n'; done
+        # PHP Insights architecture and complexity: thirty classes, each with a trait and a branchy
+        # method over the length limit
+        local body=''; for k in $(seq 1 30); do body+="        if (\$total > $k) { \$total += $k; }"$'\n'; done
         for k in $(seq 1 30); do
             php_file "$d/app/QgParity/Insights/Long${i}x$k.php" "Long${i}x$k" "final class Long${i}x$k
 {
@@ -208,8 +209,9 @@ ${body}        return \$total;
     }
 }"
         done
-        # comment density: 400 comment lines over one line of code
-        { printf '<?php\n\nnamespace App\\QgParity;\n\n'; for k in $(seq 1 400); do printf '// qg parity comment %s\n' "$k"; done; printf 'final class Comments%s {}\n' "$i"; } > "$d/app/QgParity/Comments$i.php"
+        # comment density: 3000 comment lines over one line of code, enough to outweigh the code
+        # the other seeds add
+        { printf '<?php\n\nnamespace App\\QgParity;\n\n'; for k in $(seq 1 3000); do printf '// qg parity comment %s\n' "$k"; done; printf 'final class Comments%s {}\n' "$i"; } > "$d/app/QgParity/Comments$i.php"
         # indication checks: a tracked file under quality-reports/
         mkdir -p "$d/quality-reports"; printf 'qg parity\n' > "$d/quality-reports/qg-parity-$i.txt"
     done
