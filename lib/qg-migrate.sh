@@ -23,7 +23,9 @@ qg_migrate() {
         IFS=$'\t' read -r id scope kind command parser artifact direction threshold gate <<<"$line"
         on="$(qg_on_from_v1 "$scope" "$pattern")"
         if [ "$kind" = absent ]; then
-            printf '%s\t-\tabsent\t-\t-\t-\t-\t-\t%s\n' "$id" "$artifact" >> "$tmp"
+            why="$artifact"
+            if [[ ! "$why" =~ [^[:space:]] ]] || [ "$why" = '-' ]; then why="$QG_WHY_TODO"; missing+="  ${id}"$'\n'; fi
+            printf '%s\t-\tabsent\t-\t-\t-\t-\t-\t%s\n' "$id" "$why" >> "$tmp"
             continue
         fi
         case "$artifact" in *' '*) rm -f "$tmp"; qg_die "migrate: row ${id}: the artifact \"${artifact}\" has a space; write this row by hand" ;; esac
@@ -69,7 +71,8 @@ qg_init() {
     local profile='' force=0 tpl
     while [ $# -gt 0 ]; do
         case "$1" in
-            --profile) profile="${2:-}"; shift 2 ;;
+            --profile) [ $# -ge 2 ] || qg_die 'init: --profile needs a value (qg help init)'
+                       profile="$2"; shift 2 ;;
             --force)   force=1; shift ;;
             *) qg_die "init: unknown option $1 (qg help init)" ;;
         esac

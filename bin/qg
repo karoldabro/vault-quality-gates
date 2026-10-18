@@ -128,8 +128,11 @@ cmd_run() {
     shift || true
     while [ $# -gt 0 ]; do
         case "$1" in
-            --only) only="${2:-}"; shift 2 ;;
-            --ref)  ref="${2:-}"; shift 2 ;;
+            --only|--ref) [ $# -ge 2 ] && [ -n "$2" ] || qg_die "run: $1 needs a value (qg help run)" ;;
+        esac
+        case "$1" in
+            --only) only="$2"; shift 2 ;;
+            --ref)  ref="$2"; shift 2 ;;
             *) qg_die "run: unknown option $1 (qg help run)" ;;
         esac
     done
@@ -143,7 +146,9 @@ cmd_run() {
         push)   GUARD_SHA="$(git rev-parse HEAD)" "$GUARD" release "$ref" "${extra[@]}" || rc=$? ;;
         *)      qg_die 'run: say commit or push (qg help run)' ;;
     esac
-    if [ "$JSON" = 1 ]; then qg_results_json "$rc"
+    if [ "$JSON" = 1 ]; then qg_results_json "$rc" | jq --arg only "$only" \
+        'if $only == "" then . + {partial: false} else . + {partial: true, only: ($only | split(","))} end'
+    elif [ "$rc" -eq 0 ] && [ -n "$only" ]; then printf 'qg: %s passed for %s only; the real %s runs every row\n' "$event" "$only" "$event"
     elif [ "$rc" -eq 0 ]; then printf 'qg: %s gate passed\n' "$event"; fi
     return "$rc"
 }
@@ -192,8 +197,11 @@ cmd_override() {
     local reason='' push=''
     while [ $# -gt 0 ]; do
         case "$1" in
-            --reason) reason="${2:-}"; shift 2 ;;
-            --push)   push="${2:-}"; shift 2 ;;
+            --reason|--push) [ $# -ge 2 ] || qg_die "override: $1 needs a value (qg help override)" ;;
+        esac
+        case "$1" in
+            --reason) reason="$2"; shift 2 ;;
+            --push)   push="$2"; shift 2 ;;
             *) qg_die "override: unknown option $1 (qg help override)" ;;
         esac
     done

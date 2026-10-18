@@ -51,9 +51,11 @@ guard_is_number() { awk -v v="$1" 'BEGIN { exit !(v ~ /^-?[0-9]+(\.[0-9]+)?$/) }
 
 # guard_row_field <row> <name> -> one field of a normalised row (GUARD_FIELDS).
 guard_row_field() {
+    # Split on US (\037), not tab: tab is IFS whitespace, so `read` would merge an empty cell
+    # with its neighbour and shift every later field.
     local -a f
-    IFS=$'\t' read -r -a f <<<"$1"
-    printf '%s' "${f[${GUARD_FIELD_AT[$2]}]}"
+    IFS=$'\037' read -r -a f <<<"${1//$'\t'/$'\037'}"
+    printf '%s' "${f[${GUARD_FIELD_AT[$2]}]-}"
 }
 
 # guard_args_kv <args> <key> -> the value of `key=value` before ` -- ` in a v2 args cell.
@@ -138,13 +140,23 @@ guard_load_checks() {
             continue
         fi
 
+        # `read` collapses an empty tab-separated cell and shifts every later field, so a blank cell
+        # is refused before the split; an unknown kind, direction or gate is refused after it.
+        if [[ $'\t'"$line"$'\t' == *$'\t\t'* ]]; then
+            guard_err "guard: ${path} line ${n}: an empty cell; write - for a cell with no value"; return 2
+        fi
         IFS=$'\t' read -r id on kind driver args direction threshold gate why <<<"$line"
+        case "$kind" in repo|diff|absent) ;; *) guard_err "guard: ${path} line ${n}: kind \"${kind}\" is not repo, diff or absent"; return 2 ;; esac
+        if [ "$kind" != absent ]; then
+            case "$direction" in up|down) ;; *) guard_err "guard: ${path} line ${n}: direction \"${direction}\" is not up or down"; return 2 ;; esac
+            case "$gate" in refuse|warn|record) ;; *) guard_err "guard: ${path} line ${n}: gate \"${gate}\" is not refuse, warn or record"; return 2 ;; esac
+        fi
         if ! [[ "$id" =~ ^[a-z][a-z0-9-]*$ ]]; then
             guard_err "guard: ${path} line ${n}: id \"${id}\" must match [a-z][a-z0-9-]*"; return 2
         fi
-        case "$why" in
-            -|TODO*) guard_err "guard: ${path} line ${n}: row ${id} has no why; state in one sentence why this gate exists"; return 2 ;;
-        esac
+        if [[ ! "$why" =~ [^[:space:]] ]] || [ "$why" = '-' ] || [[ "$why" == TODO* ]]; then
+            guard_err "guard: ${path} line ${n}: row ${id} has no why; state in one sentence why this gate exists"; return 2
+        fi
         if ! reason="$(qg_on_valid "$on")"; then
             guard_err "guard: ${path} line ${n}: row ${id} on: ${reason}"; return 2
         fi
@@ -211,6 +223,11 @@ guard_baseline_diff() {
     [ -r "$new" ] || new=/dev/null
     # kind and direction by name from the normalised rows, in a subshell so the caller's
     # GUARD_ROWS survive; line 1 is a placeholder the awk below skips.
+    if ! ( guard_load_checks "$checks" ) >/dev/null 2>&1; then
+        # Without kinds and directions nothing can be judged; refuse rather than guess "down".
+        printf '%s\t-\t-\t%s\n' 'quality/checks.tsv' 'does not load, so no baseline row can be judged'
+        return 1
+    fi
     kinds="$(mktemp)"
     ( printf 'id\tkind\tdirection\n'
       guard_load_checks "$checks" 2>/dev/null || exit 0
@@ -372,7 +389,9 @@ guard_run_shell() {
     local row="$1" base="$2" files="$3" tmp="$4" command parser artifact status=0 source
     command="$(guard_row_field "$row" command)" parser="$(guard_row_field "$row" parser)"
     artifact="$(guard_substitute "$(guard_row_field "$row" artifact)" "$base" "$files")"
-    eval "$(guard_substitute "$command" "$base" "$files")" > "$tmp/output" 2>&1 || status=$?
+    # Its own subshell: a `cd` or an `exit` in the command must not move the artifact path or
+    # skip the parser, as it never did.
+    ( eval "$(guard_substitute "$command" "$base" "$files")" ) > "$tmp/output" 2>&1 || status=$?
     # parser '-' means the command's own output is the float; every other parser reads the
     # artifact. Passing the artifact cell to '-' records the literal '-'.
     # $(cat) drops trailing newlines first, as the captured output always did, so a command
@@ -419,7 +438,11 @@ guard_number_line() {
     local v
     v="$(head -1 | tr -d '[:space:]')"
     [[ "$v" =~ ^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$ ]] || return 2
-    v="$(awk -v v="$v" 'BEGIN { s = sprintf("%.6f", v); sub(/0+$/, "", s); sub(/\.$/, "", s); print s }')"
+    # A plain decimal passes through unchanged, so a baseline written at full precision compares
+    # exactly; only an exponent form is rewritten.
+    if [[ "$v" =~ [eE] ]]; then
+        v="$(awk -v v="$v" 'BEGIN { s = sprintf("%.10f", v); sub(/0+$/, "", s); sub(/\.$/, "", s); print s }')"
+    fi
     printf '%s' "$v"
 }
 

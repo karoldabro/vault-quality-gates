@@ -113,18 +113,34 @@ def protected(tok, ctx):
         p = os.path.realpath(os.path.join(ctx.cwd, c))
         if needle(p) or p == PLUGIN or p.startswith(PLUGIN + '/') or p.startswith(INSTALLED + '/'):
             return True
-        # The current repo's own git dir and common dir, wherever they live; then any other .git,
-        # except a scratch repo under the temp dir.
-        if any(p == d or p.startswith(d + '/') for d in git_dirs(ctx)):
+        # The git dir and common dir of the current repo and of the repo the target sits in, wherever
+        # they live; then any path through a .git directory, except a scratch repo under the temp dir.
+        if any(p == d or p.startswith(d + '/') for d in git_dirs(ctx) | target_git_dirs(p, ctx)):
             return True
         if in_tmp_elsewhere(p, ctx):
             continue
-        if os.path.basename(p) == '.git':
+        if '.git' in p.split('/'):
             return True
         root = repo_root(os.path.dirname(p))
         if root and p.startswith(root + '/') and any(p[len(root) + 1:] == g or p[len(root) + 1:].startswith(g + '/') for g in GATE_FILES):
             return True
     return False
+
+
+def target_git_dirs(p, ctx):
+    """The git dir and common dir of the repo that holds path p, so a write into another repo's git
+    directory by absolute path is denied too. In a temp-dir scratch repo outside the current one, none."""
+    if in_tmp_elsewhere(p, ctx):
+        return set()
+    d = os.path.dirname(p)
+    while d and d != '/' and not os.path.isdir(d):
+        d = os.path.dirname(d)
+    try:
+        out = subprocess.run(['git', '-C', d or '/', 'rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir'],
+                             capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    return {os.path.realpath(x) for x in out.split('\n') if x}
 
 
 def git_dirs(ctx):
@@ -174,6 +190,9 @@ def check_git(a, ctx, cwd):
             raise Deny(f'git {sub} argument {t} is computed at run time, so the hook cannot read it')
     if sub in GIT_NO_HOOK:
         raise Deny(f'git {sub} writes objects or refs, or runs hooks, outside the commit path the gate checks')
+    if sub == 'mktree' or (sub == 'hash-object' and '-w' in rest and any(
+            t == 'commit' and j > 0 and rest[j - 1] == '-t' or str(t) == '-tcommit' or str(t) == '--type=commit' for j, t in enumerate(rest))):
+        raise Deny(f'git {sub} writes a tree or commit object outside the commit path the gate checks')
     if sub == 'config':
         check_git_config(rest)
     if sub == 'branch' and any(t in ('-u', '--set-upstream-to') or str(t).startswith('--set-upstream-to=') or str(t).startswith('-u') and len(str(t)) > 2 and not str(t).startswith('--') for t in rest):

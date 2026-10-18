@@ -69,6 +69,11 @@ teardown() {
     printf 'TODO\n' > app/b.php; git add app/b.php
     run "$QG" run commit --only nothing-here
     [ "$status" -eq 0 ]
+    [[ "$output" == *'passed for nothing-here only; the real commit runs every row'* ]]
+    run "$QG" run commit --only nothing-here --json
+    json="$(sed -n '/^{/,$p' <<<"$output")"
+    [ "$(jq -r '.partial' <<<"$json")" = true ]
+    [ "$(jq -r '.only[0]' <<<"$json")" = nothing-here ]
 }
 
 @test "explain works before any run, and after a run shows the last result and output" {

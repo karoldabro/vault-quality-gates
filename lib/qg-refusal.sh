@@ -18,6 +18,19 @@ declare -gA QG_BUILTIN_WHY=(
     [gate-config-invalid]='a checks.tsv that does not load would leave every later commit unmeasured'
 )
 
+# qg_utf8_trim <text> -> the text without a trailing partial UTF-8 character. Under LC_ALL=C a cut
+# counts bytes and can split one; at worst this drops the last whole character too.
+qg_utf8_trim() {
+    local s="$1" b
+    while [ -n "$s" ]; do
+        b="$(printf '%d' "'${s: -1}")"; [ "$b" -lt 0 ] && b=$((b + 256))
+        if [ "$b" -ge 128 ] && [ "$b" -lt 192 ]; then s="${s:0:${#s}-1}"; continue; fi
+        [ "$b" -ge 192 ] && s="${s:0:${#s}-1}"
+        break
+    done
+    printf '%s' "$s"
+}
+
 qg_agent() { [ -n "${CLAUDECODE+set}" ] || [ -n "${AI_AGENT+set}" ]; }
 
 # qg_refusal_why <id> -> the row's why, from the loaded rows or the built-in list.
@@ -60,7 +73,11 @@ qg_print_refusal() {
     local head
     if [ "$event" = push ] && [ "$ref" = '-' ]; then head='vault-guard: the push gate failed (run by hand, every push row)'
     elif [ "$event" = push ]; then head="vault-guard: push refused to ${ref}"
+    elif [ "$ref" != '-' ] && [ "$ref" != ':index' ]; then head="vault-guard: commit ${ref:0:12} was refused (guard.sh verify)"
     else head='vault-guard: the staged commit was refused'; fi
+    # `verify` judges a commit, not the index: reproduce that commit, never the staged content.
+    local verify_of=''
+    [ "$event" = commit ] && [ "$ref" != '-' ] && [ "$ref" != ':index' ] && verify_of="${ref:0:12}"
     out="${head}"$'\n\n'"${out}"
     [ "$measured" -eq 1 ] || out+=$'\n''Nothing in your code was measured: every failing row could not run. The cause is the'$'\n''environment or a tool, not your change; the output below says what failed.'$'\n'
 
@@ -68,7 +85,8 @@ qg_print_refusal() {
         out+=$'\n'"${id} ($(qg_refusal_driver "$id"))"$'\n'
         out+="  why:       $(qg_refusal_why "$id")"$'\n'
         [ -n "${QG_BUILTIN_WHY[$id]:-}" ] || {
-            out+="  reproduce: qg run ${event}${refopt} --only ${id}"$'\n'
+            if [ -n "$verify_of" ]; then out+="  reproduce: qg verify ${verify_of}^!"$'\n'
+            else out+="  reproduce: qg run ${event}${refopt} --only ${id}"$'\n'; fi
             out+="  details:   qg explain ${id}"$'\n'
         }
     done
@@ -87,7 +105,10 @@ qg_print_refusal() {
         tail_text[$key]="$t"
         tail_rows[$key]+="${tail_rows[$key]:+, }${id}"
     done
-    for key in "${!tail_rows[@]}"; do
+    local -a keys=()
+    mapfile -t keys < <(printf '%s\n' "${!tail_rows[@]}" | sort)
+    for key in "${keys[@]}"; do
+        [ -n "$key" ] || continue
         tails+=$'\n'"Output of ${tail_rows[$key]} (last lines):"$'\n'"$(printf '%s\n' "${tail_text[$key]}" | sed 's/^/  | /')"$'\n'
     done
     out+="$tails"
@@ -101,8 +122,10 @@ qg_print_refusal() {
     foot+="  2. qg explain <id> says what a gate checks and why; qg last prints this refusal again."$'\n'
     if qg_agent; then
         foot+='  3. Agents may not override a gate. If you cannot fix it, stop and tell the operator.'$'\n'
+    elif [ "$event" = commit ] && [ "$ref" != '-' ] && [ "$ref" != ':index' ]; then
+        foot+='  3. Only a human at a terminal, when this commit must be pushed as it is:'$'\n''     qg override --reason "<why>" --push <sha>   then push again.'$'\n'
     elif [ "$event" = commit ]; then
-        foot+='  3. Only a human at a terminal, when the gate itself is wrong:'$'\n''     qg override --reason "<why>"   then commit again (once, for exactly this staged content).'$'\n'
+        foot+='  3. Only a human at a terminal, when the gate itself is wrong:'$'\n''     qg override --reason "<why>"   then commit again from a terminal (once, for exactly this staged content).'$'\n'
     else
         foot+='  3. Only a human at a terminal, for commits that never passed the commit gate:'$'\n''     qg override --reason "<why>" --push <sha>   then push again. A worse metric is fixed in code.'$'\n'
     fi
@@ -112,6 +135,6 @@ qg_print_refusal() {
     local cut=$'\n''... cut here; run `qg last` for the whole refusal.'$'\n' room
     # Two characters for the blank lines printed around the text.
     room=$((QG_REFUSAL_MAX - ${#foot} - ${#cut} - 2))
-    [ $(( ${#out} + ${#foot} + 2 )) -le "$QG_REFUSAL_MAX" ] || out="${out:0:$room}${cut}"
+    [ $(( ${#out} + ${#foot} + 2 )) -le "$QG_REFUSAL_MAX" ] || out="$(qg_utf8_trim "${out:0:$room}")${cut}"
     printf '\n%s%s\n' "$out" "$foot" >&2
 }

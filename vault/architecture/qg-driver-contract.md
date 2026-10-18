@@ -90,6 +90,10 @@ key and no argv. Copy `kv` and `extra` from `drivers/phpstan.sh` to read them.
 Call it as `$QG_RUNNER "$QG_TREE" "$QG_CACHE" <bin> <argv>`. Without `QG_RUNNER`, run the tool
 from `QG_TREE` directly.
 
+**Constraint:** a tool run through a runner sees only `QG_TREE` and `QG_CACHE`. Pass it paths
+relative to `QG_TREE`, write its report inside `QG_TREE`, and copy what you need into `QG_OUT`
+after the runner returns. A report path under `QG_OUT` does not exist inside a container.
+
 ## `result.json`: schema `qg.result/1`
 
 | field | type | allowed values |

@@ -54,6 +54,16 @@ commit_at_tty() { at_tty "git commit -q -m override-test 2>&1; echo rc=\$?"; }
     [[ "$output" == *'rc=1'* ]]
 }
 
+@test "a pre-commit.user step that re-stages a file does not invalidate the token" {
+    # An idempotent formatter, as lint-staged is: it changes the staged file once.
+    printf '%s\n' '#!/usr/bin/env bash' 'grep -qx formatted app/a.php || { printf "formatted\n" >> app/a.php; git add app/a.php; }' \
+        > "$(git rev-parse --git-path hooks)/pre-commit.user"
+    chmod +x "$(git rev-parse --git-path hooks)/pre-commit.user"
+    write_token 'formatter re-stages'
+    run commit_at_tty
+    [[ "$output" == *'rc=0'* ]]
+}
+
 @test "a token for other staged content is ignored and named" {
     write_token 'for the first tree'
     printf 'more\n' > app/extra.php; git add app/extra.php

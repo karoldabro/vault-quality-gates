@@ -40,6 +40,19 @@ set_base() { printf 'id\tvalue\tcommit\treason\ncoverage\t%s\tabc\t-\nphpstan\t%
     [ "$status" -eq 0 ]
 }
 
+@test "a v2 row with an empty cell or an unknown kind, direction or gate does not load, and is refused when staged" {
+    local bad r
+    for bad in $'x\tcommit\tdiff\tshell\t\tdown\t0\trefuse\twhy' $'x\tcommit\tdiff\tshell\t-- echo 0\tdown\t0\trefues\twhy' \
+               $'x\tcommit\tdif\tshell\t-- echo 0\tdown\t0\trefuse\twhy' $'x\tcommit\tdiff\tshell\t-- echo 0\tsideways\t0\trefuse\twhy'; do
+        { printf '%s\n' "$V2_HEADER"; printf '%s\n' "$bad"; } > quality/checks.tsv
+        run bash -c '. /code/lib/guard-metrics.sh; guard_load_checks quality/checks.tsv'
+        [ "$status" -eq 2 ] && [[ "$output" == *'line 2'* ]] || { echo "loaded: $bad"; return 1; }
+        git add quality/checks.tsv
+        run bash /code/bin/guard.sh commit
+        [ "$status" -eq 1 ] && [[ "$output" == *'gate-config-invalid'* ]] || { echo "not refused: $bad"; return 1; }
+    done
+}
+
 @test "push: a commit that lowers an up row against GUARD_BASE is refused" {
     set_base 70 10
     commit_all loosen

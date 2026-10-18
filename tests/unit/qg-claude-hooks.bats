@@ -76,6 +76,30 @@ no_bad() { [ -z "$BAD" ] || { printf '%s\n' "$BAD" >&2; return 1; }; }
     no_bad
 }
 
+@test "another repo's git directory is protected too, by absolute path or after cd" {
+    # The hook exempts scratch repos under /tmp; real repos live elsewhere, so build these under /var/tmp.
+    [ -w /var/tmp ] || skip '/var/tmp is not writable in this image'
+    local real; real="$(mktemp -d -p /var/tmp)"
+    mkdir -p "$real/other" && git -C "$real/other" init -q . \
+        && git -C "$real/other" -c user.email=t@e -c user.name=t commit -q --allow-empty -m init
+    mkdir -p "$real/plain"; cd "$real/plain" || return 1
+    bash_case deny "printf 'a b' > $real/other/.git/info/grafts"
+    bash_case deny "printf x > $real/other/.git/refs/heads/feat-x"
+    bash_case deny "cd $real/other && printf 'a b' > .git/info/grafts"
+    bash_case allow "printf x > $real/other/notes.txt"
+    rm -rf "$real"
+    no_bad
+}
+
+@test "git hash-object -w -t commit and git mktree are denied; a read-only hash-object is not" {
+    bash_case deny 'git hash-object -t commit -w --stdin < /tmp/c'
+    bash_case deny 'git hash-object -w -tcommit --stdin < /tmp/c'
+    bash_case deny 'git mktree < /tmp/t'
+    bash_case allow 'git hash-object README.md'
+    bash_case allow 'git hash-object -w --stdin < /tmp/blob'
+    no_bad
+}
+
 @test "quality/drivers/ and quality/config cannot be written by Bash or the edit tools; the rest of quality/ can" {
     local c
     for c in 'printf x > quality/config' 'mkdir -p quality/drivers && cp /tmp/x quality/drivers/phpstan.sh' \

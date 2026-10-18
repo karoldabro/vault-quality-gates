@@ -43,6 +43,12 @@ qg_override_write() {
         kind=push
         binding="$(git rev-parse -q --verify "${3:-}^{commit}" 2>/dev/null)" || { printf 'qg override: --push needs a commit, got "%s"\n' "${3:-}" >&2; return 1; }
     else
+        # The commit hook takes the tree after the repo's own pre-commit step (lint-staged, say),
+        # which may reformat and re-stage files; run it here first, so the token names that tree.
+        local user_step; user_step="$(git rev-parse --git-path hooks)/pre-commit.user"
+        if [ -x "$user_step" ] && guard_override_allowed "$reason"; then
+            "$user_step" || { printf 'qg override: %s failed; fix that first\n' "$user_step" >&2; return 1; }
+        fi
         binding="$(git write-tree 2>/dev/null)" || { printf 'qg override: cannot read the index\n' >&2; return 1; }
     fi
     if ! guard_override_allowed "$reason"; then

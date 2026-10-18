@@ -78,6 +78,8 @@ guard_gate() {
     if [ -n "${GUARD_CONFIG_PIN:-}" ]; then GUARD_CONFIG_AT="$GUARD_CONFIG_PIN"
     elif [ "$target" != ':index' ] && [ "$first" != "$(guard_empty_tree)" ]; then GUARD_CONFIG_AT="$first"
     else GUARD_CONFIG_AT=''; fi
+    # Exported, so bin/guard-report-errors.sh reads the same configuration as this gate.
+    export GUARD_CONFIG_AT
     # A commit whose parent predates the gate has no rules map to be judged by, so it is not gated. The
     # decision reads the judged commit's first parent, never HEAD, so `verify` run from an old checkout
     # cannot pass a commit whose parent carries the gate. A first commit (no parent) is always gated.
@@ -106,6 +108,8 @@ guard_gate() {
         if [ "$kind" != 'absent' ] && guard_is_tree_row "$row" && [ "$GUARD_TREE_STATE" != ok ]; then
             if [ "$GUARD_TREE_STATE" = skip ]; then GUARD_RESULTS+=("${id}|-|-|skipped|${GUARD_TREE_WHY}")
             else GUARD_RESULTS+=("${id}|-|-|unmeasurable|${GUARD_TREE_WHY}"); worst=2; fi
+            # Replace the last run's output, so a refusal never prints a stale tail for this row.
+            guard_save_last "$id" - /dev/null "$(guard_row_field "$row" driver)" - "$GUARD_TREE_WHY"
             continue
         fi
         rc=0
@@ -202,7 +206,7 @@ guard_commit_refusal() {  # guard_commit_refusal <target> <config dir>
             --map "$cfg/rules.tsv" --checks "$cfg/checks.tsv" --bases "$GUARD_BASES" --target "$GUARD_TARGET")" || prc=$?
         [ "$prc" -eq 0 ] || findings+=$'\n''vault-guard: quality/rules.tsv is unreadable; the findings carry no catalog pointer'
     fi
-    qg_print_refusal commit - "$findings"
+    qg_print_refusal commit "$1" "$findings"
 }
 
 # guard_verify <rev-list args...> -> measures each commit against its own parents and writes

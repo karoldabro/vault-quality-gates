@@ -254,22 +254,30 @@ cmd_release() {
     rev="${GUARD_SHA:-HEAD}"
     guard_release_config "${GUARD_CONFIG_PIN:-$rev}" || rc=$?
     if [ "$rc" -eq 3 ]; then
-        if [ "$ref" != '-' ]; then printf 'vault-guard: no gate row runs on %s: %s has no quality/checks.tsv\n' "$ref" "${rev:0:12}" >&2; exit 0; fi
-        guard_err "guard: ${rev} has no quality/checks.tsv; the release gate reads it from the measured commit"; exit 2
+        # A pinned config (the agent factory) that lacks the file is an error, never a pass.
+        if [ "$ref" != '-' ] && [ -z "${GUARD_CONFIG_PIN:-}" ]; then
+            printf 'vault-guard: no gate row runs on %s: %s has no quality/checks.tsv\n' "$ref" "${rev:0:12}" >&2; exit 0
+        fi
+        guard_err "guard: ${GUARD_CONFIG_PIN:-$rev} has no quality/checks.tsv; the release gate reads its configuration there"; exit 2
     fi
     guard_load_checks "$CHECKS" || exit 2
     for row in "${GUARD_ROWS[@]}"; do
         [ "$(guard_row_field "$row" kind)" = absent ] && continue
         guard_row_selected "$row" release "$ref" && guard_only "$(guard_row_field "$row" id)" && n=$((n + 1))
     done
+    base="$(git merge-base "origin/$(guard_default_branch)" "$rev" 2>/dev/null \
+            || git merge-base "$(guard_default_branch)" "$rev" 2>/dev/null \
+            || git rev-parse "$rev")"
     if [ "$n" -eq 0 ]; then
+        # No row measures this ref, but the baseline still only gets tighter on every push.
+        GUARD_RESULTS=()
+        if ! guard_release_locked "$base"; then
+            guard_render_report; guard_refusal "$ref"; exit 1
+        fi
         printf 'vault-guard: no gate row runs on %s\n' "$ref" >&2
         exit 0
     fi
     printf 'vault-guard: measuring %d rows on %s (%s); this can take several minutes\n' "$n" "$ref" "${rev:0:12}" >&2
-    base="$(git merge-base "origin/$(guard_default_branch)" "$rev" 2>/dev/null \
-            || git merge-base "$(guard_default_branch)" "$rev" 2>/dev/null \
-            || git rev-parse "$rev")"
     guard_release_tree_matches || exit 2
     cmd_measure 'release' "$base" "$ref"
 }
@@ -341,7 +349,11 @@ case "${1:-}" in
         shift
         rel_ref='-'
         while [ $# -gt 0 ]; do
-            case "$1" in --only) GUARD_ONLY="${2:-}"; shift 2 ;; *) rel_ref="$1"; shift ;; esac
+            case "$1" in
+                --only) [ $# -ge 2 ] || { guard_err 'usage: guard.sh release [<ref>] [--only <id,id>]'; exit 2; }
+                        GUARD_ONLY="$2"; shift 2 ;;
+                *) rel_ref="$1"; shift ;;
+            esac
         done
         cmd_release "$rel_ref" ;;
     baseline)
