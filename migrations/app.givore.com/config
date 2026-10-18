@@ -1,0 +1,4 @@
+# Gate keys for vault-quality-gates (lib/qg-config.sh). Once this file is committed, VAULT.md's gate keys are no longer read.
+guard_commit_paths: api app.vue assets components composables i18n layouts middleware pages plugins server services shared types utils test quality nuxt.config.ts i18n.config.ts package.json pnpm-lock.yaml tsconfig.json vitest.config.ts eslint.config.mjs eslint-rules
+guard_protected_paths: eslint.config.mjs eslint-rules .dependency-cruiser.cjs .jscpd.json knip.json .betterer.cjs stryker.config.json quality/checks.tsv quality/rules.tsv quality/bin lint-staged.config.mjs .claude/settings.json VAULT.md quality/config quality/drivers .npmrc pnpm-workspace.yaml .nuxtrc tsconfig.json vitest.config.ts quality/jscpd.json .fallowrc.json .dependency-cruiser.aliases.cjs scripts/quality-metric.mjs scripts/fallow-parsers.mjs
+guard_measure_worktree: false

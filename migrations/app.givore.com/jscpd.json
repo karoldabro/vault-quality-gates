@@ -1,0 +1,19 @@
+{
+  "minLines": 5,
+  "minTokens": 50,
+  "pattern": "{components,composables,pages,api,layouts,middleware,plugins,utils,stores,server}/**/*.{ts,vue,js}",
+  "ignore": [
+    "**/node_modules/**",
+    "**/.git/**",
+    "**/.nuxt/**",
+    "**/.output/**",
+    "**/dist/**",
+    "**/.claude/**",
+    "**/graphify-out/**",
+    "**/*.min.*"
+  ],
+  "reporters": ["json"],
+  "output": "quality-reports/jscpd",
+  "absolute": false,
+  "gitignore": false
+}
