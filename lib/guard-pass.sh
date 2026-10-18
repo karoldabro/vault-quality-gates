@@ -81,14 +81,11 @@ guard_config_show() {
     fi
 }
 
-# guard_vault_key <key> -> the value of a flat `key: value` line in the committed VAULT.md.
-# Exit 1 when the key is absent. Prettier escapes `*` as `\*`; the backslashes are removed.
-guard_vault_key() {
-    local line
-    line="$(guard_config_show VAULT.md | grep -m1 "^${1}:")" || return 1
-    line="${line#*:}"
-    printf '%s' "${line//\\/}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
-}
+# shellcheck source=qg-config.sh
+. "$(dirname "${BASH_SOURCE[0]}")/qg-config.sh"
+
+# guard_vault_key <key> -> the committed value of a gate key (lib/qg-config.sh). Exit 1 when absent.
+guard_vault_key() { qg_config_key "$1"; }
 
 # guard_path_matches <path> <prefix>... -> 0 when the path equals a prefix or lies under it.
 guard_path_matches() {

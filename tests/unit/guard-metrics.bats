@@ -25,6 +25,11 @@ write_baseline() {  # write_baseline <path> <id> <value> <reason>
     printf 'id\tvalue\tcommit\treason\n%s\t%s\tabc1234\t%s\n' "$2" "$3" "$4" > "$1"
 }
 
+norm_row() {  # norm_row <v1 row> -> the row as guard_load_checks hands it to guard_run_row
+    { printf '%s\n' "$GUARD_CHECKS_HEADER"; printf '%s\n' "$1"; } > "$WORK/norm.tsv"
+    guard_load_checks "$WORK/norm.tsv" && printf '%s' "${GUARD_ROWS[0]}"
+}
+
 init_repo() {  # init_repo <dir>
     mkdir -p "$1/quality"
     cd "$1" || return 1
@@ -139,7 +144,7 @@ init_repo() {  # init_repo <dir>
 @test "an absent row is rendered and never executed" {
     write_baseline "$WORK/baseline.tsv" mutation 50 -
     : > "$WORK/files"
-    row=$'mutation\t-\tabsent\tfalse\t-\t-\t-\t-\t-'
+    row="$(norm_row $'mutation\t-\tabsent\tfalse\t-\t-\t-\t-\t-')"
     run guard_run_row "$row" "$WORK/baseline.tsv" HEAD "$WORK/files"
     [ "$status" -eq 0 ]
     guard_run_row "$row" "$WORK/baseline.tsv" HEAD "$WORK/files"
@@ -320,7 +325,7 @@ baseline_rows() {  # baseline_rows <path> <coverage> <phpstan> [<coverage reason
     mkdir -p "$WORK/t"
     printf '{"totals":{"errors":0,"file_errors":2}}' > "$WORK/t/phpstan.json"
     : > "$WORK/files"
-    row=$'phpstan-new\tcommit\tdiff\ttrue\tphpstan-all\t{{tree}}/phpstan.json\tdown\t0\trefuse'
+    row="$(norm_row $'phpstan-new\tcommit\tdiff\ttrue\tphpstan-all\t{{tree}}/phpstan.json\tdown\t0\trefuse')"
     GUARD_TREE_DIR="$WORK/t" guard_run_row "$row" "$WORK/none.tsv" HEAD "$WORK/files" || true
     [[ "${GUARD_RESULTS[0]}" == 'phpstan-new|2|0|worse|'* ]]
 }

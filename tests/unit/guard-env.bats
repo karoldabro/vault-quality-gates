@@ -47,7 +47,7 @@ hook() {
     write_checks "$BAD_ROW" $'cov\trelease\trepo\techo 70\t-\t-\tup\t0\trefuse'
     commit_all 'coverage drops to 70'
     for skip in . cov '.*'; do
-        GUARD_SKIP="$skip" GUARD_SHA="$(git rev-parse HEAD)" GUARD_BASE="$BASE" run bash /code/bin/guard.sh release refs/heads/feat/x
+        GUARD_SKIP="$skip" GUARD_SHA="$(git rev-parse HEAD)" GUARD_BASE="$BASE" run bash /code/bin/guard.sh release refs/heads/release/x
         [ "$status" -eq 1 ] || { echo "GUARD_SKIP=$skip passed"; return 1; }
         [[ "$output" == *'cov'*'80'*'70'* ]]
     done

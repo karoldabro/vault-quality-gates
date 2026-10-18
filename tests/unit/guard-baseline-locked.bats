@@ -80,7 +80,7 @@ set_cov() { printf 'id\tvalue\tcommit\treason\ncov\t%s\tabc\t%s\n' "$1" "${2:--}
 @test "release: a pushed commit that loosens the baseline against GUARD_BASE is refused" {
     set_cov 70
     commit_all loosen
-    GUARD_SHA="$(git rev-parse HEAD)" GUARD_BASE="$BASE" run bash /code/bin/guard.sh release refs/heads/feat/x
+    GUARD_SHA="$(git rev-parse HEAD)" GUARD_BASE="$BASE" run bash /code/bin/guard.sh release refs/heads/release/x
     [ "$status" -eq 1 ]
     [[ "$output" == *'baseline-loosened'* ]]
     [[ "$output" != *'accept'* ]]
@@ -88,7 +88,7 @@ set_cov() { printf 'id\tvalue\tcommit\treason\ncov\t%s\tabc\t%s\n' "$1" "${2:--}
 }
 
 @test "release: an unchanged baseline passes" {
-    GUARD_SHA="$(git rev-parse HEAD)" GUARD_BASE="$BASE" run bash /code/bin/guard.sh release refs/heads/feat/x
+    GUARD_SHA="$(git rev-parse HEAD)" GUARD_BASE="$BASE" run bash /code/bin/guard.sh release refs/heads/release/x
     [ "$status" -eq 0 ]
 }
 
@@ -96,7 +96,7 @@ set_cov() { printf 'id\tvalue\tcommit\treason\ncov\t%s\tabc\t%s\n' "$1" "${2:--}
     printf 'guard_commit_paths: app\nguard_protected_paths: quality\nguard_measure_worktree: false\n' > VAULT.md
     commit_all measure-worktree
     printf 'edit\n' >> app/a.php
-    GUARD_SHA="$(git rev-parse HEAD)" run bash /code/bin/guard.sh release refs/heads/feat/x
+    GUARD_SHA="$(git rev-parse HEAD)" run bash /code/bin/guard.sh release refs/heads/release/x
     [ "$status" -eq 2 ]
     [[ "$output" == *'uncommitted changes'* ]]
 }
@@ -106,6 +106,6 @@ set_cov() { printf 'id\tvalue\tcommit\treason\ncov\t%s\tabc\t%s\n' "$1" "${2:--}
     mkdir -p docs; printf 'x\n' > docs/graph.json
     commit_all measure-worktree
     printf 'rewritten\n' > docs/graph.json
-    GUARD_SHA="$(git rev-parse HEAD)" run bash /code/bin/guard.sh release refs/heads/feat/x
+    GUARD_SHA="$(git rev-parse HEAD)" run bash /code/bin/guard.sh release refs/heads/release/x
     [ "$status" -eq 0 ]
 }

@@ -45,6 +45,8 @@ GUARD_LIB_DIR="$(cd "${GUARD_BIN_DIR}/../lib" && pwd)"
 export GUARD_LIB_DIR
 # shellcheck source=../lib/guard-metrics.sh
 . "${GUARD_LIB_DIR}/guard-metrics.sh"
+# shellcheck source=../lib/guard-pass.sh
+. "${GUARD_LIB_DIR}/guard-pass.sh"
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
     guard_err 'guard: not a git repository'; exit 2
@@ -70,31 +72,24 @@ if [ -n "${CLAUDECODE+set}" ] || [ -n "${AI_AGENT+set}" ]; then GUARD_CONFIG_PIN
 export GUARD_CONFIG_PIN
 GUARD_CONFIG_REV=''
 
-guard_vault_md() {
-    if [ -n "$GUARD_CONFIG_REV" ]; then git show "${GUARD_CONFIG_REV}:VAULT.md" 2>/dev/null
-    else cat "${REPO_ROOT}/VAULT.md" 2>/dev/null; fi
-}
-
 guard_accept_limit() {
     local v
-    v="$(guard_vault_md | sed -n 's/^guard_accept_limit:[[:space:]]*//p' | head -1)"
+    v="$(qg_config_key guard_accept_limit)"
     if guard_is_number "${v:-}"; then printf '%s' "$v"; else printf '%s' "$GUARD_ACCEPT_LIMIT_DEFAULT"; fi
 }
 
 guard_measure_worktree() {
-    local v
-    v="$(guard_vault_md | sed -n 's/^guard_measure_worktree:[[:space:]]*//p' | head -1)"
-    [ "$v" != 'false' ]
+    [ "$(qg_config_key guard_measure_worktree)" != 'false' ]
 }
 
 # guard_release_config <rev> -> points CHECKS and BASELINE at copies of the committed files.
+# Exit 3 when the commit carries no quality/checks.tsv: nothing there is gated.
 guard_release_config() {
     local dir
     GUARD_CONFIG_REV="$(git rev-parse -q --verify "${1}^{commit}")" || { guard_err "guard: cannot read commit ${1}"; exit 2; }
     dir="$(mktemp -d)"
     GUARD_CONFIG_DIR="$dir"
-    git show "${GUARD_CONFIG_REV}:quality/checks.tsv" > "${dir}/checks.tsv" 2>/dev/null \
-        || { guard_err "guard: ${1} has no quality/checks.tsv; the release gate reads it from the pushed commit"; exit 2; }
+    git show "${GUARD_CONFIG_REV}:quality/checks.tsv" > "${dir}/checks.tsv" 2>/dev/null || return 3
     git show "${GUARD_CONFIG_REV}:quality/baseline.tsv" > "${dir}/baseline.tsv" 2>/dev/null || rm -f "${dir}/baseline.tsv"
     CHECKS="${dir}/checks.tsv" BASELINE="${dir}/baseline.tsv"
 }
@@ -123,14 +118,27 @@ guard_leave_tree() {
 GUARD_CONFIG_DIR=''
 trap 'guard_leave_tree; [ -z "$GUARD_CONFIG_DIR" ] || rm -rf "$GUARD_CONFIG_DIR"' EXIT
 
-# guard_run <scope> <base ref>  ->  0 clean, 1 worse, 2 unmeasurable
+# guard_row_selected <row> <want> <ref> -> 0 when the run `want` (release or baseline) measures
+# the row. `baseline` also runs every kind: repo row whatever its `on`: those rows are what
+# quality/baseline.tsv is made of, and most run on push only.
+guard_row_selected() {
+    local on kind
+    on="$(guard_row_field "$1" on)" kind="$(guard_row_field "$1" kind)"
+    case "$2" in
+        release)  qg_row_runs_on "$on" push "$3" ;;
+        baseline) qg_row_runs_on "$on" baseline || [ "$kind" = 'repo' ] ;;
+        *)        return 1 ;;
+    esac
+}
+
+# guard_run <want> <base ref> [<pushed ref>]  ->  0 clean, 1 worse, 2 unmeasurable
 guard_run() {
-    local want="$1" base="$2" row id scope kind rc worst=0 files
+    local want="$1" base="$2" ref="${3:--}" row id kind rc worst=0 files
     files="$(mktemp)"
     git diff --name-only -z "$base" -- > "$files" 2>/dev/null || : > "$files"
 
     for row in "${GUARD_ROWS[@]}"; do
-        IFS=$'\t' read -r id scope kind _ _ _ _ _ _ <<<"$row"
+        id="$(guard_row_field "$row" id)" kind="$(guard_row_field "$row" kind)"
         if [ -n "${GUARD_SKIP:-}" ] && [[ "$id" =~ $GUARD_SKIP ]]; then
             GUARD_RESULTS+=("${id}|-|-|skipped|not measured this run, existing baseline row kept")
             continue
@@ -139,12 +147,7 @@ guard_run() {
             guard_run_row "$row" "$BASELINE" "$base" "$files"
             continue
         fi
-        # `baseline` also runs every kind: repo row whatever its scope — those rows
-        # are what quality/baseline.tsv is made of, and most are scoped to release.
-        case "$scope" in
-            "$want"|both) ;;
-            *) [ "$want" = 'baseline' ] && [ "$kind" = 'repo' ] || continue ;;
-        esac
+        guard_row_selected "$row" "$want" "$ref" || continue
         rc=0
         guard_run_row "$row" "$BASELINE" "$base" "$files" || rc=$?
         [ "$rc" -gt "$worst" ] && worst="$rc"
@@ -199,7 +202,7 @@ guard_release_tree_matches() {
     # Only paths under guard_commit_paths count: a tool that rewrites a tracked file outside them
     # (graphify-out/, say) cannot move a metric, and must not block every push.
     local prefixes dirty
-    read -ra prefixes <<<"$(guard_vault_md | sed -n 's/^guard_commit_paths:[[:space:]]*//p' | head -1)"
+    read -ra prefixes <<<"$(qg_config_key guard_commit_paths)"
     dirty="$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no | cut -c4- | sed 's/.* -> //' \
         | while IFS= read -r p; do
             [ "${#prefixes[@]}" -eq 0 ] && { printf '%s\n' "$p"; continue; }
@@ -233,7 +236,7 @@ cmd_measure() {
     local scope="$1" base="$2" ref="$3" rc=0
     guard_load_checks "$CHECKS" || exit 2
     guard_enter_tree
-    guard_run "$scope" "$base" || rc=$?
+    guard_run "$scope" "$base" "$ref" || rc=$?
     guard_leave_tree
     if [ "$scope" = 'release' ]; then
         local lrc=0; guard_release_locked "$base" || lrc=$?
@@ -251,6 +254,35 @@ cmd_measure() {
     fi
     if [ "$rc" -ne 0 ] && [ "$ref" != '-' ]; then guard_refusal "$ref"; fi
     return "$rc"
+}
+
+# cmd_release <pushed ref | -> — the push gate for one ref. Rows are chosen by `on` before
+# anything else, so a ref no row runs on is accepted without a config or tree check: a branch
+# that predates the gate, a ref outside every `push:` glob, or a branch that is not checked out.
+# `-` (a person measuring by hand) runs every push row.
+cmd_release() {
+    local ref="$1" rev base row n=0 rc=0
+    rev="${GUARD_SHA:-HEAD}"
+    guard_release_config "${GUARD_CONFIG_PIN:-$rev}" || rc=$?
+    if [ "$rc" -eq 3 ]; then
+        if [ "$ref" != '-' ]; then printf 'vault-guard: no gate row runs on %s: %s has no quality/checks.tsv\n' "$ref" "${rev:0:12}" >&2; exit 0; fi
+        guard_err "guard: ${rev} has no quality/checks.tsv; the release gate reads it from the measured commit"; exit 2
+    fi
+    guard_load_checks "$CHECKS" || exit 2
+    for row in "${GUARD_ROWS[@]}"; do
+        [ "$(guard_row_field "$row" kind)" = absent ] && continue
+        guard_row_selected "$row" release "$ref" && n=$((n + 1))
+    done
+    if [ "$n" -eq 0 ]; then
+        printf 'vault-guard: no gate row runs on %s\n' "$ref" >&2
+        exit 0
+    fi
+    printf 'vault-guard: measuring %d rows on %s (%s); this can take several minutes\n' "$n" "$ref" "${rev:0:12}" >&2
+    base="$(git merge-base "origin/$(guard_default_branch)" "$rev" 2>/dev/null \
+            || git merge-base "$(guard_default_branch)" "$rev" 2>/dev/null \
+            || git rev-parse "$rev")"
+    guard_release_tree_matches || exit 2
+    cmd_measure 'release' "$base" "$ref"
 }
 
 cmd_baseline() {
@@ -314,14 +346,7 @@ case "${1:-}" in
         shift
         [ $# -gt 0 ] || { guard_err 'usage: guard.sh verify <revision range>'; exit 2; }
         . "${GUARD_LIB_DIR}/guard-commit.sh"; guard_verify "$@" ;;
-    release)
-        rev="${GUARD_SHA:-HEAD}"
-        base="$(git merge-base "origin/$(guard_default_branch)" "$rev" 2>/dev/null \
-                || git merge-base "$(guard_default_branch)" "$rev" 2>/dev/null \
-                || git rev-parse "$rev")"
-        guard_release_config "${GUARD_CONFIG_PIN:-$rev}"
-        guard_release_tree_matches || exit 2
-        cmd_measure 'release' "$base" "${2:--}" ;;
+    release)  shift; cmd_release "${1:--}" ;;
     baseline)
         shift
         [ "${1:-}" = '--skip' ] && { export GUARD_SKIP="${2:-}"; }

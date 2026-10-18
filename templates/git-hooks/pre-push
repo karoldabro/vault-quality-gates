@@ -6,9 +6,10 @@
 #      commit runs no pre-commit hook and has none. One unrecorded commit refuses the whole
 #      push, unless a human at a terminal overrides with QG_SKIP_REASON. Overrides logged
 #      since the last push are printed.
-#   2. Each pushed ref that matches guard_release_pattern is measured with `guard.sh release`;
-#      the push is refused when any is worse than quality/baseline.tsv, or loosens that file
-#      against the remote ref's old tip, also after an override of check 1.
+#   2. Every pushed ref goes to `guard.sh release`, which runs the rows whose `on` cell names
+#      that ref and exits 0 at once when none does. The push is refused when any ref is worse
+#      than quality/baseline.tsv, or loosens that file against the remote ref's old tip, also
+#      after an override of check 1.
 #
 # It reads EVERY stdin line before any exit. A hook that exits early leaves git
 # writing into a closed pipe: the writer dies with 141 while the hook reports 0,
@@ -18,6 +19,8 @@
 # being pushed, not the working directory. Uncommitted edits cannot move the gate.
 
 set -uo pipefail
+# The gate reads these from its environment; a value inherited from the pusher must not steer it.
+unset GUARD_SKIP GUARD_CONFIG_REV GUARD_CONFIG_AT GUARD_CONFIG_PIN
 
 GUARD="__GUARD_SH__"
 REMOTE_NAME="${1:-}"
@@ -55,34 +58,6 @@ if [ "${#shas[@]}" -gt 0 ]; then
 fi
 guard_print_bypass_log
 
-# release_globs_of <sha> -> sets release_globs from guard_release_pattern in the VAULT.md of
-# the pushed commit, never the working tree: an uncommitted edit cannot un-gate a release push.
-globs_sha=''
-release_globs_of() {
-    local pattern
-    [ "$1" != "$globs_sha" ] || return 0
-    globs_sha="$1"
-    pattern="$(git show "${1}:VAULT.md" 2>/dev/null | sed -n 's/^guard_release_pattern:[[:space:]]*//p' | head -1)"
-    # Prettier escapes `*` in VAULT.md as `\*`; left in, the glob matches only a literal `*` and no
-    # release push is ever gated.
-    pattern="${pattern//\\/}"
-    if [ -z "$pattern" ]; then
-        pattern='refs/heads/release/*'
-        printf 'vault-guard: VAULT.md names no guard_release_pattern, using %s\n' "$pattern" >&2
-    fi
-    # `a|b` in a variable is one glob with a literal `|`, not a case alternation, so split it here.
-    IFS='|' read -ra release_globs <<< "$pattern"
-}
-
-is_release_ref() {
-    local glob
-    for glob in "${release_globs[@]}"; do
-        # shellcheck disable=SC2254
-        case "$1" in $glob) return 0 ;; esac
-    done
-    return 1
-}
-
 # baseline_base <local sha> <remote sha> -> the commit whose quality/baseline.tsv this push may
 # not loosen: the remote ref's old tip when git has it, else the parent of the oldest pushed
 # commit on no remote (the fork point of a new branch), else the pushed commit itself.
@@ -99,14 +74,16 @@ baseline_base() {
     fi
 }
 
-# Every pushed ref that matches the pattern is measured, each on its own commit; one refusal
-# refuses the whole push.
+# Every pushed ref goes to the engine, each on its own commit; the rows' `on` cells decide what
+# runs there. One refusal refuses the whole push.
 gated=()
+declare -A queued=()
 for line in "${pushed[@]}"; do
     read -r _ local_sha remote_ref remote_sha <<<"$line"
     [ "$local_sha" = "$ZERO" ] && continue        # a branch deletion measures nothing
-    release_globs_of "$local_sha"
-    is_release_ref "$remote_ref" && gated+=("${remote_ref} ${local_sha} ${remote_sha:-}")
+    [ -z "${queued["$remote_ref $local_sha"]:-}" ] || continue
+    queued["$remote_ref $local_sha"]=1
+    gated+=("${remote_ref} ${local_sha} ${remote_sha:-}")
 done
 
 [ "${#gated[@]}" -gt 0 ] || exit 0
@@ -119,8 +96,8 @@ done
 status=0
 for line in "${gated[@]}"; do
     read -r gated_ref gated_sha remote_sha <<<"$line"
-    printf 'vault-guard: measuring %s (%s); this can take several minutes\n' "$gated_ref" "${gated_sha:0:12}" >&2
     GUARD_SHA="$gated_sha" GUARD_BASE="$(baseline_base "$gated_sha" "$remote_sha")" "$GUARD" release "$gated_ref" || status=1
 done
+[ "$status" -eq 0 ] || printf 'vault-guard: push refused. What failed and how to pass: qg last   (all commands: qg help)\n' >&2
 exit "$status"
 # vault-guard-end

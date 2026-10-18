@@ -119,11 +119,29 @@ print_listed() {  # print_listed <row> <command> <action>
     done < <(export GUARD_LIST=1; eval "$2" 2>/dev/null)
 }
 
+print_result() {  # findings[] of a driver's result.json, file-less ones included
+    local row="$1" file line rule msg
+    while IFS=$'\037' read -r file line rule msg; do
+        file="$(guard_strip_app "$file")"
+        record "$row" "${file:+${file}${line:+:${line}}}" "$rule" "$msg" '' ''
+    done < <(jq -r '(.findings // [])[] | [(.file // ""), (.line // "" | tostring), (.ruleId // ""), (.message // "")]
+                    | map(tostring | gsub("[\t\n\u001f]"; " ")) | join("\u001f")' "$2" 2>/dev/null)
+}
+
 : > "$WORK/records"
+declare -A loaded=()
+if guard_load_checks "$WORK/checks" 2>/dev/null; then
+    for r in "${GUARD_ROWS[@]}"; do loaded[$(guard_row_field "$r" id)]="$r"; done
+fi
+last="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/qg-last"
 for id in $rows; do
-    row="$(awk -F'\t' -v id="$id" 'NR > 1 && $1 == id { print; exit }' "$WORK/checks")"
+    row="${loaded[$id]:-}"
     [ -n "$row" ] || continue
-    IFS=$'\t' read -r _ _ _ command _ artifact _ _ _ <<<"$row"
+    if [ "$(guard_row_field "$row" driver)" != shell ]; then
+        [ -r "$last/$id/result.json" ] && print_result "$id" "$last/$id/result.json"
+        continue
+    fi
+    command="$(guard_row_field "$row" command)" artifact="$(guard_row_field "$row" artifact)"
     cmd="$(guard_substitute "$command" "$first" "$WORK/files")"
     art="$(guard_substitute "$artifact" "$first" "$WORK/files")"
     case "$command" in

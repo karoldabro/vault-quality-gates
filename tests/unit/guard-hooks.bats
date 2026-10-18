@@ -80,11 +80,17 @@ new_commit() { printf '%s\n' "$1" >> file.txt; commit_all "$1"; git rev-parse HE
 
 # --- pre-push: release gate ---------------------------------------------------
 
-@test "skip path leaves writer at exit 0" {
+@test "every pushed ref reaches the engine once, and the writer drains" {
     run push_through_hook 20000 refs/heads/feature/widget "$SHA"
     [[ "$output" == *'writer=0'* ]]
     [[ "$output" == *'hook=0'* ]]
-    [ ! -e "$RAN" ]
+    [ "$(grep -c 'STUB release refs/heads/feature/widget' "$RAN")" -eq 1 ]
+}
+
+@test "an inherited GUARD_SKIP or config pin never reaches the engine" {
+    printf '#!/usr/bin/env bash\nprintf "SKIP=%%s REV=%%s\\n" "${GUARD_SKIP-unset}" "${GUARD_CONFIG_REV-unset}" >> %s\n' "$RAN" > "$PLUGIN/bin/guard.sh"
+    GUARD_SKIP=. GUARD_CONFIG_REV=abc run push_through_hook 1 refs/heads/release/1.0.0 "$SHA"
+    grep -q 'SKIP=unset REV=unset' "$RAN"
 }
 
 @test "release ref runs the release suite" {
@@ -115,44 +121,14 @@ commit_vault() {
     record "$SHA"
 }
 
-@test "a Prettier-escaped pattern still gates release" {
-    commit_vault 'guard_release_pattern: refs/heads/release/\*'
-    run push_through_hook 1 refs/heads/release/1.18.0 "$SHA"
-    [[ "$output" == *'hook=0'* ]]
-    grep -q 'STUB release refs/heads/release/1.18.0' "$RAN"
-}
-
-@test "each alternative of an a|b pattern gates release" {
-    commit_vault 'guard_release_pattern: refs/heads/release/*|refs/heads/realse/*'
-    run push_through_hook 1 refs/heads/release/2.0.0 "$SHA"
-    grep -q 'STUB release refs/heads/release/2.0.0' "$RAN"
-    run push_through_hook 1 refs/heads/realse/2.0.1 "$SHA"
-    grep -q 'STUB release refs/heads/realse/2.0.1' "$RAN"
-    run push_through_hook 1 refs/heads/feature/x "$SHA"
-    run grep -q 'feature/x' "$RAN"
-    [ "$status" -ne 0 ]
-}
-
-@test "a VAULT.md without the pattern still gates release and names the fallback" {
-    git rm -q VAULT.md
-    commit_all 'no vault'
-    SHA="$(git rev-parse HEAD)"
-    record "$SHA"
-    run push_through_hook 1 refs/heads/release/9.9.9 "$SHA"
-    [[ "$output" == *'refs/heads/release/*'* ]]
-    grep -q 'STUB release refs/heads/release/9.9.9' "$RAN"
-}
-
-@test "the release pattern comes from the pushed commit, not the working tree" {
-    printf 'guard_release_pattern: refs/heads/nothing/*\n' > VAULT.md
-    run push_through_hook 1 refs/heads/release/3.0.0 "$SHA"
-    grep -q 'STUB release refs/heads/release/3.0.0' "$RAN"
-    : > "$RAN"
-    git checkout -q VAULT.md
-    commit_vault 'guard_release_pattern: refs/heads/rel/*'
-    printf 'guard_release_pattern: refs/heads/release/*|refs/heads/rel/*\n' > VAULT.md
-    run push_through_hook 1 refs/heads/release/3.0.1 "$SHA"
-    [ ! -s "$RAN" ]
+@test "each pushed ref is measured on its own commit; one refusal refuses the push" {
+    second="$(new_commit two)"; record "$second"
+    printf '#!/usr/bin/env bash\nprintf "%%s %%s\\n" "$2" "$GUARD_SHA" >> %s\n[ "$2" = refs/heads/b ] && exit 1\nexit 0\n' "$RAN" > "$PLUGIN/bin/guard.sh"
+    run bash -c "printf '%s\n' 'refs/heads/a $SHA refs/heads/a cafe' 'refs/heads/b $second refs/heads/b cafe' | '$HOOK' origin"
+    [ "$status" -eq 1 ]
+    grep -qx "refs/heads/a $SHA" "$RAN"
+    grep -qx "refs/heads/b $second" "$RAN"
+    [[ "$output" == *'qg last'* ]]
 }
 
 @test "an unreadable guard refuses rather than passing unmeasured" {

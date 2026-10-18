@@ -11,7 +11,17 @@
 . "${GUARD_LIB_DIR}/guard-tree.sh"
 . "${GUARD_LIB_DIR}/guard-diff.sh"
 
-guard_is_tree_row() { case "$1" in *'{{tree}}'*|*'{{cache}}'*) return 0 ;; esac; return 1; }
+# guard_is_tree_row <row> -> 0 when the row measures the staged-tree copy: its command, artifact
+# or args name {{tree}} or {{cache}}, or its driver's describe says needs_tree: true.
+guard_is_tree_row() {
+    case "$(guard_row_field "$1" command)$(guard_row_field "$1" artifact)$(guard_row_field "$1" args)" in
+        *'{{tree}}'*|*'{{cache}}'*) return 0 ;;
+    esac
+    guard_driver_needs_tree "$(guard_row_field "$1" driver)"
+}
+
+# guard_is_commit_row <row> -> 0 when the commit gate runs the row.
+guard_is_commit_row() { qg_row_runs_on "$(guard_row_field "$1" on)" commit; }
 
 guard_gate_config() {  # guard_gate_config <dir> -> 2 naming the file HEAD lacks
     local f
@@ -60,7 +70,7 @@ guard_gate_tree() {
 
 # guard_gate <target> <bases> -> 0 clean, 1 worse, 2 unmeasurable. Prints the refusal.
 guard_gate() {
-    local target="$1" bases="$2" cfg first rc worst=0 row id scope kind command artifact
+    local target="$1" bases="$2" cfg first rc worst=0 row id kind
     first="${bases%% *}"
     cfg="$(mktemp -d)"
     # The configuration that judges this commit: the pinned revision, else the judged
@@ -82,17 +92,16 @@ guard_gate() {
 
     GUARD_TREE_STATE=skip GUARD_TREE_WHY='no changed path matches guard_commit_paths'
     for row in "${GUARD_ROWS[@]}"; do
-        IFS=$'\t' read -r _ scope _ command _ artifact _ _ _ <<<"$row"
-        case "$scope" in commit|both) guard_is_tree_row "$command$artifact" || continue ;; *) continue ;; esac
+        [ "$(guard_row_field "$row" kind)" != absent ] && guard_is_commit_row "$row" && guard_is_tree_row "$row" || continue
         guard_commit_paths_hit "$first" "$target" && guard_gate_tree "$target"
         break
     done
 
     cd "$REPO_ROOT" || return 2
     for row in "${GUARD_ROWS[@]}"; do
-        IFS=$'\t' read -r id scope kind command _ artifact _ _ _ <<<"$row"
-        case "$scope" in commit|both) ;; *) [ "$kind" = 'absent' ] || continue ;; esac
-        if [ "$kind" != 'absent' ] && guard_is_tree_row "$command$artifact" && [ "$GUARD_TREE_STATE" != ok ]; then
+        id="$(guard_row_field "$row" id)" kind="$(guard_row_field "$row" kind)"
+        guard_is_commit_row "$row" || [ "$kind" = 'absent' ] || continue
+        if [ "$kind" != 'absent' ] && guard_is_tree_row "$row" && [ "$GUARD_TREE_STATE" != ok ]; then
             if [ "$GUARD_TREE_STATE" = skip ]; then GUARD_RESULTS+=("${id}|-|-|skipped|${GUARD_TREE_WHY}")
             else GUARD_RESULTS+=("${id}|-|-|unmeasurable|${GUARD_TREE_WHY}"); worst=2; fi
             continue
@@ -125,8 +134,23 @@ guard_show() {
 # quality/rules.tsv, and may not loosen quality/baseline.tsv against the base
 # (guard_baseline_diff). A first commit has nothing to loosen.
 guard_gate_locked() {
-    local base="$1" target="$2" cfg="$3" f gone='' lines rc=0
+    local base="$1" target="$2" cfg="$3" f gone='' lines rc=0 changed='' p
     [ "$base" != "$(guard_empty_tree)" ] || return 0
+    # A repo driver or quality/config judges the next commit, so changing one is a human's
+    # decision: refused here, passed only by a human override.
+    while IFS= read -r -d '' p; do
+        guard_path_matches "$p" quality/drivers quality/config && changed+="${p} "
+    done < "$cfg/files"
+    if [ -n "$changed" ]; then
+        GUARD_RESULTS+=("gate-config-changed|1|0|worse|changes ${changed% }; only a human commits this, with an override"); rc=1
+    fi
+    # A staged checks.tsv that does not load would make every later commit unmeasurable.
+    if guard_show "$target" quality/checks.tsv > "$cfg/checks.new"; then
+        if ! ( guard_cfg_show() { guard_show "$target" "$1"; }
+               guard_load_checks "$cfg/checks.new" ) 2> "$cfg/checks.err" >/dev/null; then
+            GUARD_RESULTS+=("gate-config-invalid|1|0|worse|the staged quality/checks.tsv does not load: $(head -1 "$cfg/checks.err" | sed 's/^guard: //; s#[^ ]*/checks.new#quality/checks.tsv#' | tr '|' ' ')"); rc=1
+        fi
+    fi
     for f in quality/checks.tsv quality/rules.tsv; do
         if git cat-file -e "${base}:${f}" 2>/dev/null && ! guard_show "$target" "$f" >/dev/null; then gone+="${f} "; fi
     done
