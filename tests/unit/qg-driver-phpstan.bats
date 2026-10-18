@@ -92,15 +92,15 @@ parser_value() { /code/lib/guard-parsers/phpstan-all.sh "$FAKE_JSON" 0; }
     [ "$(metric)" = 0 ]
 }
 
-@test "paths=changed analyses only changed .php files, and measures 0 without calling phpstan when none" {
+@test "files=changed analyses only changed .php files, and measures 0 without calling phpstan when none" {
     printf 'docs/a.md\0app/B.php\0app/Gone.php\0' > "$WORK/files"
     mkdir -p "$TREE/app"; : > "$TREE/app/B.php"
     printf '%s' '{"totals":{"errors":0,"file_errors":0},"files":[],"errors":[]}' > "$FAKE_JSON"
-    FAKE_ARGV="$WORK/argv" QG_FILES="$WORK/files" QG_ARGS='paths=changed' "$DRIVER" run > /dev/null
+    FAKE_ARGV="$WORK/argv" QG_FILES="$WORK/files" QG_ARGS='files=changed' "$DRIVER" run > /dev/null
     [ "$(cat "$WORK/argv")" = 'analyse --no-progress --error-format=json app/B.php' ]
     printf 'docs/a.md\0' > "$WORK/files"
     rm -f "$WORK/argv"
-    FAKE_ARGV="$WORK/argv" QG_FILES="$WORK/files" QG_ARGS='paths=changed' "$DRIVER" run > /dev/null
+    FAKE_ARGV="$WORK/argv" QG_FILES="$WORK/files" QG_ARGS='files=changed' "$DRIVER" run > /dev/null
     [ ! -e "$WORK/argv" ]
     [ "$(metric)" = 0 ]
 }

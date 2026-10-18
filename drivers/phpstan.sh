@@ -1,36 +1,26 @@
 #!/usr/bin/env bash
 # PHPStan driver: every PHPStan error, file-less ones included. Contract:
-# vault/architecture/qg-driver-contract.md. This file is the worked example the contract names.
+# vault/architecture/qg-driver-contract.md; keys: vault/architecture/qg-builtin-drivers.md.
 #
-# args:  [runner=<repo path>] [bin=<phpstan path>] [paths=changed] [-- <extra phpstan argv>]
-#   runner       the engine copies it from the config revision into $QG_RUNNER; it is called as
-#                $QG_RUNNER "$QG_TREE" "$QG_CACHE" <bin> <argv>
+# args:  [runner=<repo path>] [bin=<phpstan path>] [files=changed] [include=<ERE>] [exclude=<ERE>]
+#        [lines=added] [-- <extra phpstan argv>]
 #   bin          default vendor/bin/phpstan, relative to the measured tree
-#   paths=changed  analyse only the changed .php files ($QG_FILES); none changed measures 0
+#   files=changed  analyse only the changed .php files; none changed measures 0
+#   lines=added  count only errors on lines the commit adds
 #
 # metric = totals.errors + totals.file_errors. A boot failure or an unmatched ignore pattern
 # carries no file, and counting file_errors alone would read it as a clean run.
 set -uo pipefail
 export LC_ALL=C
+# shellcheck source=../lib/qg-driver-kit.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/qg-driver-kit.sh"
 
-kv() {  # kv <key> -> the value of key=value before ` -- ` in QG_ARGS
-    local head="${QG_ARGS:-}" w
-    case "$head" in '-- '*) return 1 ;; *' -- '*) head="${head%% -- *}" ;; esac
-    for w in $head; do case "$w" in "$1="*) printf '%s' "${w#*=}"; return 0 ;; esac; done
-    return 1
-}
-extra() { case "${QG_ARGS:-}" in '-- '*) printf '%s' "${QG_ARGS#-- }" ;; *' -- '*) printf '%s' "${QG_ARGS#* -- }" ;; esac; }
-
-result() {  # result <status> <metric json> <error json> <raw file or ->
-    local findings='[]'
-    [ "$4" = - ] || findings="$(jq -c '
+findings() {  # findings <phpstan json> -> qg.result/1 findings on stdout
+    jq -c '
         [ ((.files // {}) | to_entries[] | .key as $f | .value.messages[]
             | {ruleId: (.identifier // "phpstan"), file: $f, line: .line, level: "error", message: .message,
                doc: (if .tip then .tip else null end)}),
-          ((.errors // [])[] | {ruleId: "phpstan.fileless", file: null, line: null, level: "error", message: ., doc: null}) ]' "$4")"
-    jq -n --arg s "$1" --argjson m "$2" --argjson e "$3" --argjson f "$findings" --arg r "qg run commit --only ${QG_ROW:-<id>}" \
-        '{schema: "qg.result/1", driver: "phpstan", status: $s, metric: $m, unit: "findings", findings: $f, error: $e, reproduce: $r}' \
-        > "${QG_OUT}/result.json"
+          ((.errors // [])[] | {ruleId: "phpstan.fileless", file: null, line: null, level: "error", message: ., doc: null}) ]' "$1"
 }
 
 case "${1:-}" in
@@ -47,31 +37,35 @@ case "${1:-}" in
         else
             printf 'Runs PHPStan on the measured tree and counts every error, including errors that carry no file.\n'
             printf 'A higher count than allowed refuses the commit. Fix each listed finding in the code.\n'
+            printf 'Keys: runner bin files=changed include exclude lines=added, then -- <phpstan argv>.\n'
         fi ;;
     run)
         : "${QG_OUT:?}" "${QG_TREE:?}"
-        bin="$(kv bin)" || bin='vendor/bin/phpstan'
-        read -ra argv <<<"$(extra)"
-        files=()
-        if [ "$(kv paths)" = changed ]; then
-            while IFS= read -r -d '' f; do
-                case "$f" in *.php) [ -e "${QG_TREE}/${f}" ] && files+=("$f") ;; esac
-            done < "${QG_FILES:-/dev/null}"
-            if [ "${#files[@]}" -eq 0 ]; then result measured 0 null -; exit 0; fi
+        bin="$(qg_kv bin)" || bin='vendor/bin/phpstan'
+        read -ra argv <<<"$(qg_argv)"
+        QG_FILE_LIST=()
+        if [ "$(qg_kv files)" = changed ]; then
+            qg_files '\.php$'
+            if [ "${#QG_FILE_LIST[@]}" -eq 0 ]; then qg_result phpstan measured 0 findings - -; exit 0; fi
         fi
-        cmd=("$bin" analyse --no-progress --error-format=json "${argv[@]}" "${files[@]}")
-        rc=0
-        if [ -n "${QG_RUNNER:-}" ]; then "$QG_RUNNER" "$QG_TREE" "${QG_CACHE:-/tmp}" "${cmd[@]}" > "${QG_OUT}/stdout" 2> "${QG_OUT}/stderr" || rc=$?
-        else ( cd "$QG_TREE" && "${cmd[@]}" ) > "${QG_OUT}/stdout" 2> "${QG_OUT}/stderr" || rc=$?; fi
-        cat "${QG_OUT}/stderr"
+        if ! qg_tool - '0 1' "$bin" analyse --no-progress --error-format=json "${argv[@]}" "${QG_FILE_LIST[@]}"; then
+            # PHPStan exits 1 on errors; any exit above 1 with a readable report is still a crash.
+            qg_fail phpstan findings "phpstan exited ${QG_RC} and wrote no JSON report"; exit 0
+        fi
         # PHPStan prints its JSON as one line; a runner may print other lines around it.
         grep '^{' "${QG_OUT}/stdout" | tail -1 > "${QG_OUT}/phpstan.json"
-        if [ "$rc" -gt 1 ] || ! jq -e '.totals' "${QG_OUT}/phpstan.json" >/dev/null 2>&1; then
+        if ! jq -e '.totals' "${QG_OUT}/phpstan.json" >/dev/null 2>&1; then
             tail -20 "${QG_OUT}/stdout"
-            result error null "$(jq -n --arg e "phpstan exited ${rc} and wrote no JSON report" '$e')" -
-            exit 0
+            qg_fail phpstan findings "phpstan exited ${QG_RC} and wrote no JSON report"; exit 0
         fi
-        result measured "$(jq '(.totals.errors // 0) + (.totals.file_errors // 0)' "${QG_OUT}/phpstan.json")" null "${QG_OUT}/phpstan.json" ;;
+        findings "${QG_OUT}/phpstan.json" > "${QG_OUT}/findings.json"
+        if [ "$(qg_kv lines)" = added ]; then
+            qg_added_only "${QG_OUT}/findings.json" || { qg_fail phpstan findings "$QG_ERROR"; exit 0; }
+            qg_result phpstan measured "$QG_COUNT" findings "${QG_OUT}/findings.json" -
+        else
+            qg_result phpstan measured "$(jq '(.totals.errors // 0) + (.totals.file_errors // 0)' "${QG_OUT}/phpstan.json")" \
+                findings "${QG_OUT}/findings.json" -
+        fi ;;
     *)
-        printf 'usage: phpstan.sh describe | explain [<ruleId>] | run\n' >&2; exit 2 ;;
+        qg_usage phpstan ;;
 esac

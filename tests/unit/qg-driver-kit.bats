@@ -1,0 +1,138 @@
+#!/usr/bin/env bats
+# lib/qg-driver-kit.sh — the helpers every built-in driver shares: changed-file selection, the
+# tool runner, the added-lines filter, the per-run shared report and result.json.
+
+load guard-helpers
+
+KIT=/code/lib/qg-driver-kit.sh
+
+setup() {
+    export LC_ALL=C
+    WORK="$(mktemp -d)"
+    unset QG_RUNNER QG_ARGS QG_RUN_DIR CLAUDECODE AI_AGENT
+    export GUARD_LOCK_WAIT=5
+    TREE="$WORK/tree"; mkdir -p "$TREE" "$WORK/out"
+    export QG_TREE="$TREE" QG_OUT="$WORK/out" QG_CACHE="$WORK/cache" QG_ROW=row QG_FILES=/dev/null
+}
+
+teardown() {
+    [ -n "${WORK:-}" ] && [ -d "$WORK" ] && rm -rf "$WORK"
+    return 0
+}
+
+kit() { bash -c ". $KIT; $1"; }
+
+@test "qg_tool deletes the report first, so a tool that writes none is an error, never the old report" {
+    printf 'old report\n' > "$TREE/report.json"
+    printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$TREE/tool"; chmod +x "$TREE/tool"
+    run kit 'qg_tool report.json "0" ./tool || { echo "ERR: $QG_ERROR"; exit 3; }'
+    [ "$status" -eq 3 ]
+    [[ "$output" == *'wrote no report report.json'* ]]
+    [ ! -e "$TREE/report.json" ]
+}
+
+@test "qg_tool refuses an exit code outside the ok set and an argv path under QG_OUT" {
+    printf '%s\n' '#!/usr/bin/env bash' 'echo "boom" >&2; exit 3' > "$TREE/tool"; chmod +x "$TREE/tool"
+    run kit 'qg_tool - "0 1 2" ./tool || { echo "ERR: $QG_ERROR"; exit 3; }'
+    [ "$status" -eq 3 ] && [[ "$output" == *'boom'* ]] && [[ "$output" == *'tool exited 3'* ]]
+    run kit "qg_tool - 0 ./tool --report=$WORK/out/r.json || { echo \"ERR: \$QG_ERROR\"; exit 3; }"
+    [ "$status" -eq 3 ] && [[ "$output" == *'outside the measured tree'* ]]
+}
+
+@test "qg_tool calls a runner as <runner> <tree> <cache> <argv>" {
+    printf '%s\n' '#!/usr/bin/env bash' 'printf "%s|" "$@" > "$RUNNER_LOG"' > "$WORK/runner"; chmod +x "$WORK/runner"
+    RUNNER_LOG="$WORK/log" QG_RUNNER="$WORK/runner" run kit 'qg_tool - 0 vendor/bin/x a "b c"'
+    [ "$status" -eq 0 ]
+    [ "$(cat "$WORK/log")" = "${TREE}|${WORK}/cache|vendor/bin/x|a|b c|" ]
+}
+
+@test "qg_files keeps changed files matching the ERE, include= and not exclude=, present in the tree" {
+    mkdir -p "$TREE/app" "$TREE/tests/Fixtures"
+    : > "$TREE/app/a b.php"; : > "$TREE/app/-x.php"; : > "$TREE/app/ü.php"; : > "$TREE/tests/Fixtures/f.php"; : > "$TREE/app/c.js"
+    printf 'app/a b.php\0app/-x.php\0app/ü.php\0tests/Fixtures/f.php\0app/c.js\0app/gone.php\0' > "$WORK/files"
+    QG_FILES="$WORK/files" QG_ARGS='exclude=^tests/Fixtures/' run kit 'qg_files "\.php$"; printf "<%s>" "${QG_FILE_LIST[@]}"'
+    [ "$output" = '<app/a b.php><app/-x.php><app/ü.php>' ]
+    QG_FILES="$WORK/files" QG_ARGS='include=^tests/' run kit 'qg_files "\.php$"; printf "<%s>" "${QG_FILE_LIST[@]}"'
+    [ "$output" = '<tests/Fixtures/f.php>' ]
+    QG_FILES=/dev/null run kit 'qg_files "\.php$"; echo "n=${#QG_FILE_LIST[@]}"'
+    [ "$output" = 'n=0' ]
+}
+
+@test "qg_added_only counts findings on added lines in any path form, prints line-less ones uncounted" {
+    gate_repo "$WORK/repo"
+    printf 'one\ntwo\nthree\n' > app/a.php; git add app/a.php
+    export QG_REPO="$WORK/repo" QG_TREE="$WORK/repo" QG_TARGET=:index QG_BASES="$(git rev-parse HEAD)"
+    printf 'app/a.php\0' > "$WORK/files"; export QG_FILES="$WORK/files"
+    jq -n --arg t "$WORK/repo" '[{file: "app/a.php", line: 1}, {file: "/app/app/a.php", line: 2}, {file: "./app/a.php", line: 3},
+        {file: ($t + "/app/a.php"), line: 2}, {file: "app/a.php", line: null}, {file: "app/other.php", line: 1}]' > "$WORK/f.json"
+    run kit "qg_added_only $WORK/f.json && echo count=\$QG_COUNT"
+    [ "$status" -eq 0 ] && [ "$output" = 'count=4' ]
+    [ "$(jq length "$WORK/f.json")" -eq 5 ]
+    [ "$(jq -r '.[0].file' "$WORK/f.json")" = app/a.php ]
+}
+
+@test "qg_added_only refuses a finding path outside the tree, and a finding on an unchanged line adds 0" {
+    gate_repo "$WORK/repo"
+    printf 'clean\nadded\n' > app/a.php; git add app/a.php
+    export QG_REPO="$WORK/repo" QG_TREE="$WORK/repo" QG_TARGET=:index QG_BASES="$(git rev-parse HEAD)"
+    printf 'app/a.php\0' > "$WORK/files"; export QG_FILES="$WORK/files"
+    printf '[{"file":"app/a.php","line":1},{"file":"app/a.php","line":2}]' > "$WORK/f.json"
+    run kit "qg_added_only $WORK/f.json && echo count=\$QG_COUNT"
+    [ "$output" = 'count=1' ]
+    printf '[{"file":"/elsewhere/a.php","line":1}]' > "$WORK/f.json"
+    run kit "qg_added_only $WORK/f.json || { echo \"ERR: \$QG_ERROR\"; exit 3; }"
+    [ "$status" -eq 3 ] && [[ "$output" == *'/elsewhere/a.php is not inside the measured tree'* ]]
+}
+
+@test "qg_shared_report runs the tool once per target and args, and a new target runs it again" {
+    export QG_RUN_DIR="$WORK/run"; mkdir -p "$QG_RUN_DIR"
+    prog='produce() { echo x >> "$CALLS"; echo "report for $QG_TARGET" > "$QG_OUT/rep"; }; qg_shared_report rep produce; cat "$QG_OUT/rep"'
+    CALLS="$WORK/calls" QG_TARGET=aaa QG_ARGS='metric=code paths=app' run kit "$prog"
+    [ "$output" = 'report for aaa' ]
+    CALLS="$WORK/calls" QG_TARGET=aaa QG_ARGS='metric=style paths=app' run kit "$prog"
+    [ "$output" = 'report for aaa' ] && [ "$(wc -l < "$WORK/calls")" -eq 1 ]
+    CALLS="$WORK/calls" QG_TARGET=bbb QG_ARGS='metric=code paths=app' run kit "$prog"
+    [ "$output" = 'report for bbb' ] && [ "$(wc -l < "$WORK/calls")" -eq 2 ]
+    CALLS="$WORK/calls" QG_TARGET=bbb QG_ARGS='metric=code paths=src' run kit "$prog"
+    [ "$(wc -l < "$WORK/calls")" -eq 3 ]
+    # A half-written temporary file is never read as the report.
+    [ -z "$(find "$QG_RUN_DIR" -name '*.[0-9]*')" ]
+}
+
+@test "qg_shared_report without QG_RUN_DIR always runs the tool, and a failed producer is not kept" {
+    prog='produce() { echo x >> "$CALLS"; echo r > "$QG_OUT/rep"; return "${FAIL:-0}"; }; qg_shared_report rep produce'
+    CALLS="$WORK/calls" run kit "$prog"; CALLS="$WORK/calls" run kit "$prog"
+    [ "$(wc -l < "$WORK/calls")" -eq 2 ]
+    export QG_RUN_DIR="$WORK/run"; mkdir -p "$QG_RUN_DIR"
+    FAIL=1 CALLS="$WORK/calls" run kit "$prog"
+    [ "$status" -eq 1 ] && [ -z "$(ls "$QG_RUN_DIR")" ]
+}
+
+@test "every guard.sh invocation gets its own QG_RUN_DIR, removed at exit, whatever the caller exported" {
+    gate_repo "$WORK/repo"
+    mkdir -p quality/drivers
+    printf '%s\n' '#!/usr/bin/env bash' 'case "$1" in describe) echo "{\"name\":\"rd\",\"requires\":[],\"needs_tree\":false}";;' \
+        '  run) echo "$QG_RUN_DIR" >> "$RUNLOG"; echo "{\"schema\":\"qg.result/1\",\"status\":\"measured\",\"metric\":0,\"findings\":[],\"error\":null}" > "$QG_OUT/result.json";;' \
+        '  *) exit 2;; esac' > quality/drivers/rd.sh
+    chmod +x quality/drivers/rd.sh
+    { printf 'id\ton\tkind\tdriver\targs\tdirection\tthreshold\tgate\twhy\n'
+      printf 'r\tpush\tdiff\trd\t-\tdown\t0\trefuse\ta row that logs its run dir\n'; } > quality/checks.tsv
+    commit_all rd
+    export RUNLOG="$WORK/runlog"
+    QG_RUN_DIR=/tmp/inherited GUARD_SHA="$(git rev-parse HEAD)" run bash /code/bin/guard.sh release refs/heads/x
+    GUARD_SHA="$(git rev-parse HEAD)" run bash /code/bin/guard.sh release refs/heads/x
+    [ "$(sort -u "$RUNLOG" | wc -l)" -eq 2 ]
+    ! grep -q '^/tmp/inherited$' "$RUNLOG"
+    while read -r d; do [ ! -e "$d" ]; done < "$RUNLOG"
+}
+
+@test "qg_result maps finding paths into the tree and qg_need writes an error naming a missing key" {
+    printf '[{"ruleId":"r","file":"/app/app/x.php","line":3,"level":"error","message":"m","doc":null}]' > "$WORK/f.json"
+    run kit "qg_result d measured 1 findings $WORK/f.json -"
+    [ "$(jq -r '.findings[0].file' "$QG_OUT/result.json")" = app/x.php ]
+    [ "$(jq -r '.metric' "$QG_OUT/result.json")" = 1 ]
+    QG_ARGS='paths=app' run kit 'v="$(qg_need d findings ruleset)" || exit 3'
+    [ "$status" -eq 3 ]
+    [ "$(jq -r '.status' "$QG_OUT/result.json")" = error ]
+    [[ "$(jq -r '.error' "$QG_OUT/result.json")" == *'ruleset='* ]]
+}
