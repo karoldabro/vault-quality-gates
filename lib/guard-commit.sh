@@ -203,7 +203,8 @@ guard_commit_refusal() {  # guard_commit_refusal <target> <config dir>
     done
     if [ -n "${ids// /}" ]; then
         findings="$("${GUARD_BIN_DIR}/guard-report-errors.sh" --rows "${ids% }" --tree "${GUARD_TREE_DIR:--}" \
-            --map "$cfg/rules.tsv" --checks "$cfg/checks.tsv" --bases "$GUARD_BASES" --target "$GUARD_TARGET")" || prc=$?
+            --map "$cfg/rules.tsv" --checks "$cfg/checks.tsv" --bases "$GUARD_BASES" --target "$GUARD_TARGET" \
+            --limit 10)" || prc=$?
         [ "$prc" -eq 0 ] || findings+=$'\n''vault-guard: quality/rules.tsv is unreadable; the findings carry no catalog pointer'
     fi
     qg_print_refusal commit "$1" "$findings"

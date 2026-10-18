@@ -183,8 +183,19 @@ guard_render_report() {
 }
 
 guard_refusal() {
-    local ref="$1" findings
-    findings="Never edit quality/baseline.tsv, quality/checks.tsv, quality/config or VAULT.md to pass: the gate refuses a looser baseline."
+    local ref="$1" findings='' line id status ids='' prc=0
+    for line in "${GUARD_RESULTS[@]:-}"; do
+        IFS='|' read -r id _ _ status _ <<<"$line"
+        case "$status" in worse|unmeasurable) [ -n "${QG_BUILTIN_WHY[$id]:-}" ] || ids+="$id " ;; esac
+    done
+    if [ -n "${ids// /}" ]; then
+        findings="$("${GUARD_BIN_DIR}/guard-report-errors.sh" --rows "${ids% }" --tree - --map - \
+            --bases "${GUARD_PUSH_BASE:-$(git rev-parse HEAD)}" --target "$(git rev-parse "${GUARD_SHA:-HEAD}" 2>/dev/null)" \
+            --limit 10 2>/dev/null)" || prc=$?
+        [ "$prc" -eq 0 ] || findings+=$'\n''vault-guard: quality/rules.tsv is unreadable; the findings carry no catalog pointer'
+        [ -z "$findings" ] || findings+=$'\n'
+    fi
+    findings+="Never edit quality/baseline.tsv, quality/checks.tsv, quality/config or VAULT.md to pass: the gate refuses a looser baseline."
     findings+=$'\n'"Measure again without pushing: GUARD_SHA=$(git rev-parse --short "${GUARD_SHA:-HEAD}" 2>/dev/null) ${GUARD_BIN_DIR}/guard.sh release ${ref}"
     qg_print_refusal push "$ref" "$findings"
 }
@@ -233,6 +244,8 @@ guard_release_locked() {
 
 cmd_measure() {
     local scope="$1" base="$2" ref="$3" rc=0
+    # The refusal lists findings on the lines added since this base.
+    GUARD_PUSH_BASE="$base"
     guard_load_checks "$CHECKS" || exit 2
     guard_enter_tree
     guard_run "$scope" "$base" "$ref" || rc=$?

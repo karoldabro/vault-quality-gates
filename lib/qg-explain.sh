@@ -83,9 +83,10 @@ qg_explain() {
     else
         printf 'Last run here: not run in this repo yet.\n'
     fi
-    if [ "$res" != null ]; then
-        jq -r '(.findings // [])[:10][] | "  \(.file // "(no file)")\(if .line then ":\(.line)" else "" end) \(.ruleId // "") \(.message // "")"' <<<"$res"
-        jq -r 'if (.findings // [] | length) > 10 then "  +\((.findings | length) - 10) more" else empty end' <<<"$res"
+    # A driver row's findings come from its saved result.json through the one findings printer; a
+    # shell row's would be recomputed against the current index, so it shows its output instead.
+    if [ "$res" != null ] && [ "$driver" != shell ]; then
+        "${GUARD_LIB_DIR}/../bin/guard-report-errors.sh" --rows "$id" --tree - --map - --limit 10 2>/dev/null | sed 's/^/  /'
     fi
     if [ -s "${last}/output.txt" ]; then
         printf '\nIts own output (last lines):\n'

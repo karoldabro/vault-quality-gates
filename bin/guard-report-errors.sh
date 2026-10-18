@@ -4,17 +4,20 @@
 #
 #   guard-report-errors.sh --rows "<id> <id>" --tree <dir|-> --map <rules.tsv|-> \
 #       [--checks <checks.tsv>] [--bases "<sha>..."] [--target <commit>|:index] [--heading <text>]
+#       [--limit <n>]
 #
 # Line: <row> <file>:<line> <identifier> <message> → quality/RULES.md "### <rule id>"
 # --heading prints <text> and a blank line before the first line, and nothing when no line prints.
+# --limit prints at most <n> lines per row, then `<row> +N more (qg explain <row>)` after the rest.
 #
 # Reads each row's artifact: PHPStan JSON (file-less errors[] included), PHPMD JSON, or
 # checkstyle filtered to added lines (a line-less error, as Pint writes, prints for any changed
 # file). An exitcode row whose artifact cell names a report prints that report. Rows that run guard-added-lines.sh --grep,
 # guard-baseline-growth.sh or guard-protected-paths.sh are re-run with GUARD_LIST=1 and
 # print a fixed action. A leading /app/ is stripped from every path. `--map -` and a missing
-# --checks read the file from HEAD. An identifier with no map row prints without a pointer.
-# Exit 2 only when the map is unreadable or malformed; otherwise 0, whatever it printed.
+# --checks read the file from HEAD; a HEAD with no quality/rules.tsv reads as an empty map. An
+# identifier with no map row prints without a pointer.
+# Exit 2 only when an explicit --map is unreadable, or the map is malformed; otherwise 0.
 # Fields travel joined by US (\037), never by tab: `read` collapses empty tab-separated fields.
 set -uo pipefail
 export LC_ALL=C
@@ -24,12 +27,13 @@ GUARD_LIB_DIR="$(cd "${BIN}/../lib" && pwd)"
 . "${GUARD_LIB_DIR}/guard-pass.sh"
 . "${GUARD_LIB_DIR}/guard-diff.sh"
 
-rows='' tree='-' map='-' checks='' bases='' target=':index' heading=''
+rows='' tree='-' map='-' checks='' bases='' target=':index' heading='' limit=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --rows) rows="${2:-}" ;; --tree) tree="${2:-}" ;; --map) map="${2:-}" ;;
         --checks) checks="${2:-}" ;; --bases) bases="${2:-}" ;; --target) target="${2:-}" ;;
         --heading) heading="${2:-}" ;;
+        --limit) limit="${2:-}"; [[ "$limit" =~ ^[0-9]+$ ]] || { guard_err 'guard-report-errors: --limit needs a number'; exit 2; } ;;
         *) guard_err "guard-report-errors: unknown argument $1"; exit 2 ;;
     esac
     shift 2 || break
@@ -38,7 +42,8 @@ done
 first="${bases%% *}"
 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
-if [ "$map" = '-' ]; then guard_config_show quality/rules.tsv > "$WORK/map" || { guard_err 'guard-report-errors: HEAD has no quality/rules.tsv'; exit 2; }
+# A repo with no catalog prints its findings without pointers.
+if [ "$map" = '-' ]; then guard_config_show quality/rules.tsv > "$WORK/map" 2>/dev/null || printf 'id\ttool\tenforced_by\temits\n' > "$WORK/map"
 else cp "$map" "$WORK/map" 2>/dev/null || { guard_err "guard-report-errors: cannot read ${map}"; exit 2; }; fi
 awk -F'\t' 'NR == 1 { if ($0 != "id\ttool\tenforced_by\temits") { print "line 1 is not the rules header"; exit 1 } next }
     /^#/ || !NF { next }
@@ -159,8 +164,10 @@ for id in $rows; do
     fi
 done
 
-awk -F'\t' '
+awk -F'\t' -v limit="$limit" '
     NR == FNR { if (FNR > 1 && $0 !~ /^#/ && NF == 4 && $4 != "-") rule[$4] = $1; next }
+    limit > 0 && ++seen[$1] > limit { if (!($1 in more)) order[++nmore] = $1; more[$1]++; next }
+    END { for (i = 1; i <= nmore; i++) printf "%s +%d more (qg explain %s)\n", order[i], more[order[i]], order[i] }
     function lookup(x,   e, best, id) {
         if (x in rule) return rule[x]
         best = 0; id = ""
