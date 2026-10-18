@@ -3,7 +3,7 @@ type: plan
 project: vault-quality-gates
 slug: 2026-10-18-1121-qg-common-interface
 repos: [vault-quality-gates, recycling-api, app.givore.com, dashboard.givore.com, recycling_mobile_app, givore.com, vault.givore.com]
-status: approved
+status: executed
 process_record: 2026-10-18-1121-qg-common-interface.trail.md
 arch_spec:
 human_plan:
@@ -85,11 +85,11 @@ configs, then usability.
 
 | id | ruling | state | mechanism |
 |----|--------|-------|-----------|
-| R-1 | A refusal says what ran, why it failed, how to reproduce and how to pass | HALF-BUILT | `lib/qg-refusal.sh`; SC-1 SC-2 MET. Live only after W-28; v1 rows print the fallback why until S2–S4 |
-| R-2 | A tool's own error is never hidden behind a parser message | HALF-BUILT | `guard_save_last` keeps the last 20 lines; SC-1 MET. Live only after W-28 |
-| R-3 | Only a human at a terminal overrides, once, for one named tree or sha | HALF-BUILT | `qg_override_take`; `guard_bash.py` denies writing it; SC-3 SC-9 MET. Live only after W-28 and W-29 |
+| R-1 | A refusal says what ran, why it failed, how to reproduce and how to pass | ENFORCED | `lib/qg-refusal.sh` live on `main` `207a69a`; SC-1 SC-2 MET; v1 rows print the fallback why until S2–S4 write theirs |
+| R-2 | A tool's own error is never hidden behind a parser message | ENFORCED | `guard_save_last` keeps the last 20 lines; SC-1 MET; live on `main` |
+| R-3 | Only a human at a terminal overrides, once, for one named tree or sha | HALF-BUILT | commit tokens work through the installed hooks (the lib carries `guard_commit_hook`); push tokens need the new `pre-push` body (W-29) |
 | R-4 | Every v2 gate row states why it exists | ENFORCED | `guard_load_checks` refuses a blank, `-` or TODO why; `gate-config-invalid` refuses it staged; `qg-regressions.bats` |
-| R-5 | A commit cannot loosen the gate that judges it through a driver, runner, config file or environment variable | HALF-BUILT | the environment half is live on `main` (`2526467`, `guard-env.bats`); drivers, runners and config are live after W-28; SC-7 SC-9 MET |
+| R-5 | A commit cannot loosen the gate that judges it through a driver, runner, config file or environment variable | ENFORCED | live on `main`; `guard-env.bats`, SC-7 SC-9 MET |
 
 ## Verified current state
 
@@ -182,7 +182,7 @@ Not in scope: server-side enforcement; a YAML config; parallel row execution.
 | W-25 | `checks/qg-SC-1.sh` … `checks/qg-SC-10.sh` | one script per criterion; SC-8 runs on the live checkouts with `43d7082` from a detached worktree as reference, diffs per-row `id|value|status`, exits 2 on a reference row that is unmeasurable; SC-10 installs the `43d7082` hook bodies against the new lib | Write | exit 0 pass, 1 fail, 2 could not run | SC-1..SC-10 | `gate.sh verdict --run` | DONE |
 | W-26 | `~/.local/bin/qg` | symlink to `~/workspace/vault-quality-gates/bin/qg` | Bash | needs the operator | — | `command -v qg` | BLOCKED: operator |
 | W-27 | `git log main..feat/qg-interface` | list every commit and review its diff before cut-over | Bash | only commits from S1 sessions | — | diff reviewed | DONE |
-| W-28 | `~/workspace/vault-quality-gates` branch `main` | fast-forward to `feat/qg-interface` once DOD-1..3 and SC-1..SC-10 pass | Bash | — | — | `git log -1` | TODO |
+| W-28 | `~/workspace/vault-quality-gates` branch `main` | fast-forward to `feat/qg-interface` once DOD-1..3 and SC-1..SC-10 pass | Bash | — | — | `git log -1` | DONE |
 | W-29 | `.git/hooks/` of recycling-api, recycling_mobile_app, app.givore.com, dashboard.givore.com, vault-quality-gates | `guard.sh hooks install --claude` from `main` after W-28 | Bash | needs the operator | — | `qg doctor` in each | BLOCKED: operator |
 
 ## Sequencing & dependencies
@@ -196,7 +196,7 @@ recycling-api commit. S2–S5 start after S1 is `done`; S6 after S2–S5.
 
 | id | scope | command | status | depends | date | evidence |
 |----|-------|---------|--------|---------|------|----------|
-| S1 | bypass fix; contract, `shell` and `phpstan` drivers, v2 config, `qg` CLI, refusal, override token, agent guards | this plan | todo | | | |
+| S1 | bypass fix; contract, `shell` and `phpstan` drivers, v2 config, `qg` CLI, refusal, override token, agent guards | this plan | done | | 2026-10-18 | `main` `207a69a`; SC-1..SC-10 MET; 274 bats ok |
 | S2 | PHP drivers (phpmd, phpcs, pint, phpinsights, composer-dependency-analyser, phpunit, infection, jscpd-added, cloc) + recycling-api rows with a hand-written `why` each + `quality/bin/in-tree.sh` reads the staged `composer.lock`; operator makes the migration commit | `/v-team ~/workspace/vault-quality-gates/vault/plans/2026-10-18-1121-qg-common-interface.md#S2` | todo | S1 | | |
 | S3 | web drivers (eslint, nuxt typecheck, knip, depcruise, fallow, vitest, stryker) + app.givore.com and dashboard.givore.com rows; one `jscpd-added` and one `eslint` driver replace the copies; gate dashboard `master` and `development`; operator makes the migration commits | `/v-team …#S3` | todo | S1 | | |
 | S4 | Flutter drivers (dart analyze + givore lint runner, flutter analyze, dart format, dart_code_linter, layerlens, lakos, flutter test + lcov, mutation_test, copydetect, `grep-count`) + recycling_mobile_app rows; drop the `realse` alternative; operator makes the migration commit | `/v-team …#S4` | todo | S1 | | |
