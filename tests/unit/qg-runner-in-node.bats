@@ -220,6 +220,21 @@ tree_unchanged() {
     [ "$status" -eq 0 ] && [ -s "$LOG" ]
 }
 
+@test "either: a package folder pnpm did not install exits 2 naming it; pnpm's links run" {
+    cd "$MAIN"
+    mkdir -p node_modules/.pnpm/real-pkg node_modules/@scope
+    ln -s .pnpm/real-pkg node_modules/linked
+    ln -s ../.pnpm/real-pkg node_modules/@scope/linked
+    run "$R" "$TREE" "$WORK/cache" node_modules/.bin/tool
+    [ "$status" -eq 0 ]
+    : > "$LOG"
+    mkdir -p node_modules/stale node_modules/@nuxtjs/robots
+    run "$R" "$TREE" "$WORK/cache" node_modules/.bin/tool
+    [ "$status" -eq 2 ] && [ ! -s "$LOG" ]
+    [[ "$output" == *"  @nuxtjs/robots"* ]] && [[ "$output" == *"  stale"* ]]
+    [[ "$output" != *"  linked"* ]] && [[ "$output" != *"@scope"* ]]
+}
+
 @test "either: a used or HEAD lock missing or not v9 exits 2" {
     cd "$MAIN"
     edit node_modules/.pnpm/lock.yaml "s/^lockfileVersion: '9.0'/lockfileVersion: '6.0'/"

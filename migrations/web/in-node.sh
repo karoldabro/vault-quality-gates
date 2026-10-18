@@ -29,8 +29,8 @@
 # HEAD:pnpm-lock.yaml; a package outside both closures never counts.
 #
 # Exit: <cmd>'s own exit code · 2 bad arguments, <tree> missing, node_modules or .nuxt missing, the
-# main .nuxt lacking eslint.config.mjs or tsconfig.app.json, a lock missing or not v9, or the tool
-# closure differing from HEAD's
+# main .nuxt lacking eslint.config.mjs or tsconfig.app.json, a lock missing or not v9, the tool
+# closure differing from HEAD's, or a top-level node_modules package that is a folder, not a pnpm link
 set -uo pipefail
 
 err() { echo "in-node.sh: $*" >&2; }
@@ -164,6 +164,21 @@ if [ -n "$changed" ]; then
     exit 2
 fi
 rm -f "$tmp_lock"
+
+# pnpm links every top-level package into .pnpm; a real folder there is a package no lock names,
+# and Nuxt loads it as readily as a locked one (a stale @nuxtjs/robots changed the typecheck count).
+stray=''
+for p in "$home"/node_modules/* "$home"/node_modules/@*/*; do
+    [ -e "$p" ] || [ -L "$p" ] || continue
+    case "${p#"$home"/node_modules/}" in @*/*) ;; @*) continue ;; esac
+    [ -L "$p" ] || stray+="${p#"$home"/node_modules/}"$'\n'
+done
+if [ -n "$stray" ]; then
+    err "packages in $home/node_modules that pnpm did not install:"
+    printf '%s' "$stray" | head -n 10 | sed 's/^/  /' >&2
+    err "fix: delete them, or run pnpm install in $home"
+    exit 2
+fi
 tmp_lock=''
 
 if [ "$event" = commit ]; then
