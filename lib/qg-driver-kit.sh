@@ -5,6 +5,10 @@
 # Contract: vault/architecture/qg-driver-contract.md. Keys: vault/architecture/qg-builtin-drivers.md.
 #
 # A repo driver under quality/drivers/ cannot source this file; it copies the contract's todo.sh.
+#
+# Results come back in globals the sourcing driver reads: QG_FILE_LIST, QG_PATH_LIST, QG_RC,
+# QG_ERROR, QG_COUNT.
+# shellcheck disable=SC2034
 
 # shellcheck source=qg-row.sh
 . "$(dirname "${BASH_SOURCE[0]}")/qg-row.sh"
