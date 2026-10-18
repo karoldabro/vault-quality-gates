@@ -161,9 +161,13 @@ final class Smell${i}Test extends TestCase
         \$this->assertTrue(true);
     }
 }"
-        # duplication: a copy of an existing service
-        sed "s/class KnowledgeRetriever/class QgParityCopy$i/; s/^namespace .*/namespace App\\\\QgParity;/" \
-            "$d/app/Services/Ai/KnowledgeRetriever.php" > "$d/app/QgParity/Copy$i.php"
+        # duplication: a copy of an existing service, in its own namespace so every name still resolves
+        sed "s/class KnowledgeRetriever/class QgParityCopy$i/" \
+            "$d/app/Services/Ai/KnowledgeRetriever.php" > "$d/app/Services/Ai/QgParityCopy$i.php"
+        # PHP Insights architecture: five trait declarations (Laravel preset: traits are prohibited)
+        { printf '<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\QgParity;\n\n'
+          for k in $(seq 1 5); do printf 'trait Probe%sx%s\n{\n    public function probe(): int\n    {\n        return %s;\n    }\n}\n\n' "$i" "$k" "$k"; done
+        } > "$d/app/QgParity/Traits$i.php"
         # baseline growth: one new entry per baseline
         printf '\n\t\t-\n\t\t\tmessage: '"'"'#^QG parity seed %s\\.$#'"'"'\n\t\t\tidentifier: qg.parity\n\t\t\tcount: 1\n\t\t\tpath: app/QgParity/Type%s.php\n' "$i" "$i" >> "$d/phpstan-baseline.neon"
         printf '\n\t\t-\n\t\t\tmessage: '"'"'#^QG parity seed %s\\.$#'"'"'\n\t\t\tidentifier: qg.parity\n\t\t\tcount: 1\n\t\t\tpath: ../app/QgParity/Type%s.php\n' "$i" "$i" >> "$d/quality/phpstan-strict-baseline.neon"
@@ -316,8 +320,11 @@ for id in $(awk -F'\t' 'NR > 1 && $0 !~ /^#/ { print $1 }' "$WORK/old/quality/ch
     for r in $RENAMED; do [ "${r%%=*}" = "$id" ] && nid="${r#*=}"; done
     oc="$(value old clean "$id")" o1="$(value old seed1 "$id")" o2="$(value old seed2 "$id")"
     n1="$(value new seed1 "$nid")" n2="$(value new seed2 "$nid")"
-    if ! num "$o1" || ! num "$n1" || ! num "$o2" || ! num "$n2" || [ "${oc%%/*}" = "${o1%%/*}" ]; then verdict=VACUOUS
-    elif [ "$nid" != "$id" ]; then verdict=NEW
+    # A renamed row's old value may legitimately not move (phpstan-errors reads an internal error as 0);
+    # its new side must measure on both seeds.
+    if [ "$nid" != "$id" ]; then
+        if num "$n1" && num "$n2"; then verdict=NEW; else verdict=VACUOUS; fi
+    elif ! num "$o1" || ! num "$n1" || ! num "$o2" || ! num "$n2" || [ "${oc%%/*}" = "${o1%%/*}" ]; then verdict=VACUOUS
     elif [ "$o1" = "$n1" ] && [ "$o2" = "$n2" ]; then verdict=SAME
     else verdict=DIFF; fi
     case "$verdict" in VACUOUS) worst=2 ;; DIFF) [ "$worst" -lt 1 ] && worst=1 ;; esac
