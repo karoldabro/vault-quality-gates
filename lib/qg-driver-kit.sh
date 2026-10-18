@@ -118,13 +118,16 @@ qg_added_only() {
 
 # qg_result <driver> <status> <metric json> <unit> <findings json file or -> <error text or ->
 qg_result() {
-    local findings='[]' err='null'
-    [ "$5" = - ] || findings="$(jq -c --arg t "${QG_TREE:-}" "${QG_JQ_NORM}"' map(.file |= norm($t))' "$5")"
+    local err='null' f="${QG_OUT}/.findings.norm.json"
+    # Findings travel in a file: thousands of them exceed the argument size limit of one exec.
+    if [ "$5" = - ]; then printf '[]' > "$f"
+    else jq -c --arg t "${QG_TREE:-}" "${QG_JQ_NORM}"' map(.file |= norm($t))' "$5" > "$f"; fi
     [ "$6" = - ] || err="$(jq -n --arg e "$6" '$e')"
-    jq -n --arg d "$1" --arg s "$2" --argjson m "$3" --arg u "$4" --argjson f "$findings" --argjson e "$err" \
+    jq -n --arg d "$1" --arg s "$2" --argjson m "$3" --arg u "$4" --slurpfile f "$f" --argjson e "$err" \
         --arg r "qg run commit --only ${QG_ROW:-<id>}" \
-        '{schema: "qg.result/1", driver: $d, status: $s, metric: $m, unit: $u, findings: $f, error: $e, reproduce: $r}' \
+        '{schema: "qg.result/1", driver: $d, status: $s, metric: $m, unit: $u, findings: $f[0], error: $e, reproduce: $r}' \
         > "${QG_OUT}/result.json"
+    rm -f "$f"
 }
 
 # qg_fail <driver> <unit> <reason> -> result.json with status error and no metric.

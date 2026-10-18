@@ -126,6 +126,14 @@ kit() { bash -c ". $KIT; $1"; }
     while read -r d; do [ ! -e "$d" ]; done < "$RUNLOG"
 }
 
+@test "qg_result writes 5000 findings, more than one exec's argument limit holds" {
+    jq -n '[range(5000) | {ruleId: "r", file: ("/app/app/F\(.).php"), line: 1, level: "error", message: ("a long message number \(.) " * 10), doc: null}]' > "$WORK/f.json"
+    run kit "qg_result d measured 5000 findings $WORK/f.json -"
+    [ "$status" -eq 0 ]
+    [ "$(jq '.findings | length' "$QG_OUT/result.json")" -eq 5000 ]
+    [ "$(jq -r '.findings[4999].file' "$QG_OUT/result.json")" = app/F4999.php ]
+}
+
 @test "qg_result maps finding paths into the tree and qg_need writes an error naming a missing key" {
     printf '[{"ruleId":"r","file":"/app/app/x.php","line":3,"level":"error","message":"m","doc":null}]' > "$WORK/f.json"
     run kit "qg_result d measured 1 findings $WORK/f.json -"
