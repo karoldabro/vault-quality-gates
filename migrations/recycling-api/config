@@ -1,0 +1,4 @@
+# Gate keys for vault-quality-gates (lib/qg-config.sh). Once this file is committed, VAULT.md's gate keys are no longer read.
+guard_commit_paths: app config routes database tests bootstrap composer.json composer.lock phpstan.neon phpstan-baseline.neon phpunit.xml quality
+guard_protected_paths: phpstan.neon phpmd.xml pint.json quality/phpmd-commit.xml quality/phpmd-commit-coupling.xml quality/phpstan-strict.neon quality/phpstan-tests.neon phpunit.xml quality/phpcs.xml quality/checks.tsv quality/rules.tsv quality/bin bin/checks docker-compose.yml .claude/settings.json VAULT.md quality/drivers quality/config quality/phpinsights.php quality/jscpd.json quality/composer-dependency-analyser.php quality/indication-checks.php infection.json5 docker-compose.override.yml compose.yaml compose.yml
+guard_measure_worktree: false

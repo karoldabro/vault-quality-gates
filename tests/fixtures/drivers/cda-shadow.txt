@@ -1,0 +1,85 @@
+
+[31mFound 26 shadow dependencies![0m
+[37m(those are used, but not listed as dependency in composer.json)[0m
+
+  • [33mdragonmantank/cron-expression[0m
+      [37me.g. [0mCron\CronExpression[37m in tests/Feature/Premium/EntitlementReconcileSweepTest.php:249[0m
+
+  • [33mext-ctype[0m
+      [37me.g. [0mctype_digit[37m in app/Console/Commands/ObservabilityUserRefCommand.php:31[0m (+ 10 more)
+
+  • [33mext-exif[0m
+      [37me.g. [0mexif_read_data[37m in app/Services/ImageMetadataExtractor.php:70[0m
+
+  • [33mext-fileinfo[0m
+      [37me.g. [0mFILEINFO_MIME_TYPE[37m in app/Jobs/ProcessImageUpload.php:126[0m (+ 11 more)
+
+  • [33mext-filter[0m
+      [37me.g. [0mFILTER_VALIDATE_BOOLEAN[37m in app/Http/Requests/Concerns/ValidatesDynamicScreenPayload.php:217[0m (+ 5 more)
+
+  • [33mext-gd[0m
+      [37me.g. [0mimagecolorallocate[37m in tests/Unit/Services/ImageOptimizerTest.php:253[0m (+ 18 more)
+
+  • [33mext-intl[0m
+      [37me.g. [0mLocale[37m in app/Services/Location/LocationRankService.php:158[0m (+ 2 more)
+
+  • [33mext-mbstring[0m
+      [37me.g. [0mmb_check_encoding[37m in tests/Unit/Constants/GrantedViaTest.php:63[0m (+ 111 more)
+
+  • [33mext-pdo[0m
+      [37me.g. [0mPDO[37m in config/database.php:61[0m (+ 4 more)
+
+  • [33mext-posix[0m
+      [37me.g. [0mposix_geteuid[37m in app/Services/Seo/SitemapPublisher.php:44[0m (+ 1 more)
+
+  • [33mext-simplexml[0m
+      [37me.g. [0msimplexml_load_string[37m in tests/Unit/Services/XmpPacketBuilderTest.php:114[0m (+ 1 more)
+
+  • [33mext-xmlreader[0m
+      [37me.g. [0mXMLReader[37m in app/Services/Seo/SitemapPublisher.php:391[0m (+ 1 more)
+
+  • [33mext-xmlwriter[0m
+      [37me.g. [0mXMLWriter[37m in app/Services/Seo/SitemapWriter.php:224[0m (+ 1 more)
+
+  • [33mintervention/image[0m
+      [37me.g. [0mIntervention\Image\Drivers\Gd\Driver[37m in app/Services/ImageOptimizer.php:68[0m (+ 9 more)
+
+  • [33mkreait/firebase-php[0m
+      [37me.g. [0mKreait\Firebase\Contract\Messaging[37m in app/Services/FcmBatchSender.php:24[0m (+ 15 more)
+
+  • [33mlaravel/prompts[0m
+      [37me.g. [0mLaravel\Prompts\form[37m in app/Console/Commands/CreateAnnouncementCommand.php:77[0m (+ 19 more)
+
+  • [33mmonolog/monolog[0m
+      [37me.g. [0mMonolog\Formatter\JsonFormatter[37m in app/Services/FailedRequestLogger.php:307[0m (+ 23 more)
+
+  • [33mnesbot/carbon[0m
+      [37me.g. [0mCarbon\Carbon[37m in app/Console/Commands/SendReEngagementNotificationsCommand.php:102[0m (+ 259 more)
+
+  • [33mramsey/uuid[0m
+      [37me.g. [0mRamsey\Uuid\Uuid[37m in app/Jobs/RecordUserActivityJob.php:80[0m (+ 10 more)
+
+  • [33msocialiteproviders/manager[0m
+      [37me.g. [0mSocialiteProviders\Manager\SocialiteWasCalled[37m in app/Providers/AppServiceProvider.php:123[0m
+
+  • [33msymfony/http-foundation[0m
+      [37me.g. [0mSymfony\Component\HttpFoundation\BinaryFileResponse[37m in app/Http/Controllers/ChatController.php:396[0m (+ 36 more)
+
+  • [33msymfony/http-kernel[0m
+      [37me.g. [0mSymfony\Component\HttpKernel\Exception\AccessDeniedHttpException[37m in app/Http/Controllers/MediaMetadataController.php:62[0m (+ 13 more)
+
+  • [33msymfony/mailer[0m
+      [37me.g. [0mSymfony\Component\Mailer\Envelope[37m in tests/Feature/Notifications/ProfileEmailFixture.php:180[0m (+ 9 more)
+
+  • [33msymfony/mime[0m
+      [37me.g. [0mSymfony\Component\Mime\Email[37m in app/Notifications/EngagementAlertNotification.php:212[0m (+ 1 more)
+
+  • [33msymfony/var-dumper[0m
+      [37me.g. [0mdump[37m in tests/Traits/AssertsQueryCount.php:39[0m (+ 1 more)
+
+  • [33mzircote/swagger-php[0m
+      [37me.g. [0mOpenApi\Attributes\AdditionalProperties[37m in app/Http/Resources/ImageResource.php:35[0m (+ 4531 more)
+
+
+[37m(scanned[0m 2494 [37mfiles in[0m 3.801 [37ms)[0m
+

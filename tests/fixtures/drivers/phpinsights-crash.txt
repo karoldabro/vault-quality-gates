@@ -1,0 +1,13 @@
+
+In InsightCollectionFactory.php line 52:
+                                                
+  The "/tmp/qg/nope" directory does not exist.  
+                                                
+
+In Finder.php line 648:
+                                                
+  The "/tmp/qg/nope" directory does not exist.  
+                                                
+
+analyse [-c|--config-path [CONFIG-PATH]] [-s|--summary] [--min-quality [MIN-QUALITY]] [--min-complexity [MIN-COMPLEXITY]] [--min-architecture [MIN-ARCHITECTURE]] [--min-style [MIN-STYLE]] [--disable-security-check] [--format FORMAT] [--composer [COMPOSER]] [--fix] [--flush-cache] [--] [<paths>...]
+

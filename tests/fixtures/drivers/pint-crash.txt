@@ -1,0 +1,21 @@
+
+In ConfigurationResolver.php line 409:
+                                                                          
+  [PhpCsFixer\ConfigurationException\InvalidConfigurationException (16)]  
+  The path "/tmp/qg/Nope.php" is not readable.                            
+                                                                          
+
+Exception trace:
+  at phar:///app/vendor/laravel/pint/builds/pint/vendor/friendsofphp/php-cs-fixer/src/Console/ConfigurationResolver.php:409
+ PhpCsFixer\Console\ConfigurationResolver::{closure:PhpCsFixer\Console\ConfigurationResolver::getPath():397}() at n/a:n/a
+ array_map() at phar:///app/vendor/laravel/pint/builds/pint/vendor/friendsofphp/php-cs-fixer/src/Console/ConfigurationResolver.php:396
+ PhpCsFixer\Console\ConfigurationResolver->getPath() at phar:///app/vendor/laravel/pint/builds/pint/vendor/friendsofphp/php-cs-fixer/src/Console/ConfigurationResolver.php:935
+ PhpCsFixer\Console\ConfigurationResolver->resolveFinder() at phar:///app/vendor/laravel/pint/builds/pint/vendor/friendsofphp/php-cs-fixer/src/Console/ConfigurationResolver.php:551
+ PhpCsFixer\Console\ConfigurationResolver->getFinder() at phar:///app/vendor/laravel/pint/builds/pint/app/Factories/ConfigurationResolverFactory.php:81
+ App\Factories\ConfigurationResolverFactory::fromIO() at phar:///app/vendor/laravel/pint/builds/pint/app/Actions/FixCode.php:48
+ App\Actions\FixCode->execute() at phar:///app/vendor/laravel/pint/builds/pint/app/Commands/DefaultCommand.php:74
+ App\Commands\DefaultCommand->handle() at phar:///app/vendor/laravel/pint/builds/pint/app/Providers/CommandsServiceProvider.php:30
+ App\Providers\CommandsServiceProvider->{closure:App\Providers\CommandsServiceProvider::register():29}() at n/a:n/a
+ call_user_func() at phar:///app/vendor/laravel/pint/builds/pint/vendor/illuminate/container/Container.php:463
+ Illuminate\Container\Container->callMethodBinding() at phar:///app/vendor/laravel/pint/builds/pint/vendor/illuminate/container/BoundMethod.php:93
+ Illum

@@ -1,0 +1,1 @@
+{"totals":{"errors":1,"warnings":0,"fixable":0},"files":{"Bad.php":{"errors":1,"warnings":0,"messages":[{"message":"Unused variable $unused.","source":"SlevomatCodingStandard.Variables.UnusedVariable.UnusedVariable","severity":5,"fixable":false,"type":"ERROR","line":4,"column":31}]}}}

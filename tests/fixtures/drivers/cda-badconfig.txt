@@ -1,0 +1,3 @@
+
+[31mInvalid config path given, /tmp/qg/none.php is not a file.[0m
+

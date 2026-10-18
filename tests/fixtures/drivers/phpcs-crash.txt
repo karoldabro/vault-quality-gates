@@ -1,0 +1,4 @@
+ERROR: The file "/tmp/qg/Nope.php" does not exist.
+
+Run "phpcs --help" for usage information
+

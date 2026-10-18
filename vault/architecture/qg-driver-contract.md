@@ -10,10 +10,10 @@ tags: [quality, gates, contract, drivers]
 
 A driver is one executable that wraps one tool. The engine (`bin/guard.sh`) calls it with three
 subcommands and reads one file it writes, `result.json`. The driver measures; the engine judges.
-`drivers/phpstan.sh` is the worked example: copy it when you write a new driver.
+The built-in drivers and their keys are listed in `vault/architecture/qg-builtin-drivers.md`; they
+share `lib/qg-driver-kit.sh`. A repo driver cannot source that file: copy the `todo.sh` example below.
 
-The decision behind this contract is `vault/decisions/ADR-001-driver-contract.md`. The row that
-names a driver is defined in `vault/architecture/guard-file-formats.md`.
+Decision: `vault/decisions/ADR-001-driver-contract.md`. Row format: `vault/architecture/guard-file-formats.md`.
 
 ## Where a driver lives
 
@@ -66,6 +66,7 @@ nothing.
 | `QG_TREE` | the directory to measure; see the next paragraph |
 | `QG_CACHE` | `<git-common-dir>/guard-cache`, kept between runs for tool caches |
 | `QG_RUNNER` | the path of a copy of the committed runner; set only when `args` holds `runner=` |
+| `QG_RUN_DIR` | a directory the engine creates for one invocation and deletes at exit, for reports rows share |
 
 **`QG_TREE` is the only directory a driver measures.** Under `commit` it is
 `<git-common-dir>/guard-tree` when the gate prepared the staged-tree copy. Otherwise it is the
@@ -79,7 +80,7 @@ QG_ARGS := [key=value ...] [-- <extra argv>]
 
 Words before the first ` -- ` are `key=value` pairs, split on whitespace, so a value holds no
 space. The text after the first ` -- ` is extra argv for the tool. An args cell of `-` carries no
-key and no argv. Copy `kv` and `extra` from `drivers/phpstan.sh` to read them.
+key and no argv. A repo driver reads them with the `kv` function of the `todo.sh` example below.
 
 | reserved key | meaning |
 |---|---|
@@ -107,9 +108,9 @@ after the runner returns. A report path under `QG_OUT` does not exist inside a c
 | `error` | string or null | the reason the tool could not measure; `null` when `status` is `measured` |
 | `reproduce` | string or null | a command that reruns this measurement, such as `qg run commit --only <id>` |
 
-The refusal and `bin/guard-report-errors.sh` print each finding as `<file>:<line> <ruleId>
-<message>`. `qg explain` prints the first 10. Write a finding with `file: null` for an error the
-tool reports without a file, such as a boot failure.
+`bin/guard-report-errors.sh` prints each finding as `<id> <file>:<line> <ruleId> <message>`, at most
+10 per row, in the commit refusal, the push refusal and `qg explain`. Write a finding with
+`file: null` for an error the tool reports without a file, such as a boot failure.
 
 ## Who decides pass or fail
 
@@ -196,5 +197,4 @@ case "${1:-}" in
 esac
 ```
 
-The row that runs it, tab-separated: `todo-new commit diff todo ext=md down 0 refuse <why>`.
-Check it with `qg drivers todo` and `qg doctor` after a human commits it.
+The row that runs it: `todo-new commit diff todo ext=md down 0 refuse <why>`; check it with `qg doctor`.

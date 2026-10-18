@@ -25,7 +25,9 @@ guard_row_field() {
 # guard_args_kv <args> <key> -> the value of `key=value` before ` -- ` in a v2 args cell.
 # guard_args_argv <args> -> the text after the first ` -- `, or nothing.
 guard_args_kv() {
-    local head="$1" w
+    # Word splitting only: a value such as ignore=**/Docs/** must never expand against the cwd.
+    local - head="$1" w
+    set -f
     case "$head" in '-- '*) return 1 ;; *' -- '*) head="${head%% -- *}" ;; esac
     for w in $head; do
         case "$w" in "$2="*) printf '%s' "${w#*=}"; return 0 ;; esac

@@ -1,0 +1,25 @@
+{
+    "version": "@package_version@",
+    "package": "phpmd",
+    "timestamp": "2026-10-18T12:42:17+00:00",
+    "files": [
+        {
+            "file": "\/tmp\/qg\/Bad.php",
+            "violations": [
+                {
+                    "beginLine": 4,
+                    "endLine": 6,
+                    "package": "App\\Qg",
+                    "function": null,
+                    "class": "Bad",
+                    "method": "f",
+                    "description": "Avoid using short method names like Bad::f(). The configured minimum method name length is 3.",
+                    "rule": "ShortMethodName",
+                    "ruleSet": "Naming Rules",
+                    "externalInfoUrl": "https:\/\/phpmd.org\/rules\/naming.html#shortmethodname",
+                    "priority": 3
+                }
+            ]
+        }
+    ]
+}
