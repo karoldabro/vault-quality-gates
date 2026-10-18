@@ -26,6 +26,8 @@
 # clones could not be built. A row that could not be measured is never reported as SAME.
 set -uo pipefail
 export LC_ALL=C
+# No tool this script starts may read the caller's stdin: gate.sh feeds its remaining criteria there.
+exec < /dev/null
 
 NEW_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OLD_ROOT="${QG_PARITY_OLD_ENGINE:-$HOME/workspace/vault-quality-gates}"
