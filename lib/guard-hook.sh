@@ -4,16 +4,25 @@
 
 . "$(dirname "${BASH_SOURCE[0]}")/guard-pass.sh"
 
-# guard_override_used <what> -> 0 when a human override is honoured; logs it. Missing
+# guard_override_used <what> [<commit|push> <binding>...] -> 0 when a human override is honoured;
+# logs it and sets GUARD_OVERRIDE_REASON. Two forms: QG_SKIP_REASON exported into this hook, or
+# the token `qg override` wrote for this exact tree (commit) or one of these shas (push). Missing
 # lib/guard-override.sh means no override.
 guard_override_used() {
-    local lib; lib="$(dirname "${BASH_SOURCE[0]}")/guard-override.sh"
+    local lib what="$1"; lib="$(dirname "${BASH_SOURCE[0]}")/guard-override.sh"
+    shift
     [ -r "$lib" ] || return 1
     # shellcheck source=guard-override.sh
     . "$lib" || return 1
-    guard_override_allowed || return 1
-    guard_override_log "$1"
-    printf 'vault-guard: override honoured and logged: %s\n' "${QG_SKIP_REASON}" >&2
+    if guard_override_allowed; then
+        GUARD_OVERRIDE_REASON="$QG_SKIP_REASON"
+    elif [ $# -gt 0 ] && declare -F qg_override_take >/dev/null && qg_override_take "$@"; then
+        GUARD_OVERRIDE_REASON="$QG_OVERRIDE_REASON"
+    else
+        return 1
+    fi
+    guard_override_log "$what"
+    printf 'vault-guard: override honoured and logged: %s\n' "$GUARD_OVERRIDE_REASON" >&2
     return 0
 }
 
@@ -32,8 +41,8 @@ guard_commit_hook() {
         guard_pass_write "$key" ok || printf 'vault-guard: pass record not written; pre-push will ask for guard.sh verify\n' >&2
         return 0
     fi
-    if guard_override_used "${hook}: guard.sh commit exited ${rc}"; then
-        guard_pass_write "$key" "override ${QG_SKIP_REASON}"
+    if guard_override_used "${hook}: guard.sh commit exited ${rc}" commit "$(git write-tree 2>/dev/null)"; then
+        guard_pass_write "$key" "override ${GUARD_OVERRIDE_REASON}"
         return 0
     fi
     return 1

@@ -70,7 +70,7 @@ report() {
     git add reports
     run bash /code/bin/guard.sh commit
     [ "$status" -eq 1 ]
-    [[ "$output" == *'vault-guard: the staged commit refused'* ]]
+    [[ "$output" == *'vault-guard: the staged commit was refused'* ]]
     [[ "$output" == *"${REFUSE_LINE}"* ]]
     [[ "$output" == *'vault-guard: warnings (these alone would not refuse the commit)'$'\n\n'"${WARN_LINE}"* ]]
     [[ "$output" != *"${WARN_HEADING}"* ]]

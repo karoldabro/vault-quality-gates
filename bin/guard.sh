@@ -168,26 +168,10 @@ guard_render_report() {
 }
 
 guard_refusal() {
-    local ref="$1" line id value base status detail worse=0 bad=0
-    printf '\nvault-guard: push refused to %s\n\n' "$ref" >&2
-    for line in "${GUARD_RESULTS[@]:-}"; do
-        [ -n "$line" ] || continue
-        IFS='|' read -r id value base status detail <<<"$line"
-        case "$status" in
-            worse)
-                printf '  %-22s %s -> %s   %s\n' "$id" "$base" "$value" "$detail" >&2
-                worse=$((worse + 1)) ;;
-            unmeasurable)
-                printf '  %-22s could not measure\n' "$id" >&2
-                printf '  %-22s %s\n' '' "$detail" >&2
-                bad=$((bad + 1)) ;;
-        esac
-    done
-    printf '\n%d worse, %d unmeasurable.\n\n' "$worse" "$bad" >&2
-    [ "$worse" -eq 0 ] || printf 'Fix each worse metric in the code, commit, and push again.\n' >&2
-    [ "$bad" -eq 0 ] || printf 'For a metric that could not be measured, start the service or tool named above; if you cannot, stop and report it to the operator.\n' >&2
-    printf 'Never edit quality/baseline.tsv, quality/checks.tsv or VAULT.md to pass: the gate refuses a looser baseline.\n' >&2
-    printf 'Measure again without pushing: GUARD_SHA=%s %s release\n\n' "$(git rev-parse --short "${GUARD_SHA:-HEAD}" 2>/dev/null)" "${GUARD_BIN_DIR}/guard.sh" >&2
+    local ref="$1" findings
+    findings="Never edit quality/baseline.tsv, quality/checks.tsv, quality/config or VAULT.md to pass: the gate refuses a looser baseline."
+    findings+=$'\n'"Measure again without pushing: GUARD_SHA=$(git rev-parse --short "${GUARD_SHA:-HEAD}" 2>/dev/null) ${GUARD_BIN_DIR}/guard.sh release ${ref}"
+    qg_print_refusal push "$ref" "$findings"
 }
 
 # guard_release_tree_matches -> 1 with the reason when `guard_measure_worktree: false` would

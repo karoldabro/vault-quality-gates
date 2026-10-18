@@ -24,6 +24,65 @@ _guard_override_field() {
     printf '%s' "$1" | tr '\t\n\r' '   '
 }
 
+# --- the one-shot token `qg override` writes -----------------------------------------------
+# <git-common-dir>/qg-override holds one tab-separated line:
+#   <reason> <user> <epoch> <commit|push> <binding>
+# binding is `git write-tree` of the index for a commit token, or the full pushed sha for a push
+# token. The hook consumes it only when guard_override_allowed passes in the hook's own process,
+# so a token an agent writes, or one consumed by an agent's commit, never passes. It is valid
+# for QG_OVERRIDE_TTL seconds and is deleted on use.
+QG_OVERRIDE_TTL=600
+
+qg_override_file() { printf '%s/qg-override' "$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"; }
+
+# qg_override_write <reason> [--push <sha>] -> 0 and the token written; 1 with the reason on
+# stderr when the override is not allowed here.
+qg_override_write() {
+    local reason="$1" kind=commit binding
+    if [ "${2:-}" = --push ]; then
+        kind=push
+        binding="$(git rev-parse -q --verify "${3:-}^{commit}" 2>/dev/null)" || { printf 'qg override: --push needs a commit, got "%s"\n' "${3:-}" >&2; return 1; }
+    else
+        binding="$(git write-tree 2>/dev/null)" || { printf 'qg override: cannot read the index\n' >&2; return 1; }
+    fi
+    if ! guard_override_allowed "$reason"; then
+        printf 'qg override: refused. It needs a reason, a terminal (/dev/tty), and no CLAUDECODE or AI_AGENT in the environment.\n' >&2
+        return 1
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\n' "$(_guard_override_field "$reason")" "$(_guard_override_field "${USER:-$(id -un 2>/dev/null)}")" \
+        "$(date +%s)" "$kind" "$binding" > "$(qg_override_file)"
+    printf 'qg override: the next %s of %s goes through once, within %d minutes.\n' "$kind" "${binding:0:12}" $((QG_OVERRIDE_TTL / 60))
+}
+
+# qg_override_take <commit|push> <binding>... -> 0 and QG_OVERRIDE_REASON set when the token
+# matches one binding; 1 otherwise, naming on stderr why a present token was ignored.
+qg_override_take() {
+    local kind="$1" file reason user epoch tkind tbind extra now b why=''
+    shift
+    file="$(qg_override_file)"
+    [ -r "$file" ] || return 1
+    IFS=$'\t' read -r reason user epoch tkind tbind extra < "$file"
+    now="$(date +%s)"
+    if [ -n "${extra:-}" ] || [ -z "${tbind:-}" ] || ! [[ "${epoch:-}" =~ ^[0-9]+$ ]]; then why='it is malformed'
+    elif [ "$epoch" -gt "$now" ]; then why='its time is in the future'
+    elif [ $((now - epoch)) -gt "$QG_OVERRIDE_TTL" ]; then why="it is older than $((QG_OVERRIDE_TTL / 60)) minutes"
+    elif [ "$tkind" != "$kind" ]; then why="it was written for a ${tkind}, not a ${kind}"
+    elif ! guard_override_allowed "$reason"; then why='this run is not a human at a terminal (CLAUDECODE, AI_AGENT, or no /dev/tty)'
+    else
+        why="it names ${tbind:0:12}, which is not what is being ${kind/commit/committ}ed"
+        for b in "$@"; do
+            if [ "$b" = "$tbind" ]; then
+                rm -f "$file"
+                QG_OVERRIDE_REASON="$reason"
+                return 0
+            fi
+        done
+    fi
+    case "$why" in *malformed*|*older*|*future*) rm -f "$file" ;; esac
+    printf 'vault-guard: the qg override token was ignored: %s.\n' "$why" >&2
+    return 1
+}
+
 guard_override_log() {
     local common head staged user
     common="$(git rev-parse --git-common-dir 2>/dev/null)" || return 1
@@ -35,6 +94,6 @@ guard_override_log() {
         "$(_guard_override_field "$user")" \
         "$head" \
         "$(_guard_override_field "${staged% }")" \
-        "$(_guard_override_field "${QG_SKIP_REASON-}")" \
+        "$(_guard_override_field "${QG_SKIP_REASON-${QG_OVERRIDE_REASON-}}")" \
         "$(_guard_override_field "${1-}")" >> "$common/guard-bypass.log"
 }

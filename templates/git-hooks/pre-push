@@ -53,7 +53,10 @@ if [ "${#shas[@]}" -gt 0 ]; then
         done <<<"$unrecorded"
         printf '\nMeasure them and record the passes, then push again:\n  %s verify %s --not --remotes\n\n' \
             "$GUARD" "${shas[*]}" >&2
-        guard_override_used "pre-push to ${REMOTE_NAME}: $(wc -l <<<"$unrecorded") unrecorded commits" || exit 1
+        guard_override_used "pre-push to ${REMOTE_NAME}: $(wc -l <<<"$unrecorded") unrecorded commits" push "${shas[@]}" || {
+            printf 'A human at a terminal may pass these once: qg override --reason "<why>" --push <sha>, then push again.\n' >&2
+            exit 1
+        }
     fi
 fi
 guard_print_bypass_log

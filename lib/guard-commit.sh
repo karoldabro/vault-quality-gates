@@ -190,25 +190,17 @@ guard_commit_warnings() {
 }
 
 guard_commit_refusal() {  # guard_commit_refusal <target> <config dir>
-    local target="$1" cfg="$2" line id value base status detail ids='' prc=0
-    [ "$target" = ':index' ] && target='the staged commit'
-    printf '\nvault-guard: %s refused\n\n' "$target" >&2
+    local cfg="$2" line id status ids='' findings='' prc=0
     for line in "${GUARD_RESULTS[@]:-}"; do
-        IFS='|' read -r id value base status detail <<<"$line"
-        case "$status" in
-            worse)        printf '  %-20s measured %s (%s)\n' "$id" "$value" "$detail" >&2; ids+="$id " ;;
-            unmeasurable) printf '  %-20s could not measure: %s\n' "$id" "$detail" >&2; ids+="$id " ;;
-        esac
+        IFS='|' read -r id _ _ status _ <<<"$line"
+        case "$status" in worse|unmeasurable) [ -n "${QG_BUILTIN_WHY[$id]:-}" ] || ids+="$id " ;; esac
     done
-    case " $ids " in *' baseline-loosened '*|*' gate-config-deleted '*)
-        printf '  Restore them: git checkout HEAD -- quality/baseline.tsv quality/checks.tsv quality/rules.tsv. A tighter baseline value is allowed; a looser one never.\n' >&2 ;;
-    esac
-    ids="$(printf '%s' "$ids" | tr ' ' '\n' | grep -vxE 'baseline-loosened|gate-config-deleted|' | tr '\n' ' ')"
-    printf '\n' >&2
-    [ -z "${ids// /}" ] || "${GUARD_BIN_DIR}/guard-report-errors.sh" --rows "${ids% }" --tree "${GUARD_TREE_DIR:--}" \
-        --map "$cfg/rules.tsv" --checks "$cfg/checks.tsv" --bases "$GUARD_BASES" --target "$GUARD_TARGET" >&2 || prc=$?
-    [ "$prc" -eq 0 ] || printf 'vault-guard: quality/rules.tsv is unreadable; the lines above carry no catalog pointer\n' >&2
-    printf '\nFix the code. Never bypass the hook; only a human at a terminal may override once, with QG_SKIP_REASON.\n\n' >&2
+    if [ -n "${ids// /}" ]; then
+        findings="$("${GUARD_BIN_DIR}/guard-report-errors.sh" --rows "${ids% }" --tree "${GUARD_TREE_DIR:--}" \
+            --map "$cfg/rules.tsv" --checks "$cfg/checks.tsv" --bases "$GUARD_BASES" --target "$GUARD_TARGET")" || prc=$?
+        [ "$prc" -eq 0 ] || findings+=$'\n''vault-guard: quality/rules.tsv is unreadable; the findings carry no catalog pointer'
+    fi
+    qg_print_refusal commit - "$findings"
 }
 
 # guard_verify <rev-list args...> -> measures each commit against its own parents and writes

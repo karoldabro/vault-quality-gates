@@ -13,6 +13,8 @@ export LC_ALL=C
 
 # shellcheck source=qg-events.sh
 . "$(dirname "${BASH_SOURCE[0]}")/qg-events.sh"
+# shellcheck source=qg-refusal.sh
+. "$(dirname "${BASH_SOURCE[0]}")/qg-refusal.sh"
 
 GUARD_CHECKS_HEADER=$'id\tscope\tkind\tcommand\tparser\tartifact\tdirection\tthreshold\tgate'
 GUARD_CHECKS_HEADER_V2=$'id\ton\tkind\tdriver\targs\tdirection\tthreshold\tgate\twhy'
