@@ -15,7 +15,13 @@ NEEDLES = ('.git/hooks', '.git/config', 'guard-pass', 'guard_pass', 'guard-bypas
            'guard-cache', 'guard_cache', 'hookspath', 'send-pack', 'http-push', 'receive-pack', 'receivepack', 'fast-import',
            'fsmonitor', 'sshcommand', 'git_exec_path', 'git_config', 'qg_skip_reason', 'claudecode', 'ai_agent', '--no-veri',
            '.claude/settings', '.gitconfig', '.husky', '.huskyrc', 'config/husky', 'guard-stop', '.config/git/config', 'includeif', 'include.path',
-           'guard_skip', 'guard_config_rev', 'guard_config_pin', 'guard_config_at')
+           'guard_skip', 'guard_config_rev', 'guard_config_pin', 'guard_config_at', 'guard_only',
+           'qg-override', 'qg_override', 'qg-last', 'qg_last')
+QG_SH = os.path.join(PLUGIN, 'bin', 'qg')
+# What an agent may run through qg: reads, and the gate itself. Everything else changes the gate.
+QG_READS = {'help', '-h', '--help', 'list', 'explain', 'last', 'drivers', 'doctor', 'run', 'report', 'verify', 'config'}
+# Repo paths that judge the next commit: a write to them is the human's, through the override.
+GATE_FILES = ('quality/drivers', 'quality/config')
 # The gate reads these from its environment; a value an agent sets would steer which rows run or which config judges.
 GATE_VAR = re.compile(r'(GUARD|QG)_\w*\Z')
 PLUGIN_RE = re.compile('(%s)(/|\\Z)' % '|'.join(re.escape(p.lower()) for p in {PLUGIN, RAW_PLUGIN}))
@@ -62,6 +68,7 @@ class Deny(Exception):
 class Ctx:
     def __init__(self, cwd):
         self.cwd, self.origin, self.written, self.flags, self.repo = cwd, cwd, set(), set(), repo_root(cwd)
+        self.gitdirs = None
         self.seg, self.remote = {'words': [], 'redirs': [], 'heredoc': ''}, False
 
 
@@ -106,9 +113,30 @@ def protected(tok, ctx):
         p = os.path.realpath(os.path.join(ctx.cwd, c))
         if needle(p) or p == PLUGIN or p.startswith(PLUGIN + '/') or p.startswith(INSTALLED + '/'):
             return True
-        if os.path.basename(p) == '.git' and not in_tmp_elsewhere(p, ctx):
+        # The current repo's own git dir and common dir, wherever they live; then any other .git,
+        # except a scratch repo under the temp dir.
+        if any(p == d or p.startswith(d + '/') for d in git_dirs(ctx)):
+            return True
+        if in_tmp_elsewhere(p, ctx):
+            continue
+        if os.path.basename(p) == '.git':
+            return True
+        root = repo_root(os.path.dirname(p))
+        if root and p.startswith(root + '/') and any(p[len(root) + 1:] == g or p[len(root) + 1:].startswith(g + '/') for g in GATE_FILES):
             return True
     return False
+
+
+def git_dirs(ctx):
+    """The git dir and common dir of the cwd's repo, resolved once: a write anywhere inside them is denied."""
+    if ctx.gitdirs is None:
+        try:
+            out = subprocess.run(['git', '-C', ctx.origin, 'rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir'],
+                                 capture_output=True, text=True, timeout=5).stdout
+        except (OSError, subprocess.SubprocessError):
+            out = ''
+        ctx.gitdirs = {os.path.realpath(d) for d in out.split('\n') if d}
+    return ctx.gitdirs
 
 
 def check_var(name, value, ctx):
@@ -305,12 +333,16 @@ def read_script(path, ctx):
 
 
 def protected_prefixes(repo):
-    try:
-        vault = subprocess.run(['git', '-C', repo, 'show', 'HEAD:VAULT.md'], capture_output=True, text=True, timeout=5).stdout
-    except (OSError, subprocess.SubprocessError):
-        return []
-    m = re.search(r'^guard_protected_paths:[ \t]*(.*)$', vault, re.M)
-    return m.group(1).split() if m else []
+    # The gate's own rule (lib/qg-config.sh): quality/config when committed, else VAULT.md; never both.
+    for src in ('quality/config', 'VAULT.md'):
+        try:
+            r = subprocess.run(['git', '-C', repo, 'show', f'HEAD:{src}'], capture_output=True, text=True, timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            return []
+        if r.returncode == 0:
+            m = re.search(r'^guard_protected_paths:[ \t]*(.*)$', r.stdout, re.M)
+            return m.group(1).split() if m else []
+    return []
 
 
 def trusted_script(path, ctx):
@@ -409,6 +441,8 @@ def scan_program(w, ctx, depth, remote):
         return scan_joined(cmd, w, ctx, depth)
     if os.path.realpath(os.path.join(ctx.cwd, w[0])) == GUARD_SH and '/' in w[0]:
         return scan_guard(args)
+    if w[0] == 'qg' or ('/' in w[0] and os.path.realpath(os.path.join(ctx.cwd, w[0])) == QG_SH):
+        return scan_qg(args)
     if cmd in ('cd', 'pushd'):
         ctx.cwd = os.path.join(ctx.cwd, args[0]) if args and not args[0].startswith(('-', '+')) else ctx.cwd
         return
@@ -539,6 +573,14 @@ def scan_guard(args):
     ok = (args[:1] == ['verify'] and len(args) == 2) or args == ['report'] or args == ['hooks', 'status']
     if not ok:
         raise Deny('guard.sh ' + ' '.join(args) + ' changes the gate; an agent may run only verify <range>, report and hooks status')
+
+
+def scan_qg(args):
+    words = [a for a in args if a != '--json']
+    sub = words[0] if words else 'help'
+    if sub in QG_READS or words[:2] == ['hooks', 'status']:
+        return
+    raise Deny(f'qg {sub} changes the gate; an agent may run only {", ".join(sorted(QG_READS))} and hooks status')
 
 
 def scan_shell(args, w, ctx, depth, remote):

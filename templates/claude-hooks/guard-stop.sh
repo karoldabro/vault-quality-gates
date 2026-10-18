@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Claude Code Stop hook. Claude Code fires Stop at the end of every turn, not only at the end of
-# a session. When the turn ends in a repo whose committed VAULT.md names vault-quality-gates and
-# HEAD carries commits that are on no remote, this exits 2 and tells the agent to push, so the
+# a session. When the turn ends in a gated repo (its committed VAULT.md names vault-quality-gates,
+# or HEAD carries quality/checks.tsv and quality/rules.tsv) and HEAD carries commits that are on
+# no remote, this exits 2 and tells the agent to push, so the
 # pre-push hook runs the full gate while the agent is still there to fix what it refuses.
 #
 # It blocks at most once per turn (stop_hook_active) and at most GUARD_STOP_LIMIT times (default
@@ -24,7 +25,10 @@ active="${fields[0]:-0}" session="${fields[1]:--}" cwd="${fields[2]:-.}"
 [ "${active:-0}" = 1 ] && exit 0
 root="$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null)" || exit 0
 cd "$root" || exit 0
-git show HEAD:VAULT.md 2>/dev/null | grep -qE '^plugins:.*vault-quality-gates' || exit 0
+# Gated: VAULT.md names the plugin, or HEAD carries the gate's own files (a repo set up with qg init).
+git show HEAD:VAULT.md 2>/dev/null | grep -qE '^plugins:.*vault-quality-gates' \
+    || { git cat-file -e HEAD:quality/checks.tsv 2>/dev/null && git cat-file -e HEAD:quality/rules.tsv 2>/dev/null; } \
+    || exit 0
 
 n="$(git rev-list --count HEAD --not --remotes 2>/dev/null)" || exit 0
 [ "${n:-0}" -gt 0 ] || exit 0
@@ -53,16 +57,16 @@ vault-guard: ${n} commit(s) on ${branch:-a detached HEAD} are on no remote, and 
 Move them to a branch, then push that branch:
   git switch -c <type>/<slug>
   git push -u origin <type>/<slug>      (run with a 600000 ms timeout; the push gate takes up to 10 minutes)
-If the push is refused, fix the named rows in code, commit, and push again.
-Never edit quality/baseline.tsv, quality/checks.tsv or VAULT.md to make it pass.
+If the push is refused, fix the named rows in code, commit, and push again; qg explain <id> says how.
+Never edit quality/baseline.tsv, quality/checks.tsv, quality/config, quality/drivers/ or VAULT.md to make it pass.
 EOF
         ;;
     *)
         cat >&2 <<EOF
 vault-guard: ${n} commit(s) on ${branch} are on no remote. Push before you finish:
   git push -u origin ${branch}      (run with a 600000 ms timeout; the push gate takes up to 10 minutes)
-If the push is refused, fix the named rows in code, commit, and push again.
-Never edit quality/baseline.tsv, quality/checks.tsv or VAULT.md to make it pass.
+If the push is refused, fix the named rows in code, commit, and push again; qg explain <id> says how.
+Never edit quality/baseline.tsv, quality/checks.tsv, quality/config, quality/drivers/ or VAULT.md to make it pass.
 EOF
         ;;
 esac

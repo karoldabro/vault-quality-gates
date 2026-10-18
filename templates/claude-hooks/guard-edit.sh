@@ -40,7 +40,22 @@ def reason(path, cwd):
     for d in set(git_dirs(cwd) + git_dirs(os.path.dirname(ab))):
         if real == d or real.startswith(d + '/'):
             return 'it is inside the git directory'
+    top = git_top(os.path.dirname(ab))
+    if top and real.startswith(top + '/'):
+        rel = real[len(top) + 1:]
+        if rel == 'quality/config' or rel == 'quality/drivers' or rel.startswith('quality/drivers/'):
+            return 'it is gate configuration (quality/config or a repo driver) that judges the next commit; a human changes it'
     return None
+
+def git_top(start):
+    while start and not os.path.isdir(start):
+        start = os.path.dirname(start)
+    try:
+        out = subprocess.run(['git', '-C', start or '/', 'rev-parse', '--show-toplevel'],
+                             capture_output=True, text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return os.path.realpath(out) if out else None
 
 try:
     event = json.load(sys.stdin)
