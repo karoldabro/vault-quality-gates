@@ -70,12 +70,8 @@ case "${1:-}" in
                        message: ("failed: " + .[0]), doc: null}]' > "${QG_OUT}/findings.json"
             qg_result phpunit measured "$(( ${failures:-0} + ${errors:-0} ))" tests "${QG_OUT}/findings.json" -
         else
-            total="$(attr statements '/coverage/project/metrics' "$f")" covered="$(attr coveredstatements '/coverage/project/metrics' "$f")"
-            [ -n "$total" ] || { qg_fail phpunit percent "${report} has no /coverage/project/metrics"; exit 0; }
-            [[ "$total" =~ ^[0-9]{1,9}$ ]] && [[ "${covered:-0}" =~ ^[0-9]{1,9}$ ]] \
-                || { qg_fail phpunit percent "${report}: statements or coveredstatements is not a whole number"; exit 0; }
-            [ "$total" -gt 0 ] 2>/dev/null || { qg_fail phpunit percent "${report}: zero statements, nothing was measured"; exit 0; }
-            qg_result phpunit measured "$(awk -v c="${covered:-0}" -v t="$total" 'BEGIN { printf "%.2f", c / t * 100 }')" percent - -
+            qg_clover_percent "$report" || { qg_fail phpunit percent "$QG_ERROR"; exit 0; }
+            qg_result phpunit measured "$QG_PCT" percent - -
         fi ;;
     *)
         qg_usage phpunit ;;

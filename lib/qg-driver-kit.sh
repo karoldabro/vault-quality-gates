@@ -72,13 +72,24 @@ qg_tool() {
     return 0
 }
 
-# qg_shared_report <name> <producer function> -> $QG_OUT/<name> holds the report. Rows of one run
-# that measure the same target with the same args (metric= aside) share one tool run: the first
-# producer's file is kept in QG_RUN_DIR, written to a temporary name and moved into place whole.
-# Without QG_RUN_DIR the producer always runs. Returns the producer's status.
+# qg_shared_report <name> <producer function> [<key>...] -> $QG_OUT/<name> holds the report. Rows of
+# one run that measure the same target with the same args, the listed keys aside (default: metric),
+# share one tool run: the first producer's file is kept in QG_RUN_DIR, written to a temporary name and
+# moved into place whole. Without QG_RUN_DIR the producer always runs. Returns the producer's status.
 qg_shared_report() {
-    local name="$1" producer="$2" key file args
-    args="$(printf '%s' "${QG_ARGS:-}" | tr ' ' '\n' | grep -v '^metric=' | tr '\n' ' ')"
+    local name="$1" producer="$2" key file args head tail='' w k skip
+    shift 2
+    [ "$#" -gt 0 ] || set -- metric
+    # Only whole key=value words before ` -- ` are left out; the extra argv always counts.
+    head="${QG_ARGS:-}"
+    case "$head" in '-- '*) tail="$head"; head='' ;; *' -- '*) tail="-- ${head#* -- }"; head="${head%% -- *}" ;; esac
+    args=''
+    for w in $head; do
+        skip=''
+        for k in "$@"; do case "$w" in "$k="*) skip=1 ;; esac; done
+        [ -n "$skip" ] || args+="$w "
+    done
+    args+="$tail"
     if [ -n "${QG_RUN_DIR:-}" ] && [ -d "$QG_RUN_DIR" ]; then
         key="$(printf '%s\n%s\n%s' "${QG_TARGET:-}" "${QG_TREE:-}" "$args" | cksum | cut -d' ' -f1)"
         file="${QG_RUN_DIR}/${name}-${key}"
@@ -114,6 +125,83 @@ qg_added_only() {
     QG_COUNT="$(jq '[.[] | select(.counted)] | length' "$findings")"
     jq -c 'map(del(.counted))' "$findings" > "${findings}.n" && mv "${findings}.n" "$findings"
     rm -f "$added"
+}
+
+# qg_clover_percent <tree path of a Clover report> -> sets QG_PCT to covered over total statements of the
+# project as a percentage with two decimals. Returns 1 with QG_ERROR set when the report has no
+# project totals, holds a value that is not a whole number, or counts zero statements.
+qg_clover_percent() {
+    local f="${QG_TREE}/$1" total covered
+    [ -s "$f" ] || { QG_ERROR="coverage report $1 does not exist or is empty"; return 1; }
+    total="$(xmllint --xpath 'string(/coverage/project/metrics/@statements)' "$f" 2>/dev/null)"
+    covered="$(xmllint --xpath 'string(/coverage/project/metrics/@coveredstatements)' "$f" 2>/dev/null)"
+    [ -n "$total" ] || { QG_ERROR="$1 has no /coverage/project/metrics"; return 1; }
+    # Anyone can write the report; at most nine digits keeps the arithmetic exact.
+    [[ "$total" =~ ^[0-9]{1,9}$ ]] && [[ "${covered:-0}" =~ ^[0-9]{1,9}$ ]] \
+        || { QG_ERROR="$1: statements or coveredstatements is not a whole number"; return 1; }
+    [ "$total" -gt 0 ] || { QG_ERROR="$1: zero statements, nothing was measured"; return 1; }
+    QG_PCT="$(awk -v c="${covered:-0}" -v t="$total" 'BEGIN { printf "%.2f", c / t * 100 }')"
+}
+
+# qg_pnpm_prepare <empty work folder> -> fills QG_PNPM with the command that runs pnpm from that
+# folder with no inherited configuration: no environment variable but PATH and LANG, HOME and the XDG
+# config folder pointed at the work folder, empty user and global rc files, and the public registry.
+# The store and the dlx cache live under QG_CACHE, which agents may not write, so a second run needs
+# no network. Callers run "${QG_PNPM[@]}" through qg_tool with QG_TOOL_DIR set to the folder.
+qg_pnpm_prepare() {
+    local work="$1" store
+    store="${QG_CACHE:-$work}/pnpm"
+    mkdir -p "$store" || return 1
+    : > "${work}/.empty-rc"
+    printf 'registry=https://registry.npmjs.org/\nstore-dir=%s/store\ncache-dir=%s/cache\n' "$store" "$store" > "${work}/.npmrc"
+    printf 'packages: []\nstoreDir: %s/store\ncacheDir: %s/cache\n' "$store" "$store" > "${work}/pnpm-workspace.yaml"
+    QG_PNPM=(env -i "PATH=${PATH}" "LANG=${LANG:-C.UTF-8}" "HOME=${work}" "XDG_CONFIG_HOME=${work}"
+        "npm_config_userconfig=${work}/.empty-rc" "npm_config_globalconfig=${work}/.empty-rc" pnpm)
+}
+
+# qg_jscpd_report <driver> -> $QG_OUT/jscpd.json holds jscpd's JSON report over QG_PATH_LIST (call
+# qg_paths first). With bin= jscpd runs from the measured tree, through the runner when there is one.
+# Without it `pnpm dlx jscpd@<version>` runs: through the runner, or on the host from an empty folder
+# through qg_pnpm_prepare, scanning the tree by absolute path. Keys: bin config version min-lines
+# min-tokens format ignore, then -- <argv>. Returns 1 with QG_ERROR set.
+qg_jscpd_report() {
+    local version bin config v work='' out report rc=0
+    local -a argv opts=() scan=() cmd=()
+    version="$(qg_kv version)" || version=5.3.2
+    read -ra argv <<<"$(qg_argv)"
+    v="$(qg_kv min-lines)" && opts+=(--min-lines "$v")
+    v="$(qg_kv min-tokens)" && opts+=(--min-tokens "$v")
+    v="$(qg_kv format)" && opts+=(--format "$v")
+    v="$(qg_kv ignore)" && opts+=(--ignore "$v")
+    config="$(qg_kv config)" || config=''
+    if bin="$(qg_kv bin)"; then
+        cmd=("$bin")
+    elif [ -n "${QG_RUNNER:-}" ]; then
+        cmd=(pnpm dlx "jscpd@${version}")
+    else
+        # On the host jscpd runs from an empty folder: the commit's .npmrc, .jscpd.json and package.json
+        # are never read, and neither is any configuration of the person or process running the gate.
+        work="$(mktemp -d)" || { QG_ERROR='cannot create a work folder'; return 1; }
+        qg_pnpm_prepare "$work" || { rm -rf "$work"; QG_ERROR='cannot prepare the pnpm work folder'; return 1; }
+        cmd=("${QG_PNPM[@]}" dlx "jscpd@${version}")
+    fi
+    if [ -n "$work" ]; then
+        for v in "${QG_PATH_LIST[@]}"; do scan+=("${QG_TREE}/${v}"); done
+        [ -z "$config" ] || opts+=(-c "${QG_TREE}/${config}")
+        out="${work}/out"; report="${out}/jscpd-report.json"
+    else
+        # Run in the tree, through the runner or not: the report is written inside it and removed after.
+        scan=("${QG_PATH_LIST[@]}")
+        [ -z "$config" ] || opts+=(-c "$config")
+        out=".qg-jscpd-${QG_ROW:-row}"; report="${QG_TREE}/${out}/jscpd-report.json"
+        rm -rf "${QG_TREE:?}/${out}"
+    fi
+    QG_TOOL_DIR="${work:-$QG_TREE}" qg_tool - 0 "${cmd[@]}" "${scan[@]}" "${opts[@]}" \
+        --reporters json --output "$out" --silent --no-colors "${argv[@]}" || rc=1
+    if [ "$rc" -eq 0 ] && [ ! -s "$report" ]; then QG_ERROR="jscpd exited ${QG_RC} and wrote no report"; rc=1; fi
+    [ "$rc" -ne 0 ] || cp "$report" "${QG_OUT}/jscpd.json"
+    if [ -n "$work" ]; then rm -rf "$work"; else rm -rf "${QG_TREE:?}/${out}"; fi
+    return "$rc"
 }
 
 # qg_result <driver> <status> <metric json> <unit> <findings json file or -> <error text or ->

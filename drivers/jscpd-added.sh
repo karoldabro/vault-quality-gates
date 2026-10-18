@@ -2,10 +2,12 @@
 # jscpd driver for commits: clone sides that cover a line the commit adds. Contract:
 # vault/architecture/qg-driver-contract.md; keys: vault/architecture/qg-builtin-drivers.md.
 #
-# args:  [paths=<dir,dir>] [version=<jscpd version>] [min-lines=<n>] [min-tokens=<n>] [format=<f>]
-#        [ignore=<glob>] [include=<ERE>] [exclude=<ERE>] [runner=<repo path>] [-- <extra jscpd argv>]
+# args:  [paths=<dir,dir>] [version=<jscpd version>] [bin=<tree path>] [config=<tree path>]
+#        [min-lines=<n>] [min-tokens=<n>] [format=<f>] [ignore=<glob>] [include=<ERE>] [exclude=<ERE>]
+#        [runner=<repo path>] [-- <extra jscpd argv>]
 #   paths        default app; jscpd scans these directories of the measured tree
-#   version      default 5.3.2, run as `pnpm dlx jscpd@<version>`
+#   version      default 5.3.2, run as `pnpm dlx jscpd@<version>` when bin= is absent
+#   bin          an installed jscpd, run from the measured tree; config  passed as -c
 #   include, exclude  which added lines count; a commit adding none measures 0 without running jscpd
 #
 # metric = clone sides, each counted once, that lie in a changed file and cover an added line.
@@ -19,8 +21,8 @@ case "${1:-}" in
         printf '{"name":"jscpd-added","summary":"jscpd: duplicated blocks that cover lines the commit adds","requires":["jq","pnpm"],"needs_tree":true}\n' ;;
     explain)
         printf 'Finds copied blocks with jscpd and counts each copy that covers a line this commit adds. Extract the\n'
-        printf 'shared code into one method, trait or class. Keys: paths version min-lines min-tokens format ignore\n'
-        printf 'include exclude runner.\n' ;;
+        printf 'shared code into one method, trait or class. Keys: paths version bin config min-lines min-tokens format\n'
+        printf 'ignore include exclude runner.\n' ;;
     run)
         : "${QG_OUT:?}" "${QG_TREE:?}"
         qg_paths app
@@ -37,32 +39,7 @@ case "${1:-}" in
         ' "${QG_OUT}/added.all" > "${QG_OUT}/added"
         if [ ! -s "${QG_OUT}/added" ]; then qg_result jscpd-added measured 0 clones - -; exit 0; fi
 
-        version="$(qg_kv version)" || version=5.3.2
-        read -ra argv <<<"$(qg_argv)"
-        opts=()
-        v="$(qg_kv min-lines)" && opts+=(--min-lines "$v")
-        v="$(qg_kv min-tokens)" && opts+=(--min-tokens "$v")
-        v="$(qg_kv format)" && opts+=(--format "$v")
-        v="$(qg_kv ignore)" && opts+=(--ignore "$v")
-        if [ -z "${QG_RUNNER:-}" ]; then
-            # On the host jscpd runs from an empty folder, scanning the tree by absolute path, with the
-            # public npm registry: the commit's own .npmrc and .jscpd.json are never read.
-            work="$(mktemp -d)"; export QG_TOOL_DIR="$work"
-            scan=(); for p in "${QG_PATH_LIST[@]}"; do scan+=("${QG_TREE}/${p}"); done
-            out="${work}/out"; cmd=(env npm_config_registry=https://registry.npmjs.org/ pnpm)
-        else
-            # A runner sees only the tree, so the report is written inside it and removed after.
-            work=''; scan=("${QG_PATH_LIST[@]}"); out=".qg-jscpd-${QG_ROW:-row}"; cmd=(pnpm)
-            rm -rf "${QG_TREE:?}/${out}"
-        fi
-        report="$out/jscpd-report.json"; [ -n "$work" ] || report="${QG_TREE}/${report}"
-        cleanup() { if [ -n "$work" ]; then rm -rf "$work"; else rm -rf "${QG_TREE:?}/${out}"; fi; }
-        qg_tool - 0 "${cmd[@]}" dlx "jscpd@${version}" "${scan[@]}" "${opts[@]}" \
-            --reporters json --output "$out" --silent --no-colors "${argv[@]}" \
-            || { cleanup; qg_fail jscpd-added clones "$QG_ERROR"; exit 0; }
-        if [ ! -s "$report" ]; then cleanup; qg_fail jscpd-added clones "jscpd exited ${QG_RC} and wrote no report"; exit 0; fi
-        cp "$report" "${QG_OUT}/jscpd.json"
-        cleanup
+        qg_jscpd_report || { qg_fail jscpd-added clones "$QG_ERROR"; exit 0; }
 
         # Both sides of each clone, named relative to the tree: a single scanned directory may be
         # reported relative to itself.

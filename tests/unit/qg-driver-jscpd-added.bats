@@ -41,12 +41,14 @@ lines() { local i; for ((i = $1; i <= $2; i++)); do printf 'line %d\n' "$i"; don
 fake_pnpm() {
     cat > "$1" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "$FAKE_ARGV"
+# The driver runs pnpm with an empty environment, so the fake finds its files beside itself.
+w="$(cd "$(dirname "$0")/.." && pwd)"
+printf '%s\n' "$*" >> "$w/argv"
 out=''
 while [ $# -gt 0 ]; do [ "$1" = --output ] && out="$2"; shift; done
 [ -n "$out" ] || exit 9
-mkdir -p "$out" && cp "$FAKE_JSCPD" "$out/jscpd-report.json"
-printf '%s|%s|%s\n' "$PWD" "$out" "${npm_config_registry:-}" >> "$FAKE_SEEN"
+mkdir -p "$out" && cp "$w/jscpd.json" "$out/jscpd-report.json"
+printf '%s|%s|%s\n' "$PWD" "$out" "$(sed -n 's/^registry=//p' .npmrc 2>/dev/null)" >> "$w/seen"
 EOF
     chmod +x "$1"
 }
@@ -158,7 +160,7 @@ result() { jq -r "$1" "$QG_OUT/result.json"; }
 }
 
 @test "a jscpd that writes no report is status error, and the output dir is still removed" {
-    printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" >> "$FAKE_ARGV"' 'pwd > "$FAKE_SEEN"' 'exit 0' > "$WORK/path/pnpm"
+    printf '%s\n' '#!/usr/bin/env bash' 'w="$(cd "$(dirname "$0")/.." && pwd)"' 'printf "%s\n" "$*" >> "$w/argv"' 'pwd > "$w/seen"' 'exit 0' > "$WORK/path/pnpm"
     "$DRIVER" run > /dev/null
     [ -e "$FAKE_ARGV" ]
     [ "$(result .status)" = error ] && [ "$(result .metric)" = null ]
