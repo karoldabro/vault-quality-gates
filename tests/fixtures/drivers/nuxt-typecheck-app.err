@@ -1,0 +1,24 @@
+[Vue] Resolve plugin path failed: vue-router/volar/sfc-route-blocks Error [ERR_PACKAGE_PATH_NOT_EXPORTED]: Package subpath './volar/sfc-route-blocks' is not defined by "exports" in /home/kdabrow/workspace/app.givore.com/node_modules/vue-router/package.json
+    at exportsNotFound (node:internal/modules/esm/resolve:314:10)
+    at packageExportsResolve (node:internal/modules/esm/resolve:662:9)
+    at resolveExports (node:internal/modules/cjs/loader:685:36)
+    at Module._findPath (node:internal/modules/cjs/loader:752:31)
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1441:27)
+    at resolve (node:internal/modules/helpers:163:19)
+    at CompilerOptionsResolver.addConfig (/home/kdabrow/workspace/app.givore.com/node_modules/.pnpm/@vue+language-core@3.3.5/node_modules/@vue/language-core/lib/compilerOptions.js:122:59)
+    at Object.createParsedCommandLine (/home/kdabrow/workspace/app.givore.com/node_modules/.pnpm/@vue+language-core@3.3.5/node_modules/@vue/language-core/lib/compilerOptions.js:65:26)
+    at /home/kdabrow/workspace/app.givore.com/node_modules/.pnpm/vue-tsc@3.3.5_typescript@5.9.3/node_modules/vue-tsc/index.js:46:20
+    at Object.apply (/home/kdabrow/workspace/app.givore.com/node_modules/.pnpm/@volar+typescript@2.4.28/node_modules/@volar/typescript/lib/node/proxyCreateProgram.js:51:33) {
+  code: 'ERR_PACKAGE_PATH_NOT_EXPORTED'
+}
+
+ ERROR  Process exited with non-zero status (2)
+
+    at z._waitForOutput (/home/kdabrow/workspace/app.givore.com/node_modules/.pnpm/tinyexec@1.1.2/node_modules/tinyexec/dist/main.mjs:578:92)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async Object.run (/home/kdabrow/workspace/app.givore.com/node_modules/.pnpm/@nuxt+cli@3.35.2_@nuxt+schema@4.4.6_cac@6.7.14_magicast@0.5.3/node_modules/@nuxt/cli/dist/typecheck-DQJUWomH.mjs:36:52)
+    at async runCommand (/home/kdabrow/workspace/app.givore.com/node_modules/.pnpm/citty@0.2.2/node_modules/citty/dist/index.mjs:228:47)
+    at async runCommand (/home/kdabrow/workspace/app.givore.com/node_modules/.pnpm/citty@0.2.2/node_modules/citty/dist/index.mjs:217:5)
+    at async runMain (/home/kdabrow/workspace/app.givore.com/node_modules/.pnpm/citty@0.2.2/node_modules/citty/dist/index.mjs:394:10) 
+
+
