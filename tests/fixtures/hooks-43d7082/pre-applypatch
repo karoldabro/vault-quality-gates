@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# vault-guard-start
+# Runs the commit gate (guard.sh commit) on the index git is about to commit and refuses the
+# commit when a row is worse or unmeasurable. A pass writes the pass record pre-push checks.
+# Only a human at a terminal may override, with QG_SKIP_REASON; the override is logged.
+set -uo pipefail
+GUARD="__GUARD_SH__"
+# shellcheck source=../../lib/guard-hook.sh
+. "$(dirname "$GUARD")/../lib/guard-hook.sh" || { printf 'vault-guard: plugin lib missing; commit refused\n' >&2; exit 1; }
+guard_commit_hook pre-applypatch || exit 1
+exit 0
+# vault-guard-end

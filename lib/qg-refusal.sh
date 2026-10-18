@@ -58,7 +58,9 @@ qg_print_refusal() {
     done
     [ "${#ids[@]}" -gt 0 ] || return 0
     local head
-    if [ "$event" = push ]; then head="vault-guard: push refused to ${ref}"; else head='vault-guard: the staged commit was refused'; fi
+    if [ "$event" = push ] && [ "$ref" = '-' ]; then head='vault-guard: the push gate failed (run by hand, every push row)'
+    elif [ "$event" = push ]; then head="vault-guard: push refused to ${ref}"
+    else head='vault-guard: the staged commit was refused'; fi
     out="${head}"$'\n\n'"${out}"
     [ "$measured" -eq 1 ] || out+=$'\n''Nothing in your code was measured: every failing row could not run. The cause is the'$'\n''environment or a tool, not your change; the output below says what failed.'$'\n'
 

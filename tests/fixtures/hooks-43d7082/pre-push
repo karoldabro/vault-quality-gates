@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# vault-guard-start
+# Two checks, in order:
+#   1. Every pushed commit not yet on any remote must carry a pass record, written when the
+#      commit hooks passed it or by `guard.sh verify`. A cherry-pick, revert or scripted
+#      commit runs no pre-commit hook and has none. One unrecorded commit refuses the whole
+#      push, unless a human at a terminal overrides with QG_SKIP_REASON. Overrides logged
+#      since the last push are printed.
+#   2. Each pushed ref that matches guard_release_pattern is measured with `guard.sh release`;
+#      the push is refused when any is worse than quality/baseline.tsv, or loosens that file
+#      against the remote ref's old tip, also after an override of check 1.
+#
+# It reads EVERY stdin line before any exit. A hook that exits early leaves git
+# writing into a closed pipe: the writer dies with 141 while the hook reports 0,
+# so the push fails and nothing says why.
+#
+# GUARD_SHA is exported so guard.sh measures a detached worktree of the commit
+# being pushed, not the working directory. Uncommitted edits cannot move the gate.
+
+set -uo pipefail
+
+GUARD="__GUARD_SH__"
+REMOTE_NAME="${1:-}"
+ZERO='0000000000000000000000000000000000000000'
+
+pushed=()
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ -n "${remote_ref:-}" ] || continue
+    pushed+=("${local_ref} ${local_sha} ${remote_ref} ${remote_sha:-}")
+done
+
+# shellcheck source=../../lib/guard-hook.sh
+. "$(dirname "$GUARD")/../lib/guard-hook.sh" 2>/dev/null || {
+    printf 'vault-guard: %s has no lib/guard-hook.sh beside it; push refused rather than passed unchecked\n' "$GUARD" >&2
+    exit 1
+}
+
+shas=()
+for line in "${pushed[@]}"; do
+    read -r _ local_sha _ _ <<<"$line"
+    [ "$local_sha" = "$ZERO" ] || shas+=("$local_sha")   # a branch deletion pushes no commit
+done
+
+if [ "${#shas[@]}" -gt 0 ]; then
+    unrecorded="$(guard_push_unrecorded "${shas[@]}")"
+    if [ -n "$unrecorded" ]; then
+        printf '\nvault-guard: push refused, these commits never passed the commit gate:\n' >&2
+        while IFS= read -r c; do
+            printf '  %s\n' "$(git log -1 --format='%h %s' "$c" 2>/dev/null || printf '%s (cannot read)' "$c")" >&2
+        done <<<"$unrecorded"
+        printf '\nMeasure them and record the passes, then push again:\n  %s verify %s --not --remotes\n\n' \
+            "$GUARD" "${shas[*]}" >&2
+        guard_override_used "pre-push to ${REMOTE_NAME}: $(wc -l <<<"$unrecorded") unrecorded commits" || exit 1
+    fi
+fi
+guard_print_bypass_log
+
+# release_globs_of <sha> -> sets release_globs from guard_release_pattern in the VAULT.md of
+# the pushed commit, never the working tree: an uncommitted edit cannot un-gate a release push.
+globs_sha=''
+release_globs_of() {
+    local pattern
+    [ "$1" != "$globs_sha" ] || return 0
+    globs_sha="$1"
+    pattern="$(git show "${1}:VAULT.md" 2>/dev/null | sed -n 's/^guard_release_pattern:[[:space:]]*//p' | head -1)"
+    # Prettier escapes `*` in VAULT.md as `\*`; left in, the glob matches only a literal `*` and no
+    # release push is ever gated.
+    pattern="${pattern//\\/}"
+    if [ -z "$pattern" ]; then
+        pattern='refs/heads/release/*'
+        printf 'vault-guard: VAULT.md names no guard_release_pattern, using %s\n' "$pattern" >&2
+    fi
+    # `a|b` in a variable is one glob with a literal `|`, not a case alternation, so split it here.
+    IFS='|' read -ra release_globs <<< "$pattern"
+}
+
+is_release_ref() {
+    local glob
+    for glob in "${release_globs[@]}"; do
+        # shellcheck disable=SC2254
+        case "$1" in $glob) return 0 ;; esac
+    done
+    return 1
+}
+
+# baseline_base <local sha> <remote sha> -> the commit whose quality/baseline.tsv this push may
+# not loosen: the remote ref's old tip when git has it, else the parent of the oldest pushed
+# commit on no remote (the fork point of a new branch), else the pushed commit itself.
+baseline_base() {
+    local oldest
+    if [ -n "${2:-}" ] && [ "$2" != "$ZERO" ] && git cat-file -e "${2}^{commit}" 2>/dev/null; then
+        printf '%s' "$2"; return
+    fi
+    oldest="$(git rev-list --topo-order --reverse "$1" --not --remotes 2>/dev/null | head -1)"
+    if [ -n "$oldest" ] && git rev-parse -q --verify "${oldest}^" >/dev/null 2>&1; then
+        git rev-parse "${oldest}^"
+    else
+        printf '%s' "$1"
+    fi
+}
+
+# Every pushed ref that matches the pattern is measured, each on its own commit; one refusal
+# refuses the whole push.
+gated=()
+for line in "${pushed[@]}"; do
+    read -r _ local_sha remote_ref remote_sha <<<"$line"
+    [ "$local_sha" = "$ZERO" ] && continue        # a branch deletion measures nothing
+    release_globs_of "$local_sha"
+    is_release_ref "$remote_ref" && gated+=("${remote_ref} ${local_sha} ${remote_sha:-}")
+done
+
+[ "${#gated[@]}" -gt 0 ] || exit 0
+
+[ -x "$GUARD" ] || {
+    printf 'vault-guard: %s is not executable — push refused rather than passed unmeasured\n' "$GUARD" >&2
+    exit 1
+}
+
+status=0
+for line in "${gated[@]}"; do
+    read -r gated_ref gated_sha remote_sha <<<"$line"
+    printf 'vault-guard: measuring %s (%s); this can take several minutes\n' "$gated_ref" "${gated_sha:0:12}" >&2
+    GUARD_SHA="$gated_sha" GUARD_BASE="$(baseline_base "$gated_sha" "$remote_sha")" "$GUARD" release "$gated_ref" || status=1
+done
+exit "$status"
+# vault-guard-end

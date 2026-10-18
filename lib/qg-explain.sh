@@ -32,7 +32,11 @@ qg_explain() {
     qg_load_head
     for r in "${GUARD_ROWS[@]:-}"; do [ "$(guard_row_field "$r" id)" = "$id" ] && row="$r"; done
     if [ -z "$row" ] && [ -n "${QG_BUILTIN_WHY[$id]:-}" ]; then
-        printf '%s — a check the engine always runs.\n  why: %s\n' "$id" "${QG_BUILTIN_WHY[$id]}"
+        if [ "$JSON" = 1 ]; then
+            jq -n --arg id "$id" --arg why "${QG_BUILTIN_WHY[$id]}" '{id:$id, why:$why, builtin:true}'
+        else
+            printf '%s — a check the engine always runs.\n  why: %s\n' "$id" "${QG_BUILTIN_WHY[$id]}"
+        fi
         return 0
     fi
     [ -n "$row" ] || qg_die "no row \"$id\" in the committed quality/checks.tsv (qg list shows the ids)"

@@ -240,7 +240,8 @@ cmd_measure() {
             rc=1
         fi
     fi
-    if [ "$rc" -ne 0 ] && [ "$ref" != '-' ]; then guard_refusal "$ref"; fi
+    # A hand run (no ref) prints the same refusal, so a person running qg run push sees why.
+    if [ "$rc" -ne 0 ]; then guard_refusal "$ref"; fi
     return "$rc"
 }
 

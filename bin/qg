@@ -135,6 +135,9 @@ cmd_run() {
     done
     local -a extra=()
     [ -n "$only" ] && extra=(--only "$only")
+    # A run that stops before measuring (a config that does not load, a ref no row runs on) writes
+    # no results; an empty file then reads as "no rows", never as the previous run's rows.
+    : > "$(guard_common_dir)/qg-last/RESULTS.txt" 2>/dev/null || true
     case "$event" in
         commit) "$GUARD" commit "${extra[@]}" || rc=$? ;;
         push)   GUARD_SHA="$(git rev-parse HEAD)" "$GUARD" release "$ref" "${extra[@]}" || rc=$? ;;

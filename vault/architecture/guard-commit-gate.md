@@ -20,7 +20,7 @@ The file formats, the substitution tokens and the parsers it uses are in
 parents, and writes its pass record when it passes.
 
 **Configuration comes from `HEAD`.** Both subcommands read `quality/checks.tsv`, `quality/rules.tsv`,
-`quality/baseline.tsv` and the `VAULT.md` keys with `git show HEAD:<path>`, never from the working
+`quality/baseline.tsv`, the gate keys and any repo driver with `git show HEAD:<path>`, never from the working
 tree, so an edit cannot loosen the gate that judges it. A commit whose first parent has no
 `quality/rules.tsv` sits on a branch that predates the gate: it is not gated, exits 0 and says so on
 stderr. The decision reads the judged commit's parent, never `HEAD`, so `verify` run from an old
@@ -33,8 +33,8 @@ index. A commit that changes the gate configuration is measured by the old confi
 exists. A first commit has the empty tree. Diff-based helpers count a line or entry only when it is
 new against every base, so a merge never re-judges what an upstream parent already committed.
 
-**The measured tree.** A row whose `command` or `artifact` names `{{tree}}` or `{{cache}}` is a tree
-row. When one runs, the gate takes an exclusive lock on `<git-common-dir>/guard-tree.lock`, waiting
+**The measured tree.** A tree row names `{{tree}}` or `{{cache}}` in its `args`, command or artifact,
+or runs a driver whose `describe` says `needs_tree: true`. When one runs, the gate takes an exclusive lock on `<git-common-dir>/guard-tree.lock`, waiting
 `GUARD_LOCK_WAIT` seconds (default 120), then syncs `<git-common-dir>/guard-tree` to the target tree
 with the private index `guard-tree.index` (`read-tree -u --reset`, then `clean -fdx`). A missing or
 broken private index wipes the directory and rebuilds it, so a deleted file never survives. A held
@@ -42,9 +42,9 @@ lock or a failed sync makes every tree row unmeasurable. The lock is held until 
 the reports inside the tree, so a second commit cannot overwrite them first. Every path resolves through the git common
 dir, so a linked worktree measures its own index into the shared directory, one commit at a time.
 
-**`VAULT.md` keys**, flat `key: value` lines read from `HEAD`, each a space-separated list of path
-prefixes that match a whole path or a directory boundary (`quality` matches `quality/x`, never
-`quality-reports/x`):
+**Gate keys** come from `quality/config`, else from `VAULT.md`, never both
+(`vault/architecture/guard-file-formats.md`). Two keys hold space-separated path prefixes. A prefix
+matches a whole path or a directory boundary: `quality` matches `quality/x`, never `quality-reports/x`.
 
 | key | effect |
 |---|---|
@@ -79,22 +79,15 @@ tab or newline inside a path prints as a space.
 
 ## What a refused commit prints
 
-`guard.sh commit` writes this to stderr: one summary line per worse or unmeasurable row, then the
-lines of `bin/guard-report-errors.sh`, which start with the row id. Warnings, below, print before it.
+`guard.sh commit` prints the refusal that `vault/architecture/guard-file-formats.md` describes, on
+stderr. Its findings are the lines of `bin/guard-report-errors.sh`, each starting with the row id:
 
 ```
-vault-guard: the staged commit refused
-
-  phpstan-new          measured 1 (floor 0)
-  suppressions-added   measured 1 (floor 0)
-
 phpstan-new app/Support/Probe.php:12 givore.swallowedException Catch swallows the exception. → quality/RULES.md "### swallowed-exception"
-suppressions-added app/Support/Probe.php:11 // @phpstan-ignore-next-line → remove the suppression and fix the code
-
-Fix the code. Never bypass the hook; only a human at a terminal may override once, with QG_SKIP_REASON.
 ```
 
-`guard-report-errors.sh --rows "<id>..." --tree <dir|-> --map <rules.tsv|-> [--checks <tsv>]
+A row with a driver other than `shell` prints the `findings[]` of `<git-common-dir>/qg-last/<id>/result.json`.
+For a `shell` row, `guard-report-errors.sh --rows "<id>..." --tree <dir|-> --map <rules.tsv|-> [--checks <tsv>]
 [--bases ...] [--target ...]` reads each row's artifact: PHPStan JSON including file-less `errors[]`,
 PHPMD JSON, or checkstyle filtered to added lines. An error in a file the target's
 `phpstan-baseline.neon` lists adds `baseline count exceeded; your added lines are <ranges>`; an
@@ -128,7 +121,7 @@ worktrees share, and records every local commit not on any remote, so the existi
 | hook | does |
 |---|---|
 | `pre-commit`, `pre-merge-commit`, `pre-applypatch` | run `guard.sh commit`; exit 1 on its exit 1 or 2, or when `guard.sh` is missing or not executable; write the pass record on a pass |
-| `pre-push` | refuses a pushed commit that is on no remote and has no pass record, naming it and `guard.sh verify <sha> --not --remotes`; prints override log lines not printed before; then runs the release gate on a ref matching `guard_release_pattern` |
+| `pre-push` | refuses a pushed commit that is on no remote and has no pass record, naming it and `guard.sh verify <sha> --not --remotes`; prints override log lines not printed before; then hands every pushed ref to `guard.sh release`, which runs the rows whose `on` matches that ref and exits 0 when none does |
 | `post-rewrite` | after `commit --amend`, runs `guard.sh verify <new>^!`, which measures the amended commit against its own parents and records it only when it passes; pre-commit measured the new tree against the old commit, which proves nothing about the new one. A rebase records nothing |
 
 **Pass record.** `<git-common-dir>/guard-pass/<key>`, where `<key>` is the SHA-1 of the tree SHA
@@ -138,13 +131,53 @@ own pass. `cherry-pick`, `revert`, `rebase` and scripted commits run no commit h
 need `guard.sh verify` before they push. An amend made with `--no-verify` still runs `post-rewrite`,
 so it is measured there.
 
-**Override.** A commit hook or `pre-push` that would refuse passes once when
-`lib/guard-override.sh` honours `QG_SKIP_REASON`: a non-blank reason, a `/dev/tty` that opens, and
-neither `CLAUDECODE` nor `AI_AGENT` set, even to an empty string. The hook appends a line to
-`<git-common-dir>/guard-bypass.log` and writes an `override <reason>` pass record. A reason on a
-commit that passes writes no log line. A release ref still runs the release gate after an override.
+## Built-in checks
 
-**Claude Code hooks.** `bin/guard.sh hooks install --claude` also merges two `PreToolUse` entries into
+`guard_gate_locked` in `lib/guard-commit.sh` adds these rows to every commit gate run. No
+`checks.tsv` row can drop them, and a first commit skips them. Each one refuses with `worse`.
+
+| id | refuses a commit that |
+|---|---|
+| `gate-config-changed` | changes a path under `quality/drivers` or `quality/config` |
+| `gate-config-invalid` | stages a `quality/checks.tsv` that does not load |
+| `gate-config-deleted` | deletes `quality/checks.tsv` or `quality/rules.tsv` |
+| `baseline-loosened` | loosens or deletes `quality/baseline.tsv` against the parent |
+
+## The override
+
+**Only a human at a terminal overrides a refusal, and only once.** Two forms pass a commit hook:
+
+| form | how a human uses it |
+|---|---|
+| `QG_SKIP_REASON` | `QG_SKIP_REASON="<why>" git commit`; the variable must reach the hook's environment |
+| the token | `qg override --reason "<why>"`, then `git commit` within 10 minutes |
+
+**Failure mode:** `QG_SKIP_REASON="<why>" && git commit` sets an unexported shell variable. The
+hook never sees it, and the commit is refused.
+
+**`QG_SKIP_REASON` conditions.** `lib/guard-override.sh` honours it when the reason has a non-blank
+character, `/dev/tty` opens, and neither `CLAUDECODE` nor `AI_AGENT` is set, even to an empty string.
+
+**The token.** `qg override` checks the same conditions, then writes `<git-common-dir>/qg-override`.
+The file holds the reason, the user, the time, `commit` or `push`, and a binding:
+
+- A commit token binds to `git write-tree` of the index when `qg override` ran. It passes only a
+  commit of exactly that staged content.
+- `qg override --reason "<why>" --push <sha>` binds to that full sha. It lifts only the `pre-push`
+  check for commits with no pass record. The push gate rows still run.
+
+`qg_override_take` re-checks the human conditions in the hook's own process. A token is therefore
+never consumed by a commit an agent runs. The hook deletes the token when it uses it. It also
+deletes a token that is malformed, older than 10 minutes, or dated in the future. A token for the
+other event or another binding is ignored and kept.
+
+**What an override leaves.** The hook appends a line to `<git-common-dir>/guard-bypass.log`, and a
+commit hook writes an `override <reason>` pass record. A reason on a commit that passes writes no
+log line. The next `pre-push` prints the log lines it has not printed before.
+
+## Claude Code hooks
+
+`bin/guard.sh hooks install --claude` also merges two `PreToolUse` entries into
 `<repo>/.claude/settings.json` with `jq`: matcher `Bash` runs `templates/claude-hooks/guard-bash.sh`
 and matcher `Edit|Write|MultiEdit|NotebookEdit` runs `templates/claude-hooks/guard-edit.sh`, both by
 absolute path from the plugin checkout. An entry already naming the same command is kept, not
@@ -155,3 +188,5 @@ entries. `hooks remove` removes the git hooks only; delete the two entries by ha
 run unscanned: a committed, unmodified script under `guard_protected_paths`, and code installed under
 `~/.claude/plugins/cache/`. Both hooks deny an agent any write or edit there, which is what makes
 that code safe to run as installed.
+
+The `qg` subcommands `guard-bash.sh` lets an agent run are listed in `vault/architecture/qg-cli.md`.

@@ -6,90 +6,112 @@ status: current
 tags: [quality, gates, contract]
 ---
 
-# `/v-guard` file formats — the contract between the runner, the parsers and the comparison
+# Gate file formats: what the engine, the drivers and the parsers read and write
 
-Three tab-separated files per repo, one parser calling convention, the push refusal template, and
-the files the commit gate keeps under the git common dir. Exit codes are the same everywhere: 0 measured
-and acceptable, 1 measured and worse, 2 could not measure. A check that could not run is never
-recorded as passing.
+Each gated repo commits three tab-separated files and one key file under `quality/`. The engine
+keeps its run results under the git common dir. Exit codes are the same everywhere: 0 measured and
+acceptable, 1 measured and worse, 2 could not measure. A check that could not run is never recorded
+as passing. Drivers follow `vault/architecture/qg-driver-contract.md`.
 
-## Parsing rules, binding on both files
+## Parsing rules for every `.tsv` file
 
-1. **Line 1 is the literal header**, uncommented, tab-separated, exactly the string given below.
-   `guard_load_checks` and `guard_compare` refuse a file whose line 1 differs, and start reading at
-   line 2. A commented-out header would be skipped, and the reader would then have nothing to count
-   fields against.
-2. A row whose field count differs from the header is **exit 2**, never a parse.
+1. **Line 1 is the literal header**, uncommented and tab-separated. `guard_load_checks` refuses a
+   `checks.tsv` whose line 1 is neither header below.
+2. A row whose field count differs from the header is **exit 2**, naming file and line.
 3. A line whose first character is `#` is a comment. A blank line is skipped.
-4. No cell may contain a tab or a newline. An empty cell is written as `-`, never left blank.
+4. No cell holds a tab or a newline. An empty cell is written `-`, never left blank, because an
+   empty trailing cell collapses the field count without any error.
 
-Rule 4 exists because an empty trailing cell is invisible in every editor and collapses the field
-count without any error.
+## `quality/checks.tsv`: what to measure
 
-## `quality/checks.tsv` — what to measure
+The current header, line 1:
 
-Header, line 1:
+```
+id	on	kind	driver	args	direction	threshold	gate	why
+```
+
+| column | values | meaning |
+|---|---|---|
+| `id` | `^[a-z][a-z0-9-]*$`, unique | the row name in the refusal, the report and the baseline |
+| `on` | the grammar below | which events run the row |
+| `kind` | `repo` · `diff` · `absent` | `repo` compares with `quality/baseline.tsv`; `diff` compares with `threshold`; `absent` runs nothing |
+| `driver` | `shell`, a built-in in `drivers/`, or a committed `quality/drivers/<name>.sh` | the wrapper that measures; an unknown name stops the file from loading |
+| `args` | `[key=value ...] [-- <extra argv>]`, or `-` | handed to the driver as `QG_ARGS` after token substitution |
+| `direction` | `up` · `down` · `-` | `up` when a higher number is better |
+| `threshold` | a number, or `-` | for `repo` the worsening tolerated against the baseline; for `diff` the floor (`up`) or ceiling (`down`) |
+| `gate` | `refuse` · `warn` · `record` · `-` | `refuse` exits 1; `warn` prints and exits 0 (`vault/architecture/guard-commit-gate.md`); `record` stores the number only |
+| `why` | one sentence | why the gate exists; the refusal prints it. For `kind: absent`, why the check does not apply |
+
+**Constraint: `why` is required.** A row whose `why` is `-` or starts with `TODO` stops the file
+from loading. The commit gate refuses such a file through the built-in check `gate-config-invalid`.
+
+**The `on` grammar** (`lib/qg-events.sh`):
+
+```
+on    := '-' | token (',' token)*
+token := 'commit' | 'push' | 'push:' <ref-glob> | 'baseline'
+```
+
+No spaces, no empty token, lower case only. A ref glob matches with bash `[[ == ]]`: `*`, `?` and
+`[...]` are glob characters, and `|` is a literal character. A `kind: absent` row carries `on: -`.
+
+| run | rows it measures |
+|---|---|
+| `guard.sh commit`, `guard.sh verify` | `on` holds `commit` |
+| `guard.sh release <ref>` (the `pre-push` hook) | `on` holds `push`, or a `push:<glob>` that matches `<ref>` |
+| `guard.sh release` with no ref, `qg run push` with no `--ref` | `on` holds any push token |
+| `guard.sh baseline` | `on` holds `baseline`, and every `kind: repo` row |
+
+**The `shell` driver's args** are `[parser=<name>] [artifact=<path>] -- <command>`. The engine runs
+the command inside `guard.sh`. With no parser, the command's last output line is the number.
+Otherwise `lib/guard-parsers/<parser>.sh` reads the artifact.
+
+**Token substitution.** The engine replaces each token below in the `args` cell, and in a `shell`
+row's command and artifact. A token whose value the run does not set stays as written.
+
+| token | becomes | set by |
+|---|---|---|
+| `{{base}}` | the base ref; under `commit` and `verify`, the first parent | every run |
+| `{{files}}` | `cat <file>` of the changed paths, **NUL-separated**; consume with `xargs -0` | every run |
+| `{{tree}}` | `<git-common-dir>/guard-tree`, a copy of the tree being committed | `commit`, `verify` |
+| `{{cache}}` | `<git-common-dir>/guard-cache`, kept between runs for tool caches | `commit`, `verify` |
+| `{{bases}}` | every parent SHA, space-separated; the empty tree on a first commit | `commit`, `verify` |
+| `{{target}}` | `:index` under `commit`; the commit SHA under `verify` | `commit`, `verify` |
+| `{{guard}}` | the absolute path of this plugin's `bin/` | every run |
+
+**Failure mode the NUL list prevents:** a newline-separated `{{files}}` list ends the command at
+the first path and executes the second path as a command name.
+
+**Three rows.** Write them with `printf`, so the tabs are real. `qg init` writes the starter rows of
+`templates/init/<profile>.tsv`.
+
+```sh
+printf 'phpstan-new\tcommit\tdiff\tphpstan\t-- --memory-limit=1G\tdown\t0\trefuse\ta commit may not add a PHPStan error\n'
+printf 'comment-density\tcommit,push:refs/heads/release/*\trepo\tshell\tparser=cloc artifact=quality-reports/cloc.json -- cloc --json --quiet bin lib > quality-reports/cloc.json\tdown\t0.02\trefuse\tcode keeps its comments as it grows\n'
+printf 'mutation\t-\tabsent\t-\t-\t-\t-\t-\tDart has no diff-scoped mutation tool\n'
+```
+
+### The v1 header, which the loader still reads
 
 ```
 id	scope	kind	command	parser	artifact	direction	threshold	gate
 ```
 
-| column | values | meaning |
-|---|---|---|
-| `id` | `^[a-z][a-z0-9-]*$`, unique in the file | the metric name in the report and the baseline |
-| `scope` | `commit` · `release` · `both` · `baseline` · `-` | which subcommand runs the row |
-| `kind` | `repo` · `diff` · `absent` | `repo` compares against `quality/baseline.tsv`; `diff` compares against `threshold` as an absolute floor; `absent` runs nothing |
-| `command` | shell, or `-` when `kind` is `absent` | see the substitution rules below |
-| `parser` | a basename under `lib/guard-parsers/`, or `-` | `-` means the command's own stdout is the float |
-| `artifact` | a path, `-`, or the reason text when `kind` is `absent` | what the parser reads |
-| `direction` | `up` · `down` · `-` | `up` when a higher number is better |
-| `threshold` | a number, or `-` | for `kind: repo` the worsening tolerated against the baseline; for `kind: diff` the floor (`up`) or ceiling (`down`) |
-| `gate` | `refuse` · `warn` · `record` · `-` | `refuse` exits 1; `warn` records and exits 0, and at commit prints its hits (`vault/architecture/guard-commit-gate.md`); `record` stores the number only |
+`guard_load_checks` turns each v1 row into a v2 row:
 
-**Which subcommand runs which row.** `bin/guard.sh commit` and `bin/guard.sh verify` run `scope` of
-`commit` or `both`; `vault/architecture/guard-commit-gate.md` defines what they measure. `bin/guard.sh release`
-runs `release` or `both`, against the merge-base with the default branch, and reads
-`quality/checks.tsv`, `quality/baseline.tsv` and the `VAULT.md` keys (`guard_accept_limit`,
-`guard_measure_worktree`) from the pushed commit (`GUARD_SHA`, else `HEAD`); `pre-push` reads
-`guard_release_pattern` from each pushed commit's `VAULT.md`. `bin/guard.sh baseline` runs
-`baseline` rows and every `kind: repo` row, and no hook calls it. A `kind: absent` row carries
-`scope: -` and is never run.
+| v2 field | from v1 |
+|---|---|
+| `on` | `scope` `commit` → `commit`; `release` → `push:<glob>` per `\|`-separated glob of `guard_release_pattern`; `both` → both; `baseline` → `baseline`; `-` → `-` |
+| `driver` | `shell` |
+| `args` | `parser=<parser> artifact=<artifact> -- <command>` |
+| `why` | `(no reason recorded; run qg migrate)`; for `kind: absent`, the `artifact` cell |
 
-**Command substitution.** Every token below is replaced in the `command` cell and in the `artifact`
-cell. A token whose value the subcommand does not set stays as written.
+An empty `guard_release_pattern` means `refs/heads/release/*`. The key is read at the config
+revision. `qg migrate` rewrites a v1 file as v2; a human makes that commit.
 
-| token | becomes | set by |
-|---|---|---|
-| `{{base}}` | the base ref; under `commit` and `verify`, the first parent | every subcommand |
-| `{{files}}` | `cat <file>` of the changed paths, **NUL-separated**; consume with `xargs -0` | every subcommand |
-| `{{tree}}` | `<git-common-dir>/guard-tree`, a copy of the tree being committed | `commit`, `verify` |
-| `{{cache}}` | `<git-common-dir>/guard-cache`, kept between runs for tool result caches | `commit`, `verify` |
-| `{{bases}}` | every parent SHA, space-separated; the empty tree on a first commit | `commit`, `verify` |
-| `{{target}}` | `:index` under `commit`; the commit SHA under `verify` | `commit`, `verify` |
-| `{{guard}}` | the absolute path of this plugin's `bin/` | every subcommand |
+## `quality/rules.tsv`: identifier to catalog rule
 
-A newline-separated `{{files}}` list terminates the command at the first path and executes the second
-path as a command name; that is why the list is NUL-separated.
-
-**Why `kind: diff` never compares against a baseline.** Each release push measures a different set of
-changed lines, so two scores describe different populations. Comparing them reports a change in the
-code under test as a change in quality.
-
-**Three real rows.** Write them with `printf`, so the tabs are real:
-
-```sh
-printf 'coverage\trelease\tdiff\tdocker compose exec -T server composer test:diff-coverage {{base}}\tdiffcover\tquality-reports/diff-cover.json\tup\t80\trefuse\n'
-printf 'comment-density\tboth\trepo\tcloc --json --quiet bin lib scripts > quality-reports/cloc.json\tcloc\tquality-reports/cloc.json\tdown\t0.02\trefuse\n'
-printf 'mutation\t-\tabsent\t-\t-\tDart has no diff-scoped mutation tool\t-\t-\t-\n'
-```
-
-## `quality/rules.tsv` — identifier to catalog rule
-
-Required by `bin/guard.sh commit` and `verify`. Header, line 1:
-
-```
-id	tool	enforced_by	emits
-```
+Required by `bin/guard.sh commit` and `verify`. Header: `id	tool	enforced_by	emits`.
 
 | column | meaning |
 |---|---|
@@ -99,102 +121,79 @@ id	tool	enforced_by	emits
 | `emits` | the identifier the tool reports, or a sniff-code prefix; `-` when it reports none |
 
 `bin/guard-report-errors.sh` matches a reported identifier against `emits` exactly first, then as a
-prefix ending at a `.` boundary, longest prefix winning. A malformed file is exit 2 from the printer;
-the commit's exit code still comes from its rows.
+prefix ending at a `.` boundary, longest prefix winning.
 
-## `quality/baseline.tsv` — the ratchet
+## `quality/baseline.tsv`: the ratchet
 
-Header, line 1:
+Header: `id	value	commit	reason`. Only `kind: repo` ids appear. A non-numeric `value` is
+**exit 2**, because a row carrying no number must never score as clean. `reason` is `-` unless
+`guard.sh accept` wrote one. `checks.tsv` owns `direction`, `threshold` and `gate`.
 
-```
-id	value	commit	reason
-```
+**The baseline only gets tighter.** `guard_baseline_diff` reports a row as loosened when its value
+moved in the worse direction, whatever its reason. It also reports a row whose `reason` changed to
+anything but `-`. A removed or non-numeric `kind: repo` row is loosened too. The commit gate compares
+with the parent. The push gate compares with `GUARD_BASE`: the remote ref's old tip, else the fork
+point of a new branch. A base without the file skips the check.
 
-Only `kind: repo` ids appear. `value` must parse as a number; a non-numeric `value` is **exit 2**, not
-zero — a row carrying no number must never score as clean. `reason` is `-` unless
-`bin/guard.sh accept` wrote one. `checks.tsv` owns `direction`, `threshold` and `gate`; this file
-never repeats them, and `guard_compare` joins the two by `id` using the **pushed** `checks.tsv`.
+**The accept limit.** A push to a named ref exits 1 when more than `guard_accept_limit` rows carry a
+reason (default 3). `guard.sh baseline` clears every reason it rewrites.
 
-This file is committed, so the ratchet travels with the branch and is visible in review.
+## `quality/config`: the gate keys
 
-**`guard_baseline_diff`** fetches the remote ref's copy and refuses a row that moved in the worse
-direction with `reason` still `-`. Without it a branch passes the gate its own file defines.
+Flat `key: value` lines; `#` starts a comment. `lib/qg-config.sh` is the only reader.
 
-**When the remote ref does not yet exist** git supplies an all-zeroes remote sha. The function then
-skips, prints `baseline check skipped: refs/heads/<name> does not exist on the remote`, and returns 0.
-Treating a first push as a tampered baseline would refuse every new release branch.
+**Constraint: one key file per repo.** When `quality/config` exists at the config revision, the
+engine reads every key from it and never reads `VAULT.md`. Otherwise every key comes from `VAULT.md`.
+The config revision is the commit whose configuration judges the run, so a staged edit changes no key.
 
-**The accept limit.** `guard_accept_count` refuses when more than `guard_accept_limit` rows carry a
-reason. That key is a flat scalar in the repo's `VAULT.md` and defaults to 3.
-`bin/guard.sh baseline` clears every `reason` it rewrites, so accepted rows expire at the next
-whole-repo measurement instead of accumulating until the limit makes `--no-verify` the normal path.
+| key | effect |
+|---|---|
+| `guard_commit_paths` | path prefixes whose change makes the commit gate run its tree rows; absent gates every path |
+| `guard_protected_paths` | path prefixes `bin/guard-protected-paths.sh` counts |
+| `guard_accept_limit` | the most baseline rows that may carry a reason; default 3 |
+| `guard_measure_worktree` | `false` measures the working tree at push instead of a detached worktree |
+| `guard_release_pattern` | v1 rows only: the push refs a `release` scope means |
+
+`qg config get <key>` prints a key as committed. A commit that changes `quality/config` fails the
+built-in check `gate-config-changed`.
 
 ## Parser calling convention
 
-`guard_parse_row` runs `lib/guard-parsers/<parser>.sh <artifact-path> <command-exit-status>`.
-
-A parser prints **one float on stdout and exits 0**, or prints a reason on **stderr and exits 2**. It
-never runs the measuring tool, never reads `checks.tsv`, and prints nothing else on stdout. Most
-parsers ignore the second argument; `exitcode.sh` exists to read it.
-
-`parser: -` means the command's own stdout is the float. `guard_parse_row` then applies the same
-rule to that stdout: one float, or exit 2.
-
-Two parsers exist for the commit gate. `phpstan-all` prints `totals.errors + totals.file_errors`: a
-boot failure or an internal error carries no file, and `phpstan` alone would read it as 0. `phpmd`
-counts `files[].violations[]` and is exit 2, naming the file, when `errors[]` is not empty.
+`guard_parse_row` runs `lib/guard-parsers/<parser>.sh <artifact-path> <command-exit-status>`. A
+parser prints **one float on stdout and exits 0**, or a reason on **stderr and exits 2**. It never
+runs the tool and prints nothing else on stdout. `exitcode.sh` reads the second argument.
 
 **Failure mode this prevents:** a parser that prints an empty string on a missing artifact. The
-comparison reads the empty string as zero, so a missing measurement becomes the worst possible score
-— or, with `direction: down`, a perfect one.
+comparison would read it as zero, so a missing measurement would score as perfect.
 
-## What a refused push prints
+## What a refusal prints
 
-`guard_refusal` writes this to stderr. The developer reads it once and a Claude session reads it
-pasted, so it carries the relief command and every path it names.
-
-```
-vault-guard: push refused to refs/heads/release/1.4.0
-
-  comment-density   0.274 -> 0.249   worse by 0.025, tolerated 0.010
-                    baseline: quality/baseline.tsv line 3, measured at 8009e1f
-
-  mutation          could not measure
-                    lib/guard-parsers/infection.sh read quality-reports/infection-log.json
-                    and found msi = null
-
-1 worse, 1 unmeasurable. quality/baseline.tsv carries 2 accepted rows; the limit is 3.
-
-Fix it, or accept it:
-  bin/guard.sh accept comment-density --reason "<why this is acceptable>"
-  bin/guard.sh report
-```
-
-## The commit gate
-
-`vault/architecture/guard-commit-gate.md` defines what `bin/guard.sh commit` and `verify` measure,
-the commit refusal text, the five hooks, pass records, the override and the Claude Code hook install.
+`qg_print_refusal` in `lib/qg-refusal.sh` builds the commit and push refusal, in this order: one
+line per worse or unmeasurable row; per row its `why`, a reproduce command and `qg explain <id>`;
+the findings; each distinct output tail once; then `How to pass:`. The text is capped at 3500
+characters; the `How to pass:` footer is never cut. The whole text is written to `REFUSAL.txt`.
 
 ## Generated files
 
 | path | written by | read by | tracked |
 |---|---|---|---|
-| `quality-reports/status.json` | `guard_render_report` | `~/vault/givore/quality/build-dashboard.mjs:57` | no |
-| `quality-reports/REPORT.md` | `guard_render_report` | the operator | no |
-| `quality/checks.tsv` | `/v-guard init`, or the operator | `guard_load_checks` | yes |
-| `quality/baseline.tsv` | `bin/guard.sh baseline` and `bin/guard.sh accept` | `guard_compare`, `guard_baseline_diff` | yes |
-| `quality/rules.tsv` | the operator | `bin/guard-report-errors.sh` | yes |
+| `quality/checks.tsv` | `qg init`, `qg migrate`, or a human | `guard_load_checks` | yes |
+| `quality/baseline.tsv` | `guard.sh baseline` and `guard.sh accept` | `guard_compare`, `guard_baseline_diff` | yes |
+| `quality/rules.tsv` | a human | `bin/guard-report-errors.sh` | yes |
+| `quality/config` | `qg init`, `qg migrate`, or a human | `lib/qg-config.sh` | yes |
+| `quality-reports/status.json`, `REPORT.md` | `guard_render_report` | the operator | no |
+| `<git-common-dir>/qg-last/RESULTS.txt` | `guard_render_report`: one `id\|value\|reference\|status\|detail` line per row | `qg run --json`, `qg explain` | no |
+| `<git-common-dir>/qg-last/REFUSAL.txt` | `qg_print_refusal` | `qg last` | no |
+| `<git-common-dir>/qg-last/<id>/result.json` | `guard_save_last`: the driver's `qg.result/1`, or one built for a `shell` row | the refusal, `qg explain`, `qg run --json`, `bin/guard-report-errors.sh` | no |
+| `<git-common-dir>/qg-last/<id>/output.txt` | `guard_save_last`: the last 20 lines of the row's output | the refusal, `qg explain` | no |
 | `<git-common-dir>/guard-tree`, `guard-tree.index`, `guard-tree.lock` | `lib/guard-tree.sh`, `lib/guard-commit.sh` | tree rows | no |
-| `<git-common-dir>/guard-cache` | `lib/guard-tree.sh`; the tools' caches | tree rows | no |
+| `<git-common-dir>/guard-cache` | the tools' caches | tree rows, drivers (`QG_CACHE`) | no |
 | `<git-common-dir>/guard-pass/<key>` | commit hooks, `post-rewrite`, `guard.sh verify`, `hooks install` | `pre-push` | no |
+| `<git-common-dir>/qg-override` | `qg override` | the commit hooks and `pre-push`, which delete it on use | no |
 | `<git-common-dir>/guard-bypass.log` | `lib/guard-override.sh` | `pre-push`, which prints new lines | no |
 | `<git-common-dir>/guard-bypass.printed` | `pre-push` | `pre-push`: how many log lines it already printed | no |
 
-Nothing in this plugin reads `status.json` or `REPORT.md`; the gate reaches the agent through the hooks'
-stderr. `REPORT.md` carries exactly four headings, in this order: `## Open regressions`,
-`## Unmeasurable`, `## All metrics`, `## Absent`. The operator reads it; nothing parses it.
-
-**`status.json` keeps the six category keys** `codeQuality`, `tests`, `coverage`, `e2e`, `nightly` and
-`mutation` that `~/vault/givore/quality/build-dashboard.mjs:45` fixes. A `checks.tsv` id that is not
-one of those six is written under `codeQuality.checks`, which that aggregator already renders as an
-open map.
+`REPORT.md` carries four headings, in this order: `## Open regressions`, `## Unmeasurable`,
+`## All metrics`, `## Absent`. **`status.json` keeps six category keys**: `codeQuality`, `tests`,
+`coverage`, `e2e`, `nightly` and `mutation`. An id outside them is written under
+`codeQuality.checks`. Nothing in this plugin reads either file.
