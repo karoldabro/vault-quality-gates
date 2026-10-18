@@ -8,12 +8,14 @@
 #                                against its own parents; writes its pass record
 #   guard.sh release [<ref>]     rows scoped release|both, against the merge-base; checks.tsv,
 #                                baseline.tsv and VAULT.md read from GUARD_SHA (else HEAD)
-#   guard.sh baseline [--skip <regex>]
+#   guard.sh baseline [--skip <regex> | --only <id,id>]
 #                                rows scoped baseline plus every kind: repo row,
 #                                then rewrites quality/baseline.tsv. --skip omits
 #                                matching ids and KEEPS their existing rows, so a
 #                                57-minute suite row can be refreshed on its own
 #                                schedule without blocking every other measurement.
+#                                --only measures the named rows, rewrites only their
+#                                lines, and writes nothing when one yields no number.
 #   guard.sh report              re-render from quality-reports/
 #   guard.sh accept <id> --reason "<why>"
 #   guard.sh hooks install [--claude]|remove|status
@@ -116,7 +118,11 @@ guard_leave_tree() {
     GUARD_WORKTREE=''
 }
 GUARD_CONFIG_DIR=''
-trap 'guard_leave_tree; [ -z "$GUARD_CONFIG_DIR" ] || rm -rf "$GUARD_CONFIG_DIR"' EXIT
+# One directory per invocation for the reports rows share (lib/qg-driver-kit.sh qg_shared_report);
+# an inherited value is replaced, so no report outlives the run that wrote it.
+QG_RUN_DIR="$(mktemp -d)" || { guard_err 'guard: cannot create a run directory'; exit 2; }
+export QG_RUN_DIR
+trap 'guard_leave_tree; [ -z "$GUARD_CONFIG_DIR" ] || rm -rf "$GUARD_CONFIG_DIR"; rm -rf "$QG_RUN_DIR"' EXIT
 
 # guard_row_selected <row> <want> <ref> -> 0 when the run `want` (release or baseline) measures
 # the row. `baseline` also runs every kind: repo row whatever its `on`: those rows are what
@@ -147,7 +153,12 @@ guard_run() {
             guard_run_row "$row" "$BASELINE" "$base" "$files"
             continue
         fi
-        guard_row_selected "$row" "$want" "$ref" && guard_only "$id" || continue
+        guard_row_selected "$row" "$want" "$ref" || continue
+        if ! guard_only "$id"; then
+            # A baseline run keeps the line of every row --only does not name.
+            [ "$want" = baseline ] && GUARD_RESULTS+=("${id}|-|-|skipped|not named by --only, existing baseline row kept")
+            continue
+        fi
         rc=0
         guard_run_row "$row" "$BASELINE" "$base" "$files" || rc=$?
         [ "$rc" -gt "$worst" ] && worst="$rc"
@@ -292,12 +303,24 @@ cmd_baseline() {
             [ -n "$k" ] && [ "${k:0:1}" != '#' ] && [ "$k" != 'id' ] && kept["$k"]=$'\t'"${v}"$'\t'"${c}"$'\t'"${r}"
         done < "$BASELINE"
     fi
+    if [ -n "${GUARD_ONLY:-}" ]; then
+        local want r found
+        for want in ${GUARD_ONLY//,/ }; do
+            found=''
+            for r in "${GUARD_ROWS[@]}"; do
+                [ "$(guard_row_field "$r" id)" = "$want" ] && [ "$(guard_row_field "$r" kind)" != absent ] \
+                    && guard_row_selected "$r" baseline - && found=1
+            done
+            [ -n "$found" ] || { guard_err "guard: baseline --only: no baseline row \"${want}\" in quality/checks.tsv"; exit 2; }
+        done
+    fi
     guard_enter_tree
     guard_run 'baseline' "$(git rev-parse HEAD)" || true
     guard_leave_tree
 
     local commit tmp line id value _b status _d
     commit="$(git rev-parse --short HEAD)"
+    [ -z "${GUARD_ONLY:-}" ] || { guard_baseline_only "$commit"; return; }
     tmp="$(mktemp)"
     printf '%s\n' "$GUARD_BASELINE_HEADER" > "$tmp"
     printf '# Written by bin/guard.sh baseline. Every reason is cleared here, so an\n' >> "$tmp"
@@ -318,6 +341,39 @@ cmd_baseline() {
     guard_render_report
     printf 'baseline written: %s\n' "$BASELINE"
     cat "$BASELINE"
+}
+
+# guard_baseline_only <commit> -> rewrites only the rows GUARD_ONLY names, leaving every other line
+# of quality/baseline.tsv byte for byte; exit 2 and writes nothing when a named row has no number.
+guard_baseline_only() {
+    local commit="$1" line id value _b status detail bad='' tmp
+    local -A got=()
+    for line in "${GUARD_RESULTS[@]:-}"; do
+        [ -n "$line" ] || continue
+        IFS='|' read -r id value _b status detail <<<"$line"
+        [[ ",${GUARD_ONLY}," == *",${id},"* ]] || continue
+        if guard_is_number "$value"; then got[$id]="$value"; else bad+="  ${id}: ${detail:-no value}"$'\n'; fi
+    done
+    if [ -n "$bad" ]; then
+        guard_err 'guard: baseline --only wrote nothing; these rows yielded no number:'
+        guard_err "${bad%$'\n'}"
+        guard_render_report; exit 2
+    fi
+    tmp="$(mktemp)"
+    if [ -r "$BASELINE" ]; then
+        awk -F'\t' -v OFS='\t' -v c="$commit" -v vals="$(for id in "${!got[@]}"; do printf '%s=%s\n' "$id" "${got[$id]}"; done)" '
+            BEGIN { n = split(vals, kv, "\n"); for (i = 1; i <= n; i++) if (kv[i] != "") { p = index(kv[i], "="); v[substr(kv[i], 1, p - 1)] = substr(kv[i], p + 1) } }
+            FNR > 1 && $0 !~ /^#/ && ($1 in v) { print $1, v[$1], c, "-"; done[$1] = 1; next }
+            { print }
+            END { for (id in v) if (!(id in done)) print id, v[id], c, "-" }' "$BASELINE" > "$tmp"
+    else
+        printf '%s\n' "$GUARD_BASELINE_HEADER" > "$tmp"
+        for id in "${!got[@]}"; do printf '%s\t%s\t%s\t-\n' "$id" "${got[$id]}" "$commit" >> "$tmp"; done
+    fi
+    mkdir -p "$(dirname "$BASELINE")"
+    mv "$tmp" "$BASELINE"
+    guard_render_report
+    printf 'baseline written for %s: %s\n' "$GUARD_ONLY" "$BASELINE"
 }
 
 cmd_accept() {
@@ -358,7 +414,11 @@ case "${1:-}" in
         cmd_release "$rel_ref" ;;
     baseline)
         shift
-        [ "${1:-}" = '--skip' ] && { export GUARD_SKIP="${2:-}"; }
+        case "${1:-}" in
+            --skip) export GUARD_SKIP="${2:-}" ;;
+            --only) [ -n "${2:-}" ] || { guard_err 'usage: guard.sh baseline [--skip <regex> | --only <id,id>]'; exit 2; }
+                    GUARD_ONLY="$2" ;;
+        esac
         cmd_baseline ;;
     report)   cat "${REPORTS}/REPORT.md" 2>/dev/null || { guard_err 'guard: no report yet'; exit 2; } ;;
     accept)   shift; cmd_accept "$@" ;;
