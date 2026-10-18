@@ -31,9 +31,9 @@
 
 set -uo pipefail
 
-# GUARD_SKIP drops rows from a run. Only `baseline --skip` sets it, below; a value inherited from
-# the caller would let `GUARD_SKIP=. git push` skip every gated row.
-unset GUARD_SKIP
+# GUARD_SKIP and GUARD_ONLY drop rows from a run. Only `baseline --skip` and `--only` set them,
+# below; a value inherited from the caller would let `GUARD_SKIP=. git push` skip every gated row.
+unset GUARD_SKIP GUARD_ONLY
 
 # git hands hooks a relative GIT_INDEX_FILE; pin it before anything changes directory.
 if [ -n "${GIT_INDEX_FILE:-}" ] && [ "${GIT_INDEX_FILE#/}" = "$GIT_INDEX_FILE" ]; then
@@ -147,7 +147,7 @@ guard_run() {
             guard_run_row "$row" "$BASELINE" "$base" "$files"
             continue
         fi
-        guard_row_selected "$row" "$want" "$ref" || continue
+        guard_row_selected "$row" "$want" "$ref" && guard_only "$id" || continue
         rc=0
         guard_run_row "$row" "$BASELINE" "$base" "$files" || rc=$?
         [ "$rc" -gt "$worst" ] && worst="$rc"
@@ -161,7 +161,11 @@ guard_run() {
 # them lands under codeQuality.checks, which that aggregator renders as an open map.
 guard_render_report() {
     mkdir -p "$REPORTS"
-    local commit; commit="$(git rev-parse --short "${GUARD_SHA:-HEAD}" 2>/dev/null)"
+    local commit last; commit="$(git rev-parse --short "${GUARD_SHA:-HEAD}" 2>/dev/null)"
+    # The results of this run, one `id|value|reference|status|detail` line each: `qg run --json`
+    # and `qg explain` read them.
+    last="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/qg-last"
+    mkdir -p "$last" 2>/dev/null && printf '%s\n' "${GUARD_RESULTS[@]:-}" > "${last}/RESULTS.txt"
     printf '%s\n' "${GUARD_RESULTS[@]:-}" \
         | bash "${GUARD_LIB_DIR}/guard-report.sh" "$REPORTS" "$commit" \
                "$(guard_accept_count "$BASELINE")" "$(basename "$REPO_ROOT")"
@@ -255,7 +259,7 @@ cmd_release() {
     guard_load_checks "$CHECKS" || exit 2
     for row in "${GUARD_ROWS[@]}"; do
         [ "$(guard_row_field "$row" kind)" = absent ] && continue
-        guard_row_selected "$row" release "$ref" && n=$((n + 1))
+        guard_row_selected "$row" release "$ref" && guard_only "$(guard_row_field "$row" id)" && n=$((n + 1))
     done
     if [ "$n" -eq 0 ]; then
         printf 'vault-guard: no gate row runs on %s\n' "$ref" >&2
@@ -325,12 +329,20 @@ cmd_accept() {
 }
 
 case "${1:-}" in
-    commit)   . "${GUARD_LIB_DIR}/guard-commit.sh"; guard_gate ':index' "$(guard_default_bases)" ;;
+    commit)
+        [ "${2:-}" = --only ] && GUARD_ONLY="${3:-}"
+        . "${GUARD_LIB_DIR}/guard-commit.sh"; guard_gate ':index' "$(guard_default_bases)" ;;
     verify)
         shift
         [ $# -gt 0 ] || { guard_err 'usage: guard.sh verify <revision range>'; exit 2; }
         . "${GUARD_LIB_DIR}/guard-commit.sh"; guard_verify "$@" ;;
-    release)  shift; cmd_release "${1:--}" ;;
+    release)
+        shift
+        rel_ref='-'
+        while [ $# -gt 0 ]; do
+            case "$1" in --only) GUARD_ONLY="${2:-}"; shift 2 ;; *) rel_ref="$1"; shift ;; esac
+        done
+        cmd_release "$rel_ref" ;;
     baseline)
         shift
         [ "${1:-}" = '--skip' ] && { export GUARD_SKIP="${2:-}"; }

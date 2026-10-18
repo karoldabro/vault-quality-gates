@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+# qg — the quality-gate command a person or an agent types. bin/guard.sh stays the engine the git
+# hooks call; qg reads the same configuration and explains it. Subcommands, options, exit codes
+# and --json shapes: vault/architecture/qg-cli.md.
+set -uo pipefail
+export LC_ALL=C
+
+# The engine reads these from its environment; qg never passes an inherited value on.
+unset GUARD_SKIP GUARD_ONLY GUARD_CONFIG_REV GUARD_CONFIG_AT GUARD_CONFIG_PIN
+
+QG_BIN_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+GUARD_LIB_DIR="$(cd "${QG_BIN_DIR}/../lib" && pwd)"
+GUARD_BIN_DIR="$QG_BIN_DIR"
+GUARD="${QG_BIN_DIR}/guard.sh"
+export GUARD_LIB_DIR GUARD_BIN_DIR
+# shellcheck source=../lib/guard-metrics.sh
+. "${GUARD_LIB_DIR}/guard-metrics.sh"
+# shellcheck source=../lib/guard-pass.sh
+. "${GUARD_LIB_DIR}/guard-pass.sh"
+
+JSON=0
+args=()
+for a in "$@"; do [ "$a" = --json ] && JSON=1 || args+=("$a"); done
+set -- "${args[@]:-}"
+[ -n "${1:-}" ] || set --
+
+qg_die() { printf 'qg: %s\n' "$*" >&2; exit 2; }
+qg_repo() { REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || qg_die 'not inside a git repository'; cd "$REPO_ROOT" || exit 2; }
+qg_refuse_agent() {
+    qg_agent || return 0
+    printf 'qg %s: refused for an agent (CLAUDECODE or AI_AGENT is set). It changes the gate; a human at a terminal runs it.\n' "$1" >&2
+    exit 2
+}
+
+# qg_load_head -> GUARD_ROWS from the committed quality/checks.tsv: the configuration that judges
+# the next commit. Exit 2 naming the reason when it is absent or does not load.
+qg_load_head() {
+    local tmp; tmp="$(mktemp)"
+    guard_config_show quality/checks.tsv > "$tmp" || { rm -f "$tmp"; qg_die 'HEAD has no quality/checks.tsv; this repo is not gated (qg init sets it up)'; }
+    guard_load_checks "$tmp" || { rm -f "$tmp"; exit 2; }
+    rm -f "$tmp"
+}
+
+qg_help() {
+    case "${1:-}" in
+        list)     printf 'qg list [--on commit|push|baseline] [--json]\n  Every gate row: id, when it runs, driver, what refuses, and why it exists.\n' ;;
+        run)      printf 'qg run commit [--only id,id] [--json]\n  Runs the commit gate on what is staged now, exactly as `git commit` would, without committing.\nqg run push [--ref refs/heads/<branch>] [--only id,id] [--json]\n  Runs the push gate on HEAD for that ref (default: every push row), without pushing.\n  Exit 0 pass, 1 a row is worse, 2 a row could not be measured.\n' ;;
+        explain)  printf 'qg explain <id> [--json]\n  What the row checks, why, when it runs, its limit, its last result and output,\n  how to reproduce it, and how to pass.\n' ;;
+        last)     printf 'qg last\n  Prints the last refusal in full, as the commit or push printed it.\n' ;;
+        drivers)  printf 'qg drivers [<name>] [--json]\n  The drivers this repo can use (built-in and quality/drivers/), or one driver'"'"'s description.\n' ;;
+        doctor)   printf 'qg doctor [--json]\n  Checks the setup: hooks installed and current, Claude Code hooks listed, config loads,\n  every driver and the tools it needs exist, every push:<glob> matches a branch, qg on PATH.\n  Exit 0 healthy (warnings allowed), 1 something is broken.\n' ;;
+        config)   printf 'qg config get <key>\n  A gate key as committed: quality/config, else VAULT.md.\n' ;;
+        override) printf 'qg override --reason "<why>" [--push <sha>]\n  Human only, at a terminal. Lets the next commit of exactly what is staged now (or the push\n  of exactly <sha>, for commits that never passed the commit gate) through once, within 10\n  minutes, and logs it. A worse push metric is fixed in code, never overridden.\n' ;;
+        init)     printf 'qg init --profile docs|php|nuxt|flutter|hugo [--force]\n  Human only. Writes quality/checks.tsv, rules.tsv, baseline.tsv and config for a new repo,\n  from templates/init/<profile>.tsv. Then: qg hooks install --claude, and commit.\n' ;;
+        migrate)  printf 'qg migrate [--draft]\n  Human only. Rewrites a v1 quality/checks.tsv in the v2 format and writes quality/config\n  from the VAULT.md gate keys. Every row needs a why: without --draft it lists the rows\n  that lack one and writes nothing; with --draft it writes TODO whys, which the gate\n  refuses to commit until each is replaced.\n' ;;
+        hooks)    printf 'qg hooks install [--claude] | remove | status\n  install and remove are human only. status is for anyone.\n' ;;
+        baseline|accept|report|verify)
+                  printf 'qg %s ...\n  Passes through to guard.sh %s. baseline and accept are human only.\n' "$1" "$1" ;;
+        *)
+            printf '%s\n' \
+                'qg — quality gates for this repo, for people and agents.' \
+                '' \
+                'A gate is one row of quality/checks.tsv. Each row runs a driver (a wrapper around one tool),' \
+                'turns its result into one number, and compares it with a limit or with quality/baseline.tsv.' \
+                'The commit hook runs the rows marked commit; the push hook runs the rows marked push for' \
+                'the branch being pushed.' \
+                '' \
+                'When a commit or push was refused:' \
+                '  qg last             the whole refusal again' \
+                '  qg explain <id>     what that gate checks, why, its last output, and how to pass' \
+                '  qg run commit       run the commit gate on what is staged, without committing' \
+                '' \
+                'Commands:' \
+                '  list      every gate row and why it exists        run       run the gates now' \
+                '  explain   one row in full                         last      the last refusal' \
+                '  drivers   the drivers available                   doctor    check the setup' \
+                '  config    read a gate key                         override  human only: pass once' \
+                '  init      human only: gate a new repo             migrate   human only: v1 to v2' \
+                '  hooks / baseline / accept / report / verify       the engine commands' \
+                '' \
+                'qg help <command> for its options. Every command takes --json.' ;;
+    esac
+}
+
+qg_on_words() {  # qg_on_words <on> -> "every commit; pushes to refs/heads/release/*"
+    local on="$1" t out=''
+    [ "$on" = - ] && { printf 'never (absent)'; return; }
+    local -a ts; IFS=',' read -ra ts <<<"$on"
+    for t in "${ts[@]}"; do
+        case "$t" in
+            commit) t='every commit' ;; push) t='every push' ;; baseline) t='baseline runs' ;;
+            push:*) t="pushes to ${t#push:}" ;;
+        esac
+        out+="${out:+; }${t}"
+    done
+    printf '%s' "$out"
+}
+
+cmd_list() {
+    local want='' r on
+    [ "${1:-}" = --on ] && want="${2:-}"
+    qg_load_head
+    if [ "$JSON" = 1 ]; then
+        for r in "${GUARD_ROWS[@]:-}"; do
+            [ -n "$r" ] || continue
+            on="$(guard_row_field "$r" on)"
+            [ -z "$want" ] || [[ ",$on," == *",$want"[,:]* ]] || continue
+            jq -nc --arg id "$(guard_row_field "$r" id)" --arg on "$on" --arg kind "$(guard_row_field "$r" kind)" \
+                --arg driver "$(guard_row_field "$r" driver)" --arg gate "$(guard_row_field "$r" gate)" \
+                --arg direction "$(guard_row_field "$r" direction)" --arg threshold "$(guard_row_field "$r" threshold)" \
+                --arg why "$(guard_row_field "$r" why)" \
+                '{id:$id, on:$on, kind:$kind, driver:$driver, gate:$gate, direction:$direction, threshold:$threshold, why:$why}'
+        done | jq -s '{rows: .}'
+        return
+    fi
+    printf '%-26s %-10s %-8s %s\n' ID DRIVER GATE 'RUNS ON  /  WHY'
+    for r in "${GUARD_ROWS[@]:-}"; do
+        [ -n "$r" ] || continue
+        on="$(guard_row_field "$r" on)"
+        [ -z "$want" ] || [[ ",$on," == *",$want"[,:]* ]] || continue
+        printf '%-26s %-10s %-8s %s\n%-46s %s\n' "$(guard_row_field "$r" id)" "$(guard_row_field "$r" driver)" \
+            "$(guard_row_field "$r" gate)" "$(qg_on_words "$on")" '' "$(guard_row_field "$r" why)"
+    done
+}
+
+cmd_run() {
+    local event="${1:-}" only='' ref='-' rc=0
+    shift || true
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --only) only="${2:-}"; shift 2 ;;
+            --ref)  ref="${2:-}"; shift 2 ;;
+            *) qg_die "run: unknown option $1 (qg help run)" ;;
+        esac
+    done
+    local -a extra=()
+    [ -n "$only" ] && extra=(--only "$only")
+    case "$event" in
+        commit) "$GUARD" commit "${extra[@]}" || rc=$? ;;
+        push)   GUARD_SHA="$(git rev-parse HEAD)" "$GUARD" release "$ref" "${extra[@]}" || rc=$? ;;
+        *)      qg_die 'run: say commit or push (qg help run)' ;;
+    esac
+    if [ "$JSON" = 1 ]; then qg_results_json "$rc"
+    elif [ "$rc" -eq 0 ]; then printf 'qg: %s gate passed\n' "$event"; fi
+    return "$rc"
+}
+
+# qg_results_json <exit> -> {verdict, exit, rows[]} from qg-last/RESULTS.txt and each row's result.
+qg_results_json() {
+    local last line id value ref status detail verdict
+    last="$(guard_common_dir)/qg-last"
+    case "$1" in 0) verdict=pass ;; 1) verdict=fail ;; *) verdict=error ;; esac
+    {
+        while IFS='|' read -r id value ref status detail; do
+            [ -n "$id" ] || continue
+            local res='null'
+            [ -r "${last}/${id}/result.json" ] && res="$(jq -c '.' "${last}/${id}/result.json" 2>/dev/null || printf 'null')"
+            jq -nc --arg id "$id" --arg value "$value" --arg ref "$ref" --arg status "$status" --arg detail "$detail" \
+                --argjson result "$res" '{id:$id, status:$status, value:$value, reference:$ref, detail:$detail, result:$result}'
+        done < "${last}/RESULTS.txt"
+    } | jq -s --arg v "$verdict" --argjson e "$1" '{verdict:$v, exit:$e, rows:.}'
+}
+
+cmd_drivers() {
+    local d name path
+    if [ -n "${1:-}" ]; then
+        path="$(guard_driver_path "$1" "$(mktemp -d)")" || qg_die "$path"
+        if [ "$JSON" = 1 ]; then "$path" describe; else "$path" describe | jq -r '"\(.name): \(.summary)\nneeds: \(.requires | join(", "))\nmeasures the staged tree: \(.needs_tree)"'; echo; "$path" explain; fi
+        return
+    fi
+    {
+        for d in "${GUARD_LIB_DIR}/../drivers/"*.sh; do
+            name="$(basename "$d" .sh)"; "$d" describe | jq -c --arg s built-in '. + {source:$s}'
+        done
+        for name in $(git ls-tree --name-only HEAD quality/drivers/ 2>/dev/null); do
+            name="$(basename "$name" .sh)"
+            jq -nc --arg n "$name" '{name:$n, summary:"repo driver: quality/drivers/\($n).sh", source:"repo"}'
+        done
+    } | if [ "$JSON" = 1 ]; then jq -s '{drivers: .}'; else jq -r '"\(.name)\t\(.source)\t\(.summary)"' | awk -F'\t' '{ printf "%-14s %-9s %s\n", $1, $2, $3 }'; fi
+}
+
+cmd_config() {
+    [ "${1:-}" = get ] && [ -n "${2:-}" ] || qg_die 'usage: qg config get <key>'
+    qg_config_key "$2" || { printf 'qg: %s is not set (source: %s)\n' "$2" "$(qg_config_source || echo none)" >&2; exit 1; }
+    printf '\n'
+}
+
+cmd_override() {
+    local reason='' push=''
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --reason) reason="${2:-}"; shift 2 ;;
+            --push)   push="${2:-}"; shift 2 ;;
+            *) qg_die "override: unknown option $1 (qg help override)" ;;
+        esac
+    done
+    qg_refuse_agent override
+    [ -n "${reason// /}" ] || qg_die 'override: --reason "<why>" is required; it is logged'
+    # shellcheck source=../lib/guard-override.sh
+    . "${GUARD_LIB_DIR}/guard-override.sh"
+    if [ -n "$push" ]; then qg_override_write "$reason" --push "$push"; else qg_override_write "$reason"; fi
+}
+
+[ $# -gt 0 ] || { qg_help; exit 0; }
+cmd="$1"; shift
+case "$cmd" in
+    help|-h|--help) qg_help "${1:-}"; exit 0 ;;
+esac
+qg_repo
+case "$cmd" in
+    list)     cmd_list "$@" ;;
+    run)      cmd_run "$@" ;;
+    explain)  . "${GUARD_LIB_DIR}/qg-explain.sh"; qg_explain "${1:-}" ;;
+    last)     cat "$(guard_common_dir)/qg-last/REFUSAL.txt" 2>/dev/null || printf 'qg: no refusal recorded in this repo yet\n' ;;
+    drivers)  cmd_drivers "$@" ;;
+    doctor)   . "${GUARD_LIB_DIR}/qg-doctor.sh"; qg_doctor ;;
+    config)   cmd_config "$@" ;;
+    override) cmd_override "$@" ;;
+    init)     qg_refuse_agent init; . "${GUARD_LIB_DIR}/qg-migrate.sh"; qg_init "$@" ;;
+    migrate)  qg_refuse_agent migrate; . "${GUARD_LIB_DIR}/qg-migrate.sh"; qg_migrate "$@" ;;
+    hooks)
+        [ "${1:-}" = status ] || qg_refuse_agent "hooks ${1:-}"
+        exec "$GUARD" hooks "$@" ;;
+    baseline|accept) qg_refuse_agent "$cmd"; exec "$GUARD" "$cmd" "$@" ;;
+    report|verify)   exec "$GUARD" "$cmd" "$@" ;;
+    *) printf 'qg: unknown command "%s"\n\n' "$cmd" >&2; qg_help >&2; exit 2 ;;
+esac

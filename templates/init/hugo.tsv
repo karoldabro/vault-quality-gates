@@ -1,0 +1,5 @@
+id	on	kind	driver	args	direction	threshold	gate	why
+# Starter rows for a Hugo site.
+hugo-build	push	diff	shell	parser=exitcode -- d="$(mktemp -d)"; hugo --gc --minify --quiet --destination "$d" > /dev/null; s=$?; rm -rf "$d"; exit $s	down	0	refuse	the site builds on every pushed commit, so a broken template never deploys
+conflict-markers	commit	diff	shell	-- {{guard}}/guard-added-lines.sh --added --bases "{{bases}}" --target {{target}} | awk -F"\t" '$3 ~ /^(<<<<<<<|>>>>>>>)( |$)/ { n++ } END { print n + 0 }'	down	0	refuse	a merge-conflict marker left in a file breaks it for every reader
+gate-config-touched	commit	diff	shell	-- {{guard}}/guard-protected-paths.sh --bases "{{bases}}" --target {{target}}	down	0	refuse	the gate configuration is changed by a human only, so an agent cannot loosen the gate that judges it

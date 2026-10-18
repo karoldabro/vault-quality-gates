@@ -11,6 +11,10 @@
 # locale sets. awk honours LC_NUMERIC and will otherwise emit "4,04".
 export LC_ALL=C
 
+# Built-in drivers and parsers are found from here; a caller that sourced this file directly may
+# not have set it.
+: "${GUARD_LIB_DIR:=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+
 # shellcheck source=qg-events.sh
 . "$(dirname "${BASH_SOURCE[0]}")/qg-events.sh"
 # shellcheck source=qg-refusal.sh
@@ -138,9 +142,9 @@ guard_load_checks() {
         if ! [[ "$id" =~ ^[a-z][a-z0-9-]*$ ]]; then
             guard_err "guard: ${path} line ${n}: id \"${id}\" must match [a-z][a-z0-9-]*"; return 2
         fi
-        if [ "$why" = '-' ]; then
-            guard_err "guard: ${path} line ${n}: row ${id} has no why; state in one sentence why this gate exists"; return 2
-        fi
+        case "$why" in
+            -|TODO*) guard_err "guard: ${path} line ${n}: row ${id} has no why; state in one sentence why this gate exists"; return 2 ;;
+        esac
         if ! reason="$(qg_on_valid "$on")"; then
             guard_err "guard: ${path} line ${n}: row ${id} on: ${reason}"; return 2
         fi
@@ -421,8 +425,24 @@ guard_number_line() {
 
 # guard_run_row <row> <baseline path> <base ref> <files file>
 #
-# Appends one entry to GUARD_RESULTS and returns 0 clean, 1 worse, 2 unmeasurable.
+# Appends one entry to GUARD_RESULTS and returns 0 clean, 1 worse, 2 unmeasurable. Prints one
+# progress line on stderr per measured row, so whoever waits on a commit sees what is running.
 guard_run_row() {
+    local start="$SECONDS" rc=0 status
+    _guard_run_row "$@" || rc=$?
+    if [ "$(guard_row_field "$1" kind)" != absent ]; then
+        IFS='|' read -r _ _ _ status _ <<<"${GUARD_RESULTS[-1]}"
+        printf '  %-12s %s (%s, %ds)\n' "$status" "$(guard_row_field "$1" id)" "$(guard_row_field "$1" driver)" \
+            $((SECONDS - start)) >&2
+    fi
+    return "$rc"
+}
+
+# guard_only <id> -> 0 when the run measures the row: GUARD_ONLY (set by `--only`) is empty, or
+# names the id in its comma-separated list.
+guard_only() { [ -z "${GUARD_ONLY:-}" ] || [[ ",${GUARD_ONLY}," == *",$1,"* ]]; }
+
+_guard_run_row() {
     local row="$1" baseline="$2" base="$3" files="$4"
     local id kind driver direction threshold gate tmp value why rc=0
     id="$(guard_row_field "$row" id)" kind="$(guard_row_field "$row" kind)" driver="$(guard_row_field "$row" driver)"

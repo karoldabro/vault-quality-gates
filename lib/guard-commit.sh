@@ -92,7 +92,8 @@ guard_gate() {
 
     GUARD_TREE_STATE=skip GUARD_TREE_WHY='no changed path matches guard_commit_paths'
     for row in "${GUARD_ROWS[@]}"; do
-        [ "$(guard_row_field "$row" kind)" != absent ] && guard_is_commit_row "$row" && guard_is_tree_row "$row" || continue
+        [ "$(guard_row_field "$row" kind)" != absent ] && guard_is_commit_row "$row" && guard_only "$(guard_row_field "$row" id)" \
+            && guard_is_tree_row "$row" || continue
         guard_commit_paths_hit "$first" "$target" && guard_gate_tree "$target"
         break
     done
@@ -101,6 +102,7 @@ guard_gate() {
     for row in "${GUARD_ROWS[@]}"; do
         id="$(guard_row_field "$row" id)" kind="$(guard_row_field "$row" kind)"
         guard_is_commit_row "$row" || [ "$kind" = 'absent' ] || continue
+        guard_only "$id" || continue
         if [ "$kind" != 'absent' ] && guard_is_tree_row "$row" && [ "$GUARD_TREE_STATE" != ok ]; then
             if [ "$GUARD_TREE_STATE" = skip ]; then GUARD_RESULTS+=("${id}|-|-|skipped|${GUARD_TREE_WHY}")
             else GUARD_RESULTS+=("${id}|-|-|unmeasurable|${GUARD_TREE_WHY}"); worst=2; fi

@@ -1,0 +1,6 @@
+id	on	kind	driver	args	direction	threshold	gate	why
+# Starter rows for a PHP repo. Add runner=<repo path> when PHP runs in a container.
+phpstan-new	commit	diff	phpstan	-- --memory-limit=1G	down	0	refuse	a commit may not add a PHPStan error, so type errors never reach main
+tests	push	diff	shell	parser=exitcode -- vendor/bin/phpunit --no-progress > /dev/null	down	0	refuse	the test suite passes on every pushed commit
+conflict-markers	commit	diff	shell	-- {{guard}}/guard-added-lines.sh --added --bases "{{bases}}" --target {{target}} | awk -F"\t" '$3 ~ /^(<<<<<<<|>>>>>>>)( |$)/ { n++ } END { print n + 0 }'	down	0	refuse	a merge-conflict marker left in a file breaks it for every reader
+gate-config-touched	commit	diff	shell	-- {{guard}}/guard-protected-paths.sh --bases "{{bases}}" --target {{target}}	down	0	refuse	the gate configuration is changed by a human only, so an agent cannot loosen the gate that judges it

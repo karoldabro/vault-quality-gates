@@ -1,0 +1,7 @@
+id	on	kind	driver	args	direction	threshold	gate	why
+# Starter rows for a Flutter or Dart repo.
+format-changed	commit	diff	shell	parser=exitcode -- { {{files}} | tr "\0" "\n" | grep -E '\.dart$' || true; } | xargs -r dart format --output=none --set-exit-if-changed > /dev/null	down	0	refuse	changed Dart files are formatted, so diffs stay readable
+analyze	push	diff	shell	parser=exitcode -- flutter analyze --no-pub > /dev/null	down	0	refuse	the app has no analyzer error on any pushed commit
+tests	push	diff	shell	parser=exitcode -- flutter test > /dev/null	down	0	refuse	the widget and unit tests pass on every pushed commit
+conflict-markers	commit	diff	shell	-- {{guard}}/guard-added-lines.sh --added --bases "{{bases}}" --target {{target}} | awk -F"\t" '$3 ~ /^(<<<<<<<|>>>>>>>)( |$)/ { n++ } END { print n + 0 }'	down	0	refuse	a merge-conflict marker left in a file breaks it for every reader
+gate-config-touched	commit	diff	shell	-- {{guard}}/guard-protected-paths.sh --bases "{{bases}}" --target {{target}}	down	0	refuse	the gate configuration is changed by a human only, so an agent cannot loosen the gate that judges it

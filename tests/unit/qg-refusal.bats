@@ -41,7 +41,8 @@ refusal_file() { cat "$(git rev-parse --path-format=absolute --git-common-dir)/q
     [ "$(grep -c '  | in-tree.sh: vendor/ does not match' <<<"$output")" -eq 1 ]
     [[ "$output" == *'Output of row-'*', row-'* ]]
     [[ "$output" == *'Fix what the output above names'* ]]
-    [ "${#output}" -le 3500 ]
+    refusal="vault-guard:${output#*$'\n'vault-guard:}"
+    [ "${#refusal}" -le 3500 ]
 }
 
 @test "a worse v2 row prints its why, its reproduce line and qg explain, and the human override" {
@@ -76,7 +77,10 @@ refusal_file() { cat "$(git rev-parse --path-format=absolute --git-common-dir)/q
     commit_all init
     stage_change
     run bash /code/bin/guard.sh commit
-    [ "${#output}" -le 3500 ]
+    # The progress lines come first; the refusal, which the cap governs, is the tail.
+    refusal="vault-guard:${output#*$'\n'vault-guard:}"
+    [ "${#refusal}" -le 3500 ]
+    [ "${#output}" -gt "${#refusal}" ]
     [[ "$output" == *'cut here; run `qg last`'* ]]
     [[ "$output" == *'How to pass:'*'qg last prints this refusal again'* ]]
     full="$(refusal_file)"
