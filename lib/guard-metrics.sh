@@ -17,6 +17,10 @@ export LC_ALL=C
 
 # shellcheck source=qg-events.sh
 . "$(dirname "${BASH_SOURCE[0]}")/qg-events.sh"
+# shellcheck source=qg-row.sh
+. "$(dirname "${BASH_SOURCE[0]}")/qg-row.sh"
+# shellcheck source=qg-driver.sh
+. "$(dirname "${BASH_SOURCE[0]}")/qg-driver.sh"
 # shellcheck source=qg-refusal.sh
 . "$(dirname "${BASH_SOURCE[0]}")/qg-refusal.sh"
 
@@ -26,20 +30,10 @@ GUARD_BASELINE_HEADER=$'id\tvalue\tcommit\treason'
 GUARD_ACCEPT_LIMIT_DEFAULT=3
 GUARD_WHY_FALLBACK='(no reason recorded; run qg migrate)'
 
-# guard_load_checks reads either header into one row shape: these fields, tab-separated, in this
-# order. Every reader takes a field by name through guard_row_field, never by position.
-GUARD_FIELDS=(id on kind driver args direction threshold gate why command parser artifact)
-# -g: a caller may source this file inside a function, and a plain declare would be local there.
-declare -gA GUARD_FIELD_AT=()
-for _i in "${!GUARD_FIELDS[@]}"; do GUARD_FIELD_AT[${GUARD_FIELDS[$_i]}]=$_i; done
-unset _i
-
 # Rows loaded by guard_load_checks, one normalised row per element.
 GUARD_ROWS=()
 # Results collected by guard_run_row: id|value|baseline|status|detail
 GUARD_RESULTS=()
-
-guard_err() { printf '%s\n' "$*" >&2; }
 
 # --- float comparison --------------------------------------------------------
 # awk, never bc: bc is absent from tests/Dockerfile's package list.
@@ -48,51 +42,6 @@ guard_gt() { awk -v a="$1" -v b="$2" 'BEGIN { exit !(a > b) }'; }
 guard_is_number() { awk -v v="$1" 'BEGIN { exit !(v ~ /^-?[0-9]+(\.[0-9]+)?$/) }'; }
 
 # --- quality/checks.tsv ------------------------------------------------------
-
-# guard_row_field <row> <name> -> one field of a normalised row (GUARD_FIELDS).
-guard_row_field() {
-    # Split on US (\037), not tab: tab is IFS whitespace, so `read` would merge an empty cell
-    # with its neighbour and shift every later field.
-    local -a f
-    IFS=$'\037' read -r -a f <<<"${1//$'\t'/$'\037'}"
-    printf '%s' "${f[${GUARD_FIELD_AT[$2]}]-}"
-}
-
-# guard_args_kv <args> <key> -> the value of `key=value` before ` -- ` in a v2 args cell.
-# guard_args_argv <args> -> the text after the first ` -- `, or nothing.
-guard_args_kv() {
-    local head="$1" w
-    case "$head" in '-- '*) return 1 ;; *' -- '*) head="${head%% -- *}" ;; esac
-    for w in $head; do
-        case "$w" in "$2="*) printf '%s' "${w#*=}"; return 0 ;; esac
-    done
-    return 1
-}
-guard_args_argv() {
-    case "$1" in '-- '*) printf '%s' "${1#-- }" ;; *' -- '*) printf '%s' "${1#* -- }" ;; esac
-}
-
-# guard_driver_builtin <name> -> the path of a built-in driver, when one exists.
-guard_driver_builtin() {
-    local file="${GUARD_LIB_DIR}/../drivers/${1}.sh"
-    [ -x "$file" ] && printf '%s' "$file"
-}
-
-# guard_driver_resolvable <name> -> 0 when a built-in or the repo's committed driver exists.
-# A repo driver is read at the config revision (lib/qg-config.sh); one named like a built-in is
-# refused, so a repo cannot replace a shared driver.
-guard_driver_resolvable() {
-    [ "$1" = shell ] && return 0
-    if guard_driver_builtin "$1" >/dev/null; then
-        if declare -F guard_cfg_show >/dev/null && guard_cfg_show "quality/drivers/${1}.sh" >/dev/null; then
-            printf 'quality/drivers/%s.sh has the name of a built-in driver' "$1"; return 1
-        fi
-        return 0
-    fi
-    declare -F guard_cfg_show >/dev/null && guard_cfg_show "quality/drivers/${1}.sh" >/dev/null && return 0
-    printf 'no driver "%s": not built in, and no quality/drivers/%s.sh is committed' "$1" "$1"
-    return 1
-}
 
 # guard_load_checks <path>
 #
@@ -296,92 +245,6 @@ guard_parse_row() {
     printf '%s' "$out"
 }
 
-# guard_substitute <command> <base ref> <files file>
-#
-# {{base}} becomes the base ref. {{files}} becomes the NUL-separated changed paths,
-# which the command must consume with xargs -0: a newline-separated list terminates
-# the command at the first path and executes the second path as a command name.
-# {{tree}}, {{cache}}, {{bases}}, {{target}} and {{guard}} come from GUARD_TREE_DIR,
-# GUARD_CACHE_DIR, GUARD_BASES, GUARD_TARGET and GUARD_BIN_DIR, which `guard.sh commit`
-# and `verify` set; a token whose variable is unset stays as written.
-guard_substitute() {
-    local cmd="$1" base="$2" files="$3" token var
-    cmd="${cmd//\{\{base\}\}/"$base"}"
-    cmd="${cmd//\{\{files\}\}/"cat $files"}"
-    for token in tree:GUARD_TREE_DIR cache:GUARD_CACHE_DIR bases:GUARD_BASES \
-                 target:GUARD_TARGET guard:GUARD_BIN_DIR; do
-        var="${token#*:}"
-        [ -n "${!var:-}" ] || continue
-        cmd="${cmd//\{\{${token%%:*}\}\}/"${!var}"}"
-    done
-    printf '%s' "$cmd"
-}
-
-# Lines of a row's own output the engine keeps for the refusal and `qg explain`.
-GUARD_TAIL_LINES=20
-
-# guard_last_dir <id> -> <git-common-dir>/qg-last/<id>, created; exit 1 for an id that is not a
-# plain name, so a row id can never write outside qg-last/.
-guard_last_dir() {
-    [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && [[ "$1" != *..* ]] || return 1
-    local d
-    d="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/qg-last/$1" || return 1
-    rm -rf "$d" && mkdir -p "$d" && printf '%s' "$d"
-}
-
-# guard_save_last <id> <result.json path or -> <output file> <driver> <value or -> <why or ->
-# Writes qg-last/<id>/result.json and output.txt (the last GUARD_TAIL_LINES lines). A shell row
-# has no result.json of its own; one is written from its value or its reason.
-guard_save_last() {
-    local d
-    d="$(guard_last_dir "$1")" || return 0
-    tail -n "$GUARD_TAIL_LINES" "$3" > "$d/output.txt" 2>/dev/null
-    if [ "$2" != '-' ] && [ -r "$2" ]; then cp "$2" "$d/result.json"
-    elif command -v jq >/dev/null 2>&1; then
-        jq -n --arg d "$4" --arg v "$5" --arg e "$6" \
-            '{schema: "qg.result/1", driver: $d, status: (if $v == "-" then "error" else "measured" end),
-              metric: (if $v == "-" then null else ($v | tonumber) end), unit: "count", findings: [],
-              error: (if $e == "-" then null else $e end), reproduce: null}' > "$d/result.json" 2>/dev/null
-    fi
-    return 0
-}
-
-# guard_cfg_copy <path> <dest> -> the committed file at the config revision, executable. Exit 1
-# when it is absent. Never the working tree: a commit cannot install what judges it.
-guard_cfg_copy() {
-    declare -F guard_cfg_show >/dev/null || return 1
-    guard_cfg_show "$1" > "$2" || { rm -f "$2"; return 1; }
-    chmod +x "$2"
-}
-
-# guard_driver_path <name> <dir> -> the built-in driver, or the repo's committed one copied into
-# <dir>. Exit 1 with the reason on stdout.
-guard_driver_path() {
-    local reason
-    reason="$(guard_driver_resolvable "$1")" || { printf '%s' "$reason"; return 1; }
-    guard_driver_builtin "$1" && return 0
-    guard_cfg_copy "quality/drivers/${1}.sh" "$2/driver" && printf '%s' "$2/driver" && return 0
-    printf 'quality/drivers/%s.sh could not be read at the config revision' "$1"; return 1
-}
-
-# guard_driver_needs_tree <name> -> 0 when the driver's describe says needs_tree: true. A driver
-# whose describe cannot be read is treated as needing the tree, so it is never measured on the
-# working tree by mistake.
-declare -gA GUARD_NEEDS_TREE=()
-guard_driver_needs_tree() {
-    [ "$1" = shell ] && return 1
-    if [ -z "${GUARD_NEEDS_TREE[$1]:-}" ]; then
-        local tmp path ans=yes
-        tmp="$(mktemp -d)"
-        if path="$(guard_driver_path "$1" "$tmp")"; then
-            [ "$("$path" describe 2>/dev/null | jq -r '.needs_tree' 2>/dev/null)" = false ] && ans=no
-        fi
-        rm -rf "$tmp"
-        GUARD_NEEDS_TREE[$1]="$ans"
-    fi
-    [ "${GUARD_NEEDS_TREE[$1]}" = yes ]
-}
-
 # guard_run_shell <row> <base> <files> <tmp> -> value on stdout, or exit 2 with the reason on
 # stderr. The command runs in this shell, under guard.sh's `set -uo pipefail` and LC_ALL=C;
 # its output goes to <tmp>/output.
@@ -399,51 +262,6 @@ guard_run_shell() {
     source="$artifact"
     [ "$parser" = '-' ] && source="$(printf '%s' "$(cat "$tmp/output")" | tail -1)"
     guard_parse_row "$parser" "${source:--}" "$status"
-}
-
-# guard_run_driver <row> <base> <files> <tmp> -> value on stdout, or exit 2 with the reason on
-# stderr. Runs `<driver> run` with the environment of vault/architecture/qg-driver-contract.md
-# and reads <tmp>/out/result.json. The engine alone decides pass or fail, from `metric`.
-guard_run_driver() {
-    local row="$1" base="$2" files="$3" tmp="$4" driver args path runner status=0 r
-    driver="$(guard_row_field "$row" driver)"
-    args="$(guard_substitute "$(guard_row_field "$row" args)" "$base" "$files")"
-    path="$(guard_driver_path "$driver" "$tmp")" || { guard_err "$path"; return 2; }
-    unset QG_RUNNER
-    if runner="$(guard_args_kv "$args" runner)"; then
-        guard_cfg_copy "$runner" "$tmp/runner" || { guard_err "runner ${runner} is not committed at the config revision"; return 2; }
-        export QG_RUNNER="$tmp/runner"
-    fi
-    mkdir -p "$tmp/out"
-    QG_ARGS="$args" QG_OUT="$tmp/out" QG_ROW="$(guard_row_field "$row" id)" QG_BASE="$base" QG_FILES="$files" \
-    QG_BASES="${GUARD_BASES:-$base}" QG_TARGET="${GUARD_TARGET:-${GUARD_SHA:-HEAD}}" QG_REPO="$REPO_ROOT" \
-    QG_TREE="${GUARD_TREE_DIR:-$PWD}" QG_CACHE="${GUARD_CACHE_DIR:-$(git rev-parse --path-format=absolute --git-common-dir)/guard-cache}" \
-        "$path" run > "$tmp/output" 2>&1 || status=$?
-    unset QG_RUNNER
-    r="$tmp/out/result.json"
-    [ "$status" -eq 0 ] || { guard_err "driver ${driver} exited ${status}"; return 2; }
-    [ -s "$r" ] || { guard_err "driver ${driver} wrote no result.json"; return 2; }
-    jq -e 'type == "object"' "$r" >/dev/null 2>&1 || { guard_err "driver ${driver} wrote a result.json that is not a JSON object"; return 2; }
-    if [ "$(jq -r '.error // empty | tostring' "$r")" != '' ]; then
-        guard_err "$(jq -r '.error | tostring' "$r")"; return 2
-    fi
-    [ "$(jq -r '.status' "$r")" = measured ] || { guard_err "driver ${driver} reports status $(jq -r '.status' "$r")"; return 2; }
-    jq -r 'if (.metric | type) == "number" then .metric else "x" end' "$r" | guard_number_line \
-        || { guard_err "driver ${driver} reports metric $(jq -c '.metric' "$r"), which is not a number"; return 2; }
-}
-
-# guard_number_line -> reads one number from stdin and prints it in plain decimal; exit 2 for
-# anything else. jq prints 1e3 for 1000, which guard_is_number would refuse.
-guard_number_line() {
-    local v
-    v="$(head -1 | tr -d '[:space:]')"
-    [[ "$v" =~ ^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$ ]] || return 2
-    # A plain decimal passes through unchanged, so a baseline written at full precision compares
-    # exactly; only an exponent form is rewritten.
-    if [[ "$v" =~ [eE] ]]; then
-        v="$(awk -v v="$v" 'BEGIN { s = sprintf("%.10f", v); sub(/0+$/, "", s); sub(/\.$/, "", s); print s }')"
-    fi
-    printf '%s' "$v"
 }
 
 # guard_run_row <row> <baseline path> <base ref> <files file>
