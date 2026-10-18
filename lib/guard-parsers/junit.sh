@@ -11,4 +11,8 @@ tests="$(attr tests)"
 [ -n "$tests" ] || guard_p_die "junit: ${f} has no <testsuite> element"
 [ "$tests" -gt 0 ] 2>/dev/null || guard_p_die "junit: zero tests ran"
 
-guard_p_emit "$(( $(attr failures || echo 0) + $(attr errors || echo 0) ))"
+# Anyone can write the report, and $(( )) would run a command hidden in an attribute.
+failures="$(attr failures)"; errors="$(attr errors)"
+[[ "${failures:-0}" =~ ^[0-9]+$ ]] && [[ "${errors:-0}" =~ ^[0-9]+$ ]] \
+    || guard_p_die "junit: ${f} carries a failures or errors value that is not a whole number"
+guard_p_emit "$(( ${failures:-0} + ${errors:-0} ))"

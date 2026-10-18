@@ -59,6 +59,19 @@ push() { GUARD_SHA="$(git rev-parse HEAD)" run bash /code/bin/guard.sh release r
     [[ "$output" != *'finding 10'* ]]
 }
 
+@test "two rows of 11 findings each cap at 10, and each '+1 more' line follows its own row" {
+    finder_driver 11; push_checks
+    printf 'again\tpush\tdiff\tfinder\t-\tdown\t0\trefuse\ta second row with the same findings\n' >> quality/checks.tsv
+    commit_all two
+    push
+    [ "$status" -eq 1 ]
+    local lines; lines="$(grep -E '^(found|again) ' <<<"$output")"
+    [ "$(grep -c '^found app/' <<<"$lines")" -eq 10 ] && [ "$(grep -c '^again app/' <<<"$lines")" -eq 10 ]
+    # The line after a row's last finding is its own overflow line.
+    [ "$(grep -A1 '^found app/f9.php' <<<"$lines" | tail -1)" = 'found +1 more (qg explain found)' ]
+    [ "$(grep -A1 '^again app/f9.php' <<<"$lines" | tail -1)" = 'again +1 more (qg explain again)' ]
+}
+
 @test "a malformed quality/rules.tsv still prints the refusal and says the catalog is unreadable" {
     finder_driver 1; push_checks
     printf 'not the header\n' > quality/rules.tsv

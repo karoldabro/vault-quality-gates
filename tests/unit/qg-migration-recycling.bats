@@ -22,7 +22,7 @@ setup() {
     mkdir -p "$WORK/bin"
     # A docker that records its argv, its cwd and any COMPOSE_/DOCKER_ variable it sees, then warns
     # the way compose does about an unset variable and prints one real error line.
-    printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" >> "$DOCKER_LOG"' 'pwd >> "$DOCKER_LOG"' \
+    printf '%s\n' '#!/usr/bin/env bash' '[ "$1" = image ] && exit "${IMAGE_RC:-0}"' 'printf "%s\n" "$*" >> "$DOCKER_LOG"' 'pwd >> "$DOCKER_LOG"' \
         'env | grep -E "^(COMPOSE_|DOCKER_HOST|DOCKER_CONTEXT)" >> "$DOCKER_LOG" || true' \
         'echo "time=x level=warning msg=\"The \\\"SERVER_PORT\\\" variable is not set. Defaulting to a blank string.\"" >&2' \
         'echo "a real compose error line" >&2' 'exit "${DOCKER_RC:-0}"' > "$WORK/bin/docker"
@@ -129,7 +129,7 @@ api_repo() {
     COMPOSE_FILE=evil.yml COMPOSE_PROJECT_NAME=x COMPOSE_PROFILES=p COMPOSE_ENV_FILES=e DOCKER_HOST=tcp://x DOCKER_CONTEXT=c \
         run bash quality/bin/in-server.sh "$WORK/api" - vendor/bin/phpstan analyse
     [ "$status" -eq 0 ]
-    [ "$(head -1 "$DOCKER_LOG")" = "compose -f $WORK/api/docker-compose.yml --project-directory $WORK/api --env-file /dev/null --progress quiet run --rm --no-deps -T --user $(id -u):$(id -g) -e XDEBUG_MODE=off server nice -n 15 vendor/bin/phpstan analyse" ]
+    [ "$(head -1 "$DOCKER_LOG")" = "compose -f $WORK/api/docker-compose.yml --project-directory $WORK/api --env-file /dev/null --progress quiet run --rm --no-deps --pull never -T --user $(id -u):$(id -g) -e XDEBUG_MODE=off server nice -n 15 vendor/bin/phpstan analyse" ]
     ! grep -qE '^(COMPOSE_|DOCKER_HOST|DOCKER_CONTEXT)' "$DOCKER_LOG"
     [[ "$output" == *'a real compose error line'* ]]
     [[ "$output" != *'variable is not set'* ]]
@@ -147,9 +147,35 @@ api_repo() {
     mv .env .env.off
     run bash quality/bin/in-server.sh "$WORK/api" - x
     [ "$status" -eq 2 ] && [[ "$output" == *'.env does not exist'* ]]
-    mv .env.off .env; bump composer.lock app/a
+    mv .env.off .env; mv vendor vendor.off
+    run bash quality/bin/in-server.sh "$WORK/api" - x
+    [ "$status" -eq 2 ] && [[ "$output" == *'vendor does not exist'* ]]
+    mv vendor.off vendor; bump composer.lock app/a
     run bash quality/bin/in-server.sh "$WORK/api" - x
     [ "$status" -eq 2 ] && [[ "$output" == *'does not match'* ]]
+    [ ! -e "$DOCKER_LOG" ]
+}
+
+@test "in-server.sh runs when a committed tool package changed and vendor/ matches it: the commit gate judged that change" {
+    api_repo
+    bump composer.lock tool/rules; installed vendor composer.lock; commit_all bump
+    run bash quality/bin/in-server.sh "$WORK/api" - x
+    [ "$status" -eq 0 ] && [ -s "$DOCKER_LOG" ]
+}
+
+@test "in-server.sh refuses an uncommitted docker-compose.yml or docker/server change, and a missing image" {
+    api_repo
+    printf 'services: {x: {}}\n' > docker-compose.yml
+    run bash quality/bin/in-server.sh "$WORK/api" - x
+    [ "$status" -eq 2 ] && [[ "$output" == *'uncommitted changes'* ]]
+    git checkout -q docker-compose.yml
+    mkdir -p docker/server; printf 'FROM x\n' > docker/server/Dockerfile; commit_all image
+    printf 'RUN evil\n' >> docker/server/Dockerfile
+    run bash quality/bin/in-server.sh "$WORK/api" - x
+    [ "$status" -eq 2 ] && [[ "$output" == *'uncommitted changes'* ]]
+    git checkout -q docker/server/Dockerfile
+    IMAGE_RC=1 run bash quality/bin/in-server.sh "$WORK/api" - x
+    [ "$status" -eq 2 ] && [[ "$output" == *'image recycling-api-server:latest is missing'* ]]
     [ ! -e "$DOCKER_LOG" ]
 }
 
@@ -203,6 +229,7 @@ unprotected() {
         if ($4 == "phpunit") print "phpunit.xml"
         if ($4 == "phpstan") print "phpstan.neon"
         if ($4 == "pint") print "pint.json"
+        if ($4 == "jscpd-added") print ".jscpd.json"
         if ($5 ~ /in-server\.sh/) { print "docker-compose.yml"; print "docker-compose.override.yml"; print "compose.yaml"; print "compose.yml" }
     } END { print "quality/config"; print "quality/drivers"; print "quality/checks.tsv" }' "$1" | sort -u \
     | while IFS= read -r f; do
@@ -255,8 +282,13 @@ v1_api() {
     CLAUDECODE=1 TMPDIR=/dev/shm run bash "$M/apply.sh" "$WORK/link"
     [ "$status" -eq 2 ] && [[ "$output" == *'agents may not apply'* ]]
     rm -rf /dev/shm/qg-apply-$$
-    # A rehearsal on a scratch clone under the real /tmp is allowed.
+    # A rehearsal on a scratch clone under the real /tmp is allowed; without parity.tsv nothing is copied.
     v1_api "$WORK/scratch"
-    CLAUDECODE=1 run bash "$M/apply.sh" "$WORK/scratch"
-    [ "$status" -eq 0 ]
+    mkdir -p "$WORK/m"; cp "$M"/* "$WORK/m/"; rm -f "$WORK/m/parity.tsv"
+    CLAUDECODE=1 run bash "$WORK/m/apply.sh" "$WORK/scratch"
+    [ "$status" -eq 2 ] && [[ "$output" == *'parity.tsv is missing'* ]]
+    cmp -s "$M/checks.tsv" quality/checks.tsv && return 1
+    printf 'id\tnew-id\tkind\tverdict\n' > "$WORK/m/parity.tsv"
+    CLAUDECODE=1 run bash "$WORK/m/apply.sh" "$WORK/scratch"
+    [ "$status" -eq 0 ] && [[ "$output" == *'No repo row took a new id'* ]]
 }

@@ -31,6 +31,9 @@ fi
 [ "$(head -1 "$target/quality/checks.tsv" 2>/dev/null)" = "$(printf 'id\tscope\tkind\tcommand\tparser\tartifact\tdirection\tthreshold\tgate')" ] \
     || { echo "apply.sh: $target/quality/checks.tsv is not the v1 file this migration replaces" >&2; exit 2; }
 
+[ -r "$here/parity.tsv" ] \
+    || { echo "apply.sh: $here/parity.tsv is missing; run checks/qg-parity-recycling-api.sh first" >&2; exit 2; }
+
 cp "$here/checks.tsv" "$target/quality/checks.tsv"
 cp "$here/config" "$target/quality/config"
 for f in in-tree.sh in-server.sh lock-check.sh; do
@@ -39,11 +42,8 @@ for f in in-tree.sh in-server.sh lock-check.sh; do
 done
 
 # Repo rows that took a new id have no baseline line yet; parity.tsv columns: id, new id, kind, verdict.
-new_ids=''
-if [ -r "$here/parity.tsv" ]; then
-    new_ids="$(awk -F'\t' 'NR > 1 && $2 != $1 && $2 != "-" && $3 == "repo" { printf "%s%s", sep, $2; sep = "," }' "$here/parity.tsv")"
-fi
-container="format-files,insights-code,insights-complexity,insights-architecture,insights-style,phpstan-errors,indication-checks,deps-shadow,deps-unused"
+new_ids="$(awk -F'\t' 'NR > 1 && $2 != $1 && $2 != "-" && $3 == "repo" { printf "%s%s", sep, $2; sep = "," }' "$here/parity.tsv")"
+container="format-files,insights-code,insights-complexity,insights-architecture,insights-style,phpstan-errors-all,indication-checks,deps-shadow,deps-unused"
 
 cat <<EOF
 apply.sh: copied the v2 gate files into $target/quality. Nothing is committed.

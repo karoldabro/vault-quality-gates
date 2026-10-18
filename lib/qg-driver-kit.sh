@@ -45,7 +45,8 @@ qg_paths() {
 
 # qg_tool <report or -> <ok exit codes, space-separated> <argv...>
 # Deletes <report> (a path relative to QG_TREE) so a crash never leaves the last run's report to
-# be read, runs <argv> through QG_RUNNER or in QG_TREE, and keeps stdout and stderr in QG_OUT.
+# be read, runs <argv> through QG_RUNNER, else in QG_TOOL_DIR (default QG_TREE), and keeps stdout
+# and stderr in QG_OUT.
 # Returns 1 with QG_ERROR set when the exit code is not an ok one or <report> was not written.
 qg_tool() {
     local report="$1" ok="$2" a rc=0
@@ -56,7 +57,7 @@ qg_tool() {
     done
     [ "$report" = - ] || rm -f "${QG_TREE}/${report}"
     if [ -n "${QG_RUNNER:-}" ]; then "$QG_RUNNER" "$QG_TREE" "${QG_CACHE:-/tmp}" "$@" > "${QG_OUT}/stdout" 2> "${QG_OUT}/stderr" || rc=$?
-    else ( cd "$QG_TREE" && "$@" ) > "${QG_OUT}/stdout" 2> "${QG_OUT}/stderr" || rc=$?; fi
+    else ( cd "${QG_TOOL_DIR:-$QG_TREE}" && "$@" ) > "${QG_OUT}/stdout" 2> "${QG_OUT}/stderr" || rc=$?; fi
     QG_RC="$rc"
     # The tool's own error lines are what a person needs; never the report itself.
     cat "${QG_OUT}/stderr"
@@ -91,8 +92,8 @@ qg_shared_report() {
 }
 
 # qg_added_only <findings json file> -> rewrites the file to the findings a commit added: each on a
-# line the commit adds (counted), or with no line in a changed file (printed, never counted, as v1
-# guard-added-lines.sh --checkstyle does). Sets QG_COUNT. Returns 1 with QG_ERROR set when a path
+# line the commit adds (counted), or with no line in a changed file, or with no file at all (printed,
+# never counted, as v1 guard-added-lines.sh --checkstyle does). Sets QG_COUNT. Returns 1 with QG_ERROR set when a path
 # is not inside QG_TREE.
 qg_added_only() {
     local findings="$1" added bad
@@ -107,8 +108,9 @@ qg_added_only() {
     jq -c --rawfile a "$added" --rawfile c <(tr '\0' '\n' < "${QG_FILES:-/dev/null}") '
         ($a | split("\n") | map(select(length > 0)) | map({key: ., value: true}) | from_entries) as $hit
         | ($c | split("\n") | map(select(length > 0)) | map({key: ., value: true}) | from_entries) as $changed
-        | map(if (.line != null and .line != 0) then (if $hit["\(.file)\t\(.line)"] then . + {counted: true} else empty end)
-              elif (.file != null and $changed[.file]) then . + {counted: false} else empty end)' "${findings}.n" > "$findings"
+        | map(if (.file == null) then . + {counted: false}
+              elif (.line != null and .line != 0) then (if $hit["\(.file)\t\(.line)"] then . + {counted: true} else empty end)
+              elif $changed[.file] then . + {counted: false} else empty end)' "${findings}.n" > "$findings"
     QG_COUNT="$(jq '[.[] | select(.counted)] | length' "$findings")"
     jq -c 'map(del(.counted))' "$findings" > "${findings}.n" && mv "${findings}.n" "$findings"
     rm -f "$added"

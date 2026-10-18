@@ -31,13 +31,6 @@ configs, then usability.
 
 ## Open & deferred
 
-- open: the live gate can be skipped today. `GUARD_SKIP=. git push` skips every push row, and
-  `GUARD_CONFIG_REV=<old sha>` makes a commit or push judged by an older config. Neither the hooks
-  nor `guard_bash.py` stop it. W-1 fixes this and ships alone, before any other S1 work.
-- needs the operator: recycling-api has 8 staged files on `release/1.18.6` that the gate refused on
-  2026-10-17. Commit them with `QG_SKIP_REASON="add laravel-health" git commit -m "…"` (no `&&`), or
-  wait for S2, which makes `quality/bin/in-tree.sh` read the staged `composer.lock`. SC-8 runs on the
-  live checkouts and needs these committed first.
 - needs the operator: W-26 links `~/.local/bin/qg`; W-29 reinstalls the git hooks in the four gated
   repos and in this repo. Both write outside the S1 worktree.
 - needs the operator: S2–S5 each end with a migration commit the operator makes. Agents may not run
@@ -46,8 +39,6 @@ configs, then usability.
 - open: the push gate of recycling-api is not yet compared with `43d7082`. `checks/qg-SC-8.sh --release` matched dashboard (8 rows), app (15) and mobile (61) on 2026-10-18; api stopped at the clean-tree check because `config/sentry.php` and `config/telescope.php` were uncommitted. Re-run `checks/qg-SC-8.sh --release ~/workspace/recycling-api` on a clean api checkout.
 - open: the gate stays client-side. GitHub branch protection needs GitHub Pro on these private repos,
   so a script an agent writes can still commit with hooks off.
-- deferred to S2: move the driver runtime (`guard_driver_*`, `guard_cfg_copy`, `guard_run_driver`, `guard_number_line`, `guard_save_last`) from `lib/guard-metrics.sh` into `lib/qg-driver.sh` before new drivers land.
-- deferred to S2: a push refusal lists no driver findings, and `lib/qg-explain.sh` formats findings itself; route both through `bin/guard-report-errors.sh` once the first driver push row exists.
 - deferred: SARIF export. `qg.result/1` keeps names SARIF maps (`ruleId`, `level`, file, line).
 
 ## Open questions
@@ -211,7 +202,7 @@ recycling-api commit. S2–S5 start after S1 is `done`; S6 after S2–S5.
 | C-2 | `checks.tsv` v2 | S1 | S2, S3, S4, S5, S6 | header `id on kind driver args direction threshold gate why`; `on` grammar in `vault/architecture/guard-file-formats.md` |
 | C-3 | `qg migrate`, `qg init --profile` | S1 | S2, S3, S4, S5 | `bin/qg migrate [--draft]`, `bin/qg init --profile docs\|php\|nuxt\|flutter\|hugo`; operator-run |
 | C-4 | row parity on migration | S2, S3, S4 | S6 | `checks/qg-parity-<repo>.sh` in `~/workspace/vault-quality-gates`: per row, a commit seeded with one violation; old and new id and value must match, else the row takes a new id |
-| C-5 | every gated repo on v2 | S2, S3, S4, S5 | S6 | `quality/checks.tsv` v2 header committed on every branch with an upstream in recycling-api, app.givore.com, dashboard.givore.com, recycling_mobile_app, `~/vault/givore`, givore.com; checked by `qg doctor --all-branches` |
+| C-5 | every gated repo on v2 | S2, S3, S4, S5 | S6 | `quality/checks.tsv` v2 header committed on the release branch and the default branch of recycling-api, app.givore.com, dashboard.givore.com, recycling_mobile_app, `~/vault/givore`, givore.com; S6 lists every other branch with an upstream through `qg doctor --all-branches`, and the operator merges or retires each one |
 
 ## Rollback
 

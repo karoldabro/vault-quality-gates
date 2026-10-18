@@ -105,6 +105,14 @@ parser_value() { /code/lib/guard-parsers/phpstan-all.sh "$FAKE_JSON" 0; }
     [ "$(metric)" = 0 ]
 }
 
+@test "lines=added with a file-less error is status error naming it, never metric 0" {
+    printf '%s' '{"totals":{"errors":1,"file_errors":0},"files":[],"errors":["Bootstrap failed."]}' > "$FAKE_JSON"
+    FAKE_RC=1 QG_ARGS='lines=added' run "$DRIVER" run
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.status' "$QG_OUT/result.json")" = error ] && [ "$(metric)" = null ]
+    [[ "$output" == *'Bootstrap failed.'* ]]
+}
+
 @test "through the engine: a file-less-only failure is refused with its message, and the runner comes from HEAD" {
     gate_repo "$WORK/repo"
     mkdir -p vendor/bin quality/bin

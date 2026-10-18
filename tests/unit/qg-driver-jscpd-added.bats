@@ -46,7 +46,7 @@ out=''
 while [ $# -gt 0 ]; do [ "$1" = --output ] && out="$2"; shift; done
 [ -n "$out" ] || exit 9
 mkdir -p "$out" && cp "$FAKE_JSCPD" "$out/jscpd-report.json"
-ls -d "$PWD/$out" >> "$FAKE_SEEN"
+printf '%s|%s|%s\n' "$PWD" "$out" "${npm_config_registry:-}" >> "$FAKE_SEEN"
 EOF
     chmod +x "$1"
 }
@@ -134,29 +134,35 @@ result() { jq -r "$1" "$QG_OUT/result.json"; }
     [ "$(result '.findings[0].file')" = app/One.php ]
 }
 
-@test "pnpm receives dlx jscpd@5.3.2 app ... --reporters json --output .qg-jscpd-<row>" {
+@test "pnpm receives dlx jscpd@5.3.2 <tree>/app ... --reporters json --output <empty folder>/out" {
     clone app/One.php 31 35 app/Two.php 1 5 | report
     "$DRIVER" run > /dev/null
-    [ "$(cat "$FAKE_ARGV")" = 'dlx jscpd@5.3.2 app --reporters json --output .qg-jscpd-dup-row --silent --no-colors' ]
-    rm -f "$FAKE_ARGV"
+    local out; out="$(cut -d'|' -f2 "$FAKE_SEEN")"
+    [ "$(cat "$FAKE_ARGV")" = "dlx jscpd@5.3.2 $WORK/repo/app --reporters json --output $out --silent --no-colors" ]
+    rm -f "$FAKE_ARGV" "$FAKE_SEEN"
     QG_ARGS='version=4.0.0 min-lines=10 min-tokens=70 format=php ignore=**/Docs/** -- --exitCode 0' "$DRIVER" run > /dev/null
-    [ "$(cat "$FAKE_ARGV")" = 'dlx jscpd@4.0.0 app --min-lines 10 --min-tokens 70 --format php --ignore **/Docs/** --reporters json --output .qg-jscpd-dup-row --silent --no-colors --exitCode 0' ]
+    out="$(cut -d'|' -f2 "$FAKE_SEEN")"
+    [ "$(cat "$FAKE_ARGV")" = "dlx jscpd@4.0.0 $WORK/repo/app --min-lines 10 --min-tokens 70 --format php --ignore **/Docs/** --reporters json --output $out --silent --no-colors --exitCode 0" ]
 }
 
-@test "the temporary output dir is inside the tree while jscpd runs and removed afterwards" {
+@test "jscpd runs from an empty folder outside the tree, with the public registry, and the folder is removed" {
     clone app/One.php 31 35 app/Two.php 1 5 | report
+    printf 'registry=https://evil.invalid/\n' > "$WORK/repo/.npmrc"
     "$DRIVER" run > /dev/null
-    [ "$(cat "$FAKE_SEEN")" = "$WORK/repo/.qg-jscpd-dup-row" ]
-    [ ! -e "$WORK/repo/.qg-jscpd-dup-row" ]
-    [ "$(result .status)" = measured ]
+    local cwd out reg
+    IFS='|' read -r cwd out reg < "$FAKE_SEEN"
+    [[ "$cwd" != "$WORK/repo"* ]] && [ "$out" = "$cwd/out" ]
+    [ "$reg" = https://registry.npmjs.org/ ]
+    [ ! -e "$cwd" ]
+    [ "$(result .status)" = measured ] && [ "$(result .metric)" = 1 ]
 }
 
 @test "a jscpd that writes no report is status error, and the output dir is still removed" {
-    printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" >> "$FAKE_ARGV"' 'mkdir -p .qg-jscpd-dup-row' 'exit 0' > "$WORK/path/pnpm"
+    printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" >> "$FAKE_ARGV"' 'pwd > "$FAKE_SEEN"' 'exit 0' > "$WORK/path/pnpm"
     "$DRIVER" run > /dev/null
     [ -e "$FAKE_ARGV" ]
     [ "$(result .status)" = error ] && [ "$(result .metric)" = null ]
-    [ ! -e "$WORK/repo/.qg-jscpd-dup-row" ]
+    [ ! -e "$(cat "$FAKE_SEEN")" ]
 }
 
 @test "a non-zero jscpd exit is status error" {

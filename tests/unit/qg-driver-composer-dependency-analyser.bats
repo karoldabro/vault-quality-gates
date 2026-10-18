@@ -128,6 +128,18 @@ result() { jq -r "$1" "$QG_OUT/result.json"; }
     [ "$(result '.findings[0].file')" = null ] && [ "$(result '.findings[0].line')" = null ]
 }
 
+@test "dev-in-prod and prod-only-in-dev read the tool's own headings; an unknown metric is status error" {
+    # The analyser's console formatter prints these headings for the two classes.
+    printf '%b' '\nFound 2 dev dependencies in production code!\n\n  \xe2\x80\xa2 a/one\n  \xe2\x80\xa2 a/two\n\n' \
+        'Found 1 prod dependencies used only in dev paths!\n\n  \xe2\x80\xa2 b/one\n\n' > "$FAKE_OUT"
+    QG_ARGS=metric=dev-in-prod "$DRIVER" run > /dev/null
+    [ "$(result .metric)" = 2 ] && [ "$(result '.findings | length')" = 2 ]
+    QG_ARGS=metric=prod-only-in-dev "$DRIVER" run > /dev/null
+    [ "$(result .metric)" = 1 ]
+    QG_ARGS=metric=shdow "$DRIVER" run > /dev/null
+    [ "$(result .status)" = error ] && [[ "$(result .error)" == *'shdow'* ]]
+}
+
 @test "with QG_RUN_DIR, rows differing only in metric= call the analyser once" {
     mkdir -p "$WORK/run"
     cp "$FIX/cda-shadow.txt" "$FAKE_OUT"

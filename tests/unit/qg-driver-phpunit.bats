@@ -102,6 +102,22 @@ EOF
     [ "$(result .metric)" = 3 ] && [ "$(result .unit)" = tests ]
 }
 
+@test "a hostile or non-numeric failures, errors or statements attribute is status error and runs nothing" {
+    junit "$TREE/$JUNIT" 3 0 0
+    sed -i 's|failures="0"|failures="x[$(touch '"$WORK"'/pwned)0]"|' "$TREE/$JUNIT"
+    grep -q 'pwned' "$TREE/$JUNIT"
+    QG_ARGS='metric=failed run=no' "$DRIVER" run > /dev/null
+    [ "$(result .status)" = error ] && [ ! -e "$WORK/pwned" ]
+    junit "$TREE/$JUNIT" 3 0 0
+    sed -i 's/errors="0"/errors="abc"/' "$TREE/$JUNIT"
+    QG_ARGS='metric=failed run=no' "$DRIVER" run > /dev/null
+    [ "$(result .status)" = error ] && [ "$(result .metric)" = null ]
+    clover "$TREE/$CLOVER" 10 5
+    sed -i 's/coveredstatements="5"/coveredstatements="5e3"/' "$TREE/$CLOVER"
+    QG_ARGS='metric=coverage run=no' "$DRIVER" run > /dev/null
+    [ "$(result .status)" = error ]
+}
+
 @test "zero tests, an empty file, no <testsuite> and a missing report are status error" {
     junit "$TREE/$JUNIT" 0 0 0
     QG_ARGS='metric=failed run=no' "$DRIVER" run > /dev/null

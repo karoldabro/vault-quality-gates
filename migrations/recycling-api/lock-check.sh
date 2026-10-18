@@ -3,8 +3,8 @@
 # a runner makes before it starts the container; both print the cause on stderr and return 2.
 #
 # lock_check_vendor <composer.lock> <vendor dir>
-#   vendor/ must hold exactly the name and version set of <composer.lock>, packages and
-#   packages-dev alike, so the tools that run are the ones the lock names.
+#   vendor/composer/installed.json must list exactly the name and version set of <composer.lock>,
+#   packages and packages-dev alike. The files under vendor/ are not hashed.
 #
 # lock_check_tools <reference composer.lock> <tree composer.lock>
 #   A commit may update its own dependencies, never the tools that judge it. Every package must keep

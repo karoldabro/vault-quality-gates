@@ -209,10 +209,13 @@ guard_release_tree_matches() {
         guard_err '  Check out the branch you are pushing, then push again.'
         return 1
     fi
-    # Only paths under guard_commit_paths count: a tool that rewrites a tracked file outside them
-    # (graphify-out/, say) cannot move a metric, and must not block every push.
+    # Only paths under guard_commit_paths and guard_protected_paths count: a tool that rewrites a
+    # tracked file outside them (graphify-out/, say) cannot move a metric, and must not block every
+    # push; an uncommitted edit to a protected file (pint.json, docker-compose.yml) would loosen a row.
     local prefixes dirty
     read -ra prefixes <<<"$(qg_config_key guard_commit_paths)"
+    # No guard_commit_paths means every tracked path counts; the protected list only adds to a set list.
+    [ "${#prefixes[@]}" -eq 0 ] || read -ra prefixes <<<"${prefixes[*]} $(qg_config_key guard_protected_paths)"
     dirty="$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no | cut -c4- | sed 's/.* -> //' \
         | while IFS= read -r p; do
             [ "${#prefixes[@]}" -eq 0 ] && { printf '%s\n' "$p"; continue; }
@@ -408,7 +411,7 @@ cmd_accept() {
 
 case "${1:-}" in
     commit)
-        [ "${2:-}" = --only ] && GUARD_ONLY="${3:-}"
+        [ "${2:-}" = --only ] && GUARD_ONLY="${3//[[:space:]]/}"
         . "${GUARD_LIB_DIR}/guard-commit.sh"; guard_gate ':index' "$(guard_default_bases)" ;;
     verify)
         shift
@@ -420,7 +423,7 @@ case "${1:-}" in
         while [ $# -gt 0 ]; do
             case "$1" in
                 --only) [ $# -ge 2 ] || { guard_err 'usage: guard.sh release [<ref>] [--only <id,id>]'; exit 2; }
-                        GUARD_ONLY="$2"; shift 2 ;;
+                        GUARD_ONLY="${2//[[:space:]]/}"; shift 2 ;;
                 *) rel_ref="$1"; shift ;;
             esac
         done
@@ -429,8 +432,9 @@ case "${1:-}" in
         shift
         case "${1:-}" in
             --skip) export GUARD_SKIP="${2:-}" ;;
-            --only) [ -n "${2:-}" ] || { guard_err 'usage: guard.sh baseline [--skip <regex> | --only <id,id>]'; exit 2; }
-                    GUARD_ONLY="$2" ;;
+            --only) [ -n "${2//[[:space:],]/}" ] || { guard_err 'usage: guard.sh baseline [--skip <regex> | --only <id,id>]'; exit 2; }
+                    # `a, b` and `a,b` name the same rows.
+                    GUARD_ONLY="${2//[[:space:]]/}" ;;
         esac
         cmd_baseline ;;
     report)   cat "${REPORTS}/REPORT.md" 2>/dev/null || { guard_err 'guard: no report yet'; exit 2; } ;;

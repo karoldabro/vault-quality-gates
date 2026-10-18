@@ -60,6 +60,13 @@ case "${1:-}" in
         fi
         findings "${QG_OUT}/phpstan.json" > "${QG_OUT}/findings.json"
         if [ "$(qg_kv lines)" = added ]; then
+            # A file-less error (a boot failure, a bad config) matches no added line, so counting only
+            # added lines would read it as a clean run.
+            fileless="$(jq '.totals.errors // 0' "${QG_OUT}/phpstan.json")"
+            if [ "$fileless" != 0 ]; then
+                jq -r '(.errors // [])[]' "${QG_OUT}/phpstan.json" | head -5
+                qg_fail phpstan findings "phpstan reports ${fileless} error(s) that carry no file; fix the configuration first"; exit 0
+            fi
             qg_added_only "${QG_OUT}/findings.json" || { qg_fail phpstan findings "$QG_ERROR"; exit 0; }
             qg_result phpstan measured "$QG_COUNT" findings "${QG_OUT}/findings.json" -
         else

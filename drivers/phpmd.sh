@@ -43,7 +43,8 @@ case "${1:-}" in
         fi
         extra=()
         baseline="$(qg_kv baseline)" && extra=(--baseline-file "$baseline")
-        qg_tool - '0 2' "${cmd[@]}" "$targets" json "$ruleset" "${extra[@]}" "${argv[@]}" \
+        # Exit 3 is files PHPMD could not parse; its errors[] names them below.
+        qg_tool - '0 2 3' "${cmd[@]}" "$targets" json "$ruleset" "${extra[@]}" "${argv[@]}" \
             || { qg_fail phpmd findings "$QG_ERROR"; exit 0; }
         # PHPMD pretty-prints its JSON; anything a runner prints before it is skipped.
         sed -n '/^{/,$p' "${QG_OUT}/stdout" > "${QG_OUT}/phpmd.json"
@@ -53,6 +54,7 @@ case "${1:-}" in
         fi
         bad="$(jq -r '(.errors // [])[] | "\(.fileName // "-"): \(.message // "-")"' "${QG_OUT}/phpmd.json" | head -3)"
         if [ -n "$bad" ]; then qg_fail phpmd findings "phpmd could not parse: ${bad//$'\n'/; }"; exit 0; fi
+        [ "$QG_RC" != 3 ] || { qg_fail phpmd findings 'phpmd exited 3 (files it could not parse) and named none'; exit 0; }
         jq -c '[.files[] | .file as $f | (.violations // [])[]
                 | {ruleId: .rule, file: $f, line: .beginLine, level: "error", message: .description, doc: .externalInfoUrl}]' \
             "${QG_OUT}/phpmd.json" > "${QG_OUT}/findings.json"

@@ -39,13 +39,20 @@ case "${1:-}" in
     run)
         : "${QG_OUT:?}" "${QG_TREE:?}"
         metric="$(qg_kv metric)" || metric=shadow
+        # The word the tool prints after `Found <n>` for each class.
+        case "$metric" in
+            shadow|unused) word="$metric" ;;
+            dev-in-prod) word=dev ;;
+            prod-only-in-dev) word=prod ;;
+            *) qg_fail composer-dependency-analyser packages "metric=${metric} is not shadow, unused, dev-in-prod or prod-only-in-dev"; exit 0 ;;
+        esac
         bin="$(qg_kv bin)" || bin='vendor/bin/composer-dependency-analyser'
         read -ra argv <<<"$(qg_argv)"
         qg_shared_report cda.txt produce || { qg_fail composer-dependency-analyser packages "$QG_ERROR"; exit 0; }
-        n="$(grep -oE "Found [0-9]+ ${metric}" "${QG_OUT}/cda.txt" | grep -oE '[0-9]+' | head -1)"
+        n="$(grep -oE "Found [0-9]+ ${word} " "${QG_OUT}/cda.txt" | grep -oE '[0-9]+' | head -1)"
         # One finding per package of this class, with the first use the tool names.
-        awk -v sel="$metric" '
-            /^Found [0-9]+ / { on = ($3 == sel || index($0, "Found " $2 " " sel) == 1) ; next }
+        awk -v sel="$word" '
+            /^Found [0-9]+ / { on = ($3 == sel) ; next }
             on && /^  • / { if (pkg != "") print pkg "\t"; pkg = $0; sub(/^  • /, "", pkg); next }
             on && pkg != "" && /e\.g\. / { use = $0; sub(/^ *e\.g\. /, "", use); print pkg "\t" use; pkg = "" }
             on && pkg != "" && /^$/ { print pkg "\t"; pkg = "" }' "${QG_OUT}/cda.txt" \

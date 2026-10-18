@@ -166,8 +166,11 @@ done
 
 awk -F'\t' -v limit="$limit" '
     NR == FNR { if (FNR > 1 && $0 !~ /^#/ && NF == 4 && $4 != "-") rule[$4] = $1; next }
-    limit > 0 && ++seen[$1] > limit { if (!($1 in more)) order[++nmore] = $1; more[$1]++; next }
-    END { for (i = 1; i <= nmore; i++) printf "%s +%d more (qg explain %s)\n", order[i], more[order[i]], order[i] }
+    # A row'"'"'s overflow line follows its own lines: the records arrive grouped by row.
+    function overflow(r) { if (more[r]) printf "%s +%d more (qg explain %s)\n", r, more[r], r }
+    $1 != prev { overflow(prev); prev = $1 }
+    limit > 0 && ++seen[$1] > limit { more[$1]++; next }
+    END { overflow(prev) }
     function lookup(x,   e, best, id) {
         if (x in rule) return rule[x]
         best = 0; id = ""

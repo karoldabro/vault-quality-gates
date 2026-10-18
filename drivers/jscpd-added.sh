@@ -44,13 +44,25 @@ case "${1:-}" in
         v="$(qg_kv min-tokens)" && opts+=(--min-tokens "$v")
         v="$(qg_kv format)" && opts+=(--format "$v")
         v="$(qg_kv ignore)" && opts+=(--ignore "$v")
-        out=".qg-jscpd-${QG_ROW:-row}"
-        rm -rf "${QG_TREE:?}/${out}"
-        qg_tool "${out}/jscpd-report.json" 0 pnpm dlx "jscpd@${version}" "${QG_PATH_LIST[@]}" "${opts[@]}" \
+        if [ -z "${QG_RUNNER:-}" ]; then
+            # On the host jscpd runs from an empty folder, scanning the tree by absolute path, with the
+            # public npm registry: the commit's own .npmrc and .jscpd.json are never read.
+            work="$(mktemp -d)"; export QG_TOOL_DIR="$work"
+            scan=(); for p in "${QG_PATH_LIST[@]}"; do scan+=("${QG_TREE}/${p}"); done
+            out="${work}/out"; cmd=(env npm_config_registry=https://registry.npmjs.org/ pnpm)
+        else
+            # A runner sees only the tree, so the report is written inside it and removed after.
+            work=''; scan=("${QG_PATH_LIST[@]}"); out=".qg-jscpd-${QG_ROW:-row}"; cmd=(pnpm)
+            rm -rf "${QG_TREE:?}/${out}"
+        fi
+        report="$out/jscpd-report.json"; [ -n "$work" ] || report="${QG_TREE}/${report}"
+        cleanup() { if [ -n "$work" ]; then rm -rf "$work"; else rm -rf "${QG_TREE:?}/${out}"; fi; }
+        qg_tool - 0 "${cmd[@]}" dlx "jscpd@${version}" "${scan[@]}" "${opts[@]}" \
             --reporters json --output "$out" --silent --no-colors "${argv[@]}" \
-            || { rm -rf "${QG_TREE:?}/${out}"; qg_fail jscpd-added clones "$QG_ERROR"; exit 0; }
-        cp "${QG_TREE}/${out}/jscpd-report.json" "${QG_OUT}/jscpd.json"
-        rm -rf "${QG_TREE:?}/${out}"
+            || { cleanup; qg_fail jscpd-added clones "$QG_ERROR"; exit 0; }
+        if [ ! -s "$report" ]; then cleanup; qg_fail jscpd-added clones "jscpd exited ${QG_RC} and wrote no report"; exit 0; fi
+        cp "$report" "${QG_OUT}/jscpd.json"
+        cleanup
 
         # Both sides of each clone, named relative to the tree: a single scanned directory may be
         # reported relative to itself.
