@@ -1,10 +1,9 @@
 {
   "minLines": 5,
   "minTokens": 50,
-  "pattern": "{components,composables,pages,api,layouts,middleware,plugins,utils,stores,server}/**/*.{ts,vue,js}",
+  "pattern": "**/*.{ts,vue,js}",
   "ignore": [
     "**/node_modules/**",
-    "**/.git/**",
     "**/.nuxt/**",
     "**/.output/**",
     "**/dist/**",
