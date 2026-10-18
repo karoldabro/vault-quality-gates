@@ -251,9 +251,10 @@ unprotected() {
 # v1_api <dir> — a checkout shaped like recycling-api with its v1 checks.tsv.
 v1_api() {
     new_repo "$1"
-    mkdir -p quality/bin
+    mkdir -p quality/bin tests/Quality/IndicationChecks tests/Unit/Quality/IndicationChecks
     printf 'id\tscope\tkind\tcommand\tparser\tartifact\tdirection\tthreshold\tgate\n' > quality/checks.tsv
     : > quality/bin/in-tree.sh; : > quality/phpstan-strict.neon
+    : > tests/Quality/IndicationChecks/ParallelWorkersCappedCheck.php
     commit_all v1
 }
 
@@ -265,6 +266,7 @@ v1_api() {
     run bash "$WORK/m/apply.sh" "$WORK/api"
     [ "$status" -eq 0 ]
     cmp "$M/checks.tsv" quality/checks.tsv && cmp "$M/config" quality/config
+    cmp "$M/ParallelWorkersCappedCheck.php" tests/Quality/IndicationChecks/ParallelWorkersCappedCheck.php
     [ -x quality/bin/in-server.sh ] && [ -x quality/bin/lock-check.sh ]
     [ "$(git rev-parse HEAD)" = "$before" ]
     [[ "$output" == *'qg baseline --only insights-code-v2'* ]]

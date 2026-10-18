@@ -4,8 +4,9 @@
 # that changes the gate configuration is a human's, made with qg override.
 #
 # Copies: checks.tsv -> quality/checks.tsv, config -> quality/config, in-tree.sh, in-server.sh and
-# lock-check.sh -> quality/bin/. The rows that need a fresh baseline come from parity.tsv, the table
-# the last run of checks/qg-parity-recycling-api.sh wrote.
+# lock-check.sh -> quality/bin/, and ParallelWorkersCappedCheck.php with its test into tests/, so the
+# indication check reads the v2 layout. The rows that need a fresh baseline come from parity.tsv,
+# the table the last run of checks/qg-parity-recycling-api.sh wrote.
 #
 # Under CLAUDECODE or AI_AGENT it refuses any checkout outside the real path of /tmp: an agent may
 # rehearse the copy on a scratch clone, never apply it.
@@ -40,6 +41,9 @@ for f in in-tree.sh in-server.sh lock-check.sh; do
     cp "$here/$f" "$target/quality/bin/$f"
     chmod +x "$target/quality/bin/$f"
 done
+# The indication check that reads quality/checks.tsv learns the v2 layout in the same commit.
+cp "$here/ParallelWorkersCappedCheck.php" "$target/tests/Quality/IndicationChecks/ParallelWorkersCappedCheck.php"
+cp "$here/ParallelWorkersCappedCheckTest.php" "$target/tests/Unit/Quality/IndicationChecks/ParallelWorkersCappedCheckTest.php"
 
 # Repo rows that took a new id have no baseline line yet; parity.tsv columns: id, new id, kind, verdict.
 new_ids="$(awk -F'\t' 'NR > 1 && $2 != $1 && $2 != "-" && $3 == "repo" { printf "%s%s", sep, $2; sep = "," }' "$here/parity.tsv")"
@@ -50,7 +54,8 @@ apply.sh: copied the v2 gate files into $target/quality. Nothing is committed.
 
 Finish the migration, in this order:
   1. cd $target && git diff -- quality/        (review the change)
-  2. git add quality/checks.tsv quality/config quality/bin/in-tree.sh quality/bin/in-server.sh quality/bin/lock-check.sh
+  2. git add quality/checks.tsv quality/config quality/bin/in-tree.sh quality/bin/in-server.sh quality/bin/lock-check.sh \\
+       tests/Quality/IndicationChecks/ParallelWorkersCappedCheck.php tests/Unit/Quality/IndicationChecks/ParallelWorkersCappedCheckTest.php
   3. qg override --reason "migrate the gate config to v2"
   4. git commit -m "chore(quality): gate config v2"      (within 10 minutes of step 3)
 EOF

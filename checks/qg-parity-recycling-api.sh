@@ -32,7 +32,7 @@ OLD_ROOT="${QG_PARITY_OLD_ENGINE:-$HOME/workspace/vault-quality-gates}"
 LIVE="$(cd "${1:-$HOME/workspace/recycling-api}" && pwd)" || { echo "parity: no checkout ${1:-}"; exit 2; }
 MIG="${NEW_ROOT}/migrations/recycling-api"
 REF=refs/heads/release/qg-parity
-RENAMED='format=format-files format-staged=format-staged-files gate-config-touched=protected-paths-touched'
+RENAMED='format=format-files format-staged=format-staged-files gate-config-touched=protected-paths-touched phpstan-errors=phpstan-errors-all'
 STEP_TIMEOUT="${QG_PARITY_TIMEOUT:-3600}"
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/qg-parity.XXXXXX")" || exit 2
@@ -48,6 +48,8 @@ REAL_DOCKER="$(command -v docker)" || die 'docker is not on PATH'
 [ -d "$LIVE/vendor" ] && [ -f "$LIVE/.env" ] || die "${LIVE} has no vendor/ or .env to copy"
 
 say "base ${BASE:0:12} of ${LIVE}; work ${WORK}"
+# Any file of the live vendor/ newer than this marker at the end means the run wrote into it.
+touch "$WORK/vendor.marker"
 cp -a "$LIVE/vendor" "$WORK/vendor.copy" || die 'cannot copy vendor/'
 for side in old new; do
     git clone -q --shared --no-checkout "$LIVE" "$WORK/$side" || die "cannot clone into $side"
@@ -72,7 +74,9 @@ FIXTURE_old="$(git -C "$WORK/old" rev-parse HEAD)"
 cp "$MIG/checks.tsv" "$WORK/new/quality/checks.tsv"
 cp "$MIG/config" "$WORK/new/quality/config"
 for f in in-tree.sh in-server.sh lock-check.sh; do cp "$MIG/$f" "$WORK/new/quality/bin/$f"; chmod +x "$WORK/new/quality/bin/$f"; done
-git -C "$WORK/new" add quality && git -C "$WORK/new" commit -qm 'parity: v2 rows' || die 'cannot commit the new fixture'
+cp "$MIG/ParallelWorkersCappedCheck.php" "$WORK/new/tests/Quality/IndicationChecks/ParallelWorkersCappedCheck.php"
+cp "$MIG/ParallelWorkersCappedCheckTest.php" "$WORK/new/tests/Unit/Quality/IndicationChecks/ParallelWorkersCappedCheckTest.php"
+git -C "$WORK/new" add quality tests && git -C "$WORK/new" commit -qm 'parity: v2 rows' || die 'cannot commit the new fixture'
 # shellcheck disable=SC2034  # read through ${!fixture} in measure
 FIXTURE_new="$(git -C "$WORK/new" rev-parse HEAD)"
 
@@ -190,6 +194,20 @@ final class Smell${i}Test extends TestCase
 {
 }"
         done
+        # PHP Insights architecture: thirty classes, each with a trait and a method over the length limit
+        local body=''; for k in $(seq 1 30); do body+="        \$total += $k;"$'\n'; done
+        for k in $(seq 1 30); do
+            php_file "$d/app/QgParity/Insights/Long${i}x$k.php" "Long${i}x$k" "final class Long${i}x$k
+{
+    use \\Illuminate\\Support\\Traits\\Macroable;
+
+    public function sum(): int
+    {
+        \$total = 0;
+${body}        return \$total;
+    }
+}"
+        done
         # comment density: 400 comment lines over one line of code
         { printf '<?php\n\nnamespace App\\QgParity;\n\n'; for k in $(seq 1 400); do printf '// qg parity comment %s\n' "$k"; done; printf 'final class Comments%s {}\n' "$i"; } > "$d/app/QgParity/Comments$i.php"
         # indication checks: a tracked file under quality-reports/
@@ -223,8 +241,10 @@ reports() {
     local d="$1" n="$2" k
     mkdir -p "$d/storage/coverage" "$d/storage/logs"
     sed "0,/failures=\"[0-9]*\"/s//failures=\"$n\"/" "$WORK/junit.base.xml" > "$d/storage/coverage/junit.xml"
-    awk -v n="$n" '/<project / { p = 1 } p && /<metrics / { match($0, /coveredstatements="[0-9]+"/); v = substr($0, RSTART + 19, RLENGTH - 20) - 100 * n
-               sub(/coveredstatements="[0-9]+"/, "coveredstatements=\"" v "\""); p = 0 } { print }' "$WORK/clover.base.xml" > "$d/storage/coverage/clover.xml"
+    # The project totals are the last <metrics> element, after every file's own.
+    local last; last="$(grep -n '<metrics ' "$WORK/clover.base.xml" | tail -1 | cut -d: -f1)"
+    awk -v n="$n" -v last="$last" 'NR == last { match($0, /coveredstatements="[0-9]+"/); v = substr($0, RSTART + 19, RLENGTH - 20) - 100 * n
+               sub(/coveredstatements="[0-9]+"/, "coveredstatements=\"" v "\"") } { print }' "$WORK/clover.base.xml" > "$d/storage/coverage/clover.xml"
     : > "$d/storage/logs/lazy-loading.log"
     for k in $(seq 1 "$n"); do printf 'App\\Models\\QgParity%s::relation\n' "$k" >> "$d/storage/logs/lazy-loading.log"; done
     if [ "$n" -gt 0 ]; then touch -d "-$((10 * n)) days" "$d/storage/coverage/clover.xml"; else touch "$d/storage/coverage/clover.xml"; fi
@@ -294,7 +314,7 @@ for id in $(awk -F'\t' 'NR > 1 && $0 !~ /^#/ { print $1 }' "$WORK/old/quality/ch
     for r in $RENAMED; do [ "${r%%=*}" = "$id" ] && nid="${r#*=}"; done
     oc="$(value old clean "$id")" o1="$(value old seed1 "$id")" o2="$(value old seed2 "$id")"
     n1="$(value new seed1 "$nid")" n2="$(value new seed2 "$nid")"
-    if ! num "$o1" || ! num "$n1" || [ "${oc%%/*}" = "${o1%%/*}" ]; then verdict=VACUOUS
+    if ! num "$o1" || ! num "$n1" || ! num "$o2" || ! num "$n2" || [ "${oc%%/*}" = "${o1%%/*}" ]; then verdict=VACUOUS
     elif [ "$nid" != "$id" ]; then verdict=NEW
     elif [ "$o1" = "$n1" ] && [ "$o2" = "$n2" ]; then verdict=SAME
     else verdict=DIFF; fi
@@ -302,6 +322,8 @@ for id in $(awk -F'\t' 'NR > 1 && $0 !~ /^#/ { print $1 }' "$WORK/old/quality/ch
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$nid" "$(count_kind "$nid")" "$verdict" "$oc" "$o1" "$o2" "$n1" "$n2" >> "$table"
 done
 column -t -s $'\t' "$table" >&2 2>/dev/null || cat "$table" >&2
+touched="$(find "$LIVE/vendor" -newer "$WORK/vendor.marker" -print -quit 2>/dev/null)"
+[ -z "$touched" ] || { say "the run wrote into the live checkout's vendor/: ${touched}"; worst=2; }
 say "parity table: ${table}"
 case "$worst" in
     0) echo "parity: every kept id reads the same value and status on both seeds" ;;
