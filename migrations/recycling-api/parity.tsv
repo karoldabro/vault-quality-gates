@@ -1,6 +1,6 @@
 id	new-id	kind	verdict	old-clean	old-seed1	old-seed2	new-seed1	new-seed2
 format-staged	format-staged-files	diff	NEW	0/ok	1/worse	1/worse	55/worse	110/worse
-phpstan-new	phpstan-new	diff	VACUOUS	0/ok	1003/worse	2006/worse	-/unmeasurable	-/unmeasurable
+phpstan-new	phpstan-new	diff	SAME	0/ok	1003/worse	2006/worse	1003/worse	2006/worse
 phpmd-new	phpmd-new	diff	SAME	0/ok	18/worse	36/worse	18/worse	36/worse
 phpmd-coupling-new	phpmd-coupling-new	diff	SAME	0/ok	1/worse	2/worse	1/worse	2/worse
 phpcs-new	phpcs-new	diff	SAME	0/ok	21/worse	42/worse	21/worse	42/worse
@@ -20,11 +20,11 @@ insights-architecture	insights-architecture	repo	SAME	68.8/ok	56.3/worse	56.3/wo
 insights-style	insights-style	repo	SAME	84.3/ok	78.3/warn	78.3/warn	78.3/warn	78.3/warn
 duplication	duplication	repo	SAME	4.31/ok	5.30/worse	8.75/worse	5.30/worse	8.75/worse
 duplication-clones	duplication-clones	repo	SAME	391/ok	431/worse	475/worse	431/worse	475/worse
-phpstan-errors	phpstan-errors-all	repo	VACUOUS	0/ok	1003/worse	2006/worse	-/unmeasurable	-/unmeasurable
+phpstan-errors	phpstan-errors-all	repo	NEW	0/ok	1003/worse	2006/worse	1003/recorded	2006/recorded
 indication-checks	indication-checks	repo	SAME	21/ok	22/worse	23/worse	22/worse	23/worse
 deps-shadow	deps-shadow	repo	SAME	26/ok	27/worse	28/worse	27/worse	28/worse
 deps-unused	deps-unused	diff	SAME	0/ok	1/worse	2/worse	1/worse	2/worse
-comment-density	comment-density	repo	SAME	0.274/ok	0.306/worse	0.337/worse	0.306/worse	0.337/worse
+comment-density	comment-density	repo	DIFF	0.282/ok	0.306/worse	0.337/worse	0.306/worse	0.345/worse
 tests-failing	tests-failing	diff	SAME	0/ok	1/worse	2/worse	1/worse	2/worse
 coverage	coverage	repo	SAME	84.49/ok	84.18/ok	83.88/ok	84.18/ok	83.88/ok
 coverage-age-days	coverage-age-days	diff	SAME	0/ok	10/worse	20/worse	10/worse	20/worse

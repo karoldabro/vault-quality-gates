@@ -8,7 +8,8 @@
 #   paths        default .
 #   bin          default cloc, from PATH
 #
-# Zero lines of code is an error: an empty measurement must not read as a density of 0.
+# Zero lines of code is an error: an empty measurement must not read as a density of 0. Every file is
+# counted, however long it takes (--timeout 0).
 set -uo pipefail
 export LC_ALL=C
 # shellcheck source=../lib/qg-driver-kit.sh
@@ -26,7 +27,9 @@ case "${1:-}" in
         bin="$(qg_kv bin)" || bin=cloc
         read -ra argv <<<"$(qg_argv)"
         qg_paths .
-        qg_tool - 0 "$bin" --json --quiet "${argv[@]}" "${QG_PATH_LIST[@]}" || { qg_fail cloc lines "$QG_ERROR"; exit 0; }
+        # --timeout 0: cloc otherwise skips a file whose count takes longer than a limit that scales
+        # with machine load, so the same tree would read differently on a busy machine.
+        qg_tool - 0 "$bin" --json --quiet --timeout 0 "${argv[@]}" "${QG_PATH_LIST[@]}" || { qg_fail cloc lines "$QG_ERROR"; exit 0; }
         sed -n '/^{/,$p' "${QG_OUT}/stdout" > "${QG_OUT}/cloc.json"
         code="$(jq -r '.SUM.code // 0' "${QG_OUT}/cloc.json" 2>/dev/null)"
         [ -n "$code" ] && [ "$code" != 0 ] || { qg_fail cloc lines "cloc reports zero lines of code in ${QG_PATH_LIST[*]}"; exit 0; }

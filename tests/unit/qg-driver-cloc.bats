@@ -58,12 +58,12 @@ parser_value() { /code/lib/guard-parsers/cloc.sh "$FAKE_OUT"; }
     [ "$(result .metric)" = "$(parser_value)" ]
 }
 
-@test "argv is --json --quiet, the extra argv, then paths= (default .)" {
+@test "argv is --json --quiet --timeout 0, the extra argv, then paths= (default .)" {
     measure
-    [ "$(cat "$FAKE_ARGV")" = '--json --quiet .' ]
+    [ "$(cat "$FAKE_ARGV")" = '--json --quiet --timeout 0 .' ]
     rm -f "$FAKE_ARGV"
     measure 'paths=app,src -- --exclude-dir=vendor'
-    [ "$(cat "$FAKE_ARGV")" = '--json --quiet --exclude-dir=vendor app src' ]
+    [ "$(cat "$FAKE_ARGV")" = '--json --quiet --timeout 0 --exclude-dir=vendor app src' ]
 }
 
 @test "SUM.code 0 is status error with metric null, as v1 refuses it" {

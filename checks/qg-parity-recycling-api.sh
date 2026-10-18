@@ -32,7 +32,7 @@ OLD_ROOT="${QG_PARITY_OLD_ENGINE:-$HOME/workspace/vault-quality-gates}"
 LIVE="$(cd "${1:-$HOME/workspace/recycling-api}" && pwd)" || { echo "parity: no checkout ${1:-}"; exit 2; }
 MIG="${NEW_ROOT}/migrations/recycling-api"
 REF=refs/heads/release/qg-parity
-RENAMED='format=format-files format-staged=format-staged-files gate-config-touched=protected-paths-touched phpstan-errors=phpstan-errors-all'
+RENAMED='format=format-files format-staged=format-staged-files gate-config-touched=protected-paths-touched phpstan-errors=phpstan-errors-all comment-density=comment-ratio'
 STEP_TIMEOUT="${QG_PARITY_TIMEOUT:-3600}"
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/qg-parity.XXXXXX")" || exit 2
