@@ -411,7 +411,8 @@ cmd_accept() {
 
 case "${1:-}" in
     commit)
-        [ "${2:-}" = --only ] && GUARD_ONLY="${3//[[:space:]]/}"
+        only="${3:-}"
+        [ "${2:-}" = --only ] && GUARD_ONLY="${only//[[:space:]]/}"
         . "${GUARD_LIB_DIR}/guard-commit.sh"; guard_gate ':index' "$(guard_default_bases)" ;;
     verify)
         shift
@@ -423,7 +424,7 @@ case "${1:-}" in
         while [ $# -gt 0 ]; do
             case "$1" in
                 --only) [ $# -ge 2 ] || { guard_err 'usage: guard.sh release [<ref>] [--only <id,id>]'; exit 2; }
-                        GUARD_ONLY="${2//[[:space:]]/}"; shift 2 ;;
+                        only="$2"; GUARD_ONLY="${only//[[:space:]]/}"; shift 2 ;;
                 *) rel_ref="$1"; shift ;;
             esac
         done
@@ -432,9 +433,10 @@ case "${1:-}" in
         shift
         case "${1:-}" in
             --skip) export GUARD_SKIP="${2:-}" ;;
-            --only) [ -n "${2//[[:space:],]/}" ] || { guard_err 'usage: guard.sh baseline [--skip <regex> | --only <id,id>]'; exit 2; }
+            --only) only="${2:-}"
+                    [ -n "${only//[[:space:],]/}" ] || { guard_err 'usage: guard.sh baseline [--skip <regex> | --only <id,id>]'; exit 2; }
                     # `a, b` and `a,b` name the same rows.
-                    GUARD_ONLY="${2//[[:space:]]/}" ;;
+                    GUARD_ONLY="${only//[[:space:]]/}" ;;
         esac
         cmd_baseline ;;
     report)   cat "${REPORTS}/REPORT.md" 2>/dev/null || { guard_err 'guard: no report yet'; exit 2; } ;;

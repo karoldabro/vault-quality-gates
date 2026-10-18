@@ -13,6 +13,7 @@ tests="$(attr tests)"
 
 # Anyone can write the report, and $(( )) would run a command hidden in an attribute.
 failures="$(attr failures)"; errors="$(attr errors)"
-[[ "${failures:-0}" =~ ^[0-9]+$ ]] && [[ "${errors:-0}" =~ ^[0-9]+$ ]] \
+# At most nine digits: a longer number wraps in $(( )) and could read as 0.
+[[ "${failures:-0}" =~ ^[0-9]{1,9}$ ]] && [[ "${errors:-0}" =~ ^[0-9]{1,9}$ ]] \
     || guard_p_die "junit: ${f} carries a failures or errors value that is not a whole number"
 guard_p_emit "$(( ${failures:-0} + ${errors:-0} ))"

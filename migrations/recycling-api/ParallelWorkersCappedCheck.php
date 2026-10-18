@@ -75,15 +75,17 @@ final class ParallelWorkersCappedCheck implements IndicationCheck
 
             return $this->uncapped($command);
         }
-        if (preg_match(self::CPU_TOOL, $driver.' '.$args) !== 1 || preg_match('/(^| )run=no( |$)/', $args) === 1) {
+        // The engine reads keys only before the first ` -- `; what follows is the tool's own argv.
+        $keys = str_starts_with($args, '-- ') ? '' : explode(' -- ', $args, 2)[0];
+        if (preg_match(self::CPU_TOOL, $driver.' '.$args) !== 1 || preg_match('/(^| )run=no( |$)/', $keys) === 1) {
             return false;
         }
         foreach (self::NICED_RUNNERS as $runner) {
-            if (preg_match('#(^| )runner='.preg_quote($runner, '#').'( |$)#', $args) === 1) {
+            if (preg_match('#(^| )runner='.preg_quote($runner, '#').'( |$)#', $keys) === 1) {
                 return false;
             }
         }
 
-        return ! str_contains($args, 'nice -n');
+        return true;
     }
 }

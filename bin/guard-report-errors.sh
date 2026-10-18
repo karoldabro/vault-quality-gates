@@ -39,6 +39,9 @@ while [ $# -gt 0 ]; do
     shift 2 || break
 done
 [ -n "$bases" ] || bases="$(guard_default_bases)"
+# Each row once: the per-row cap and its overflow line rely on a row's records arriving together.
+# shellcheck disable=SC2086  # one id per word
+rows="$(printf '%s\n' $rows | awk '!seen[$0]++' | tr '\n' ' ')"
 first="${bases%% *}"
 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT

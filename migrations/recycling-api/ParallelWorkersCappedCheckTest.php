@@ -50,12 +50,14 @@ final class ParallelWorkersCappedCheckTest extends TestCase
             "phpstan-host\tcommit\tdiff\tphpstan\t-- --memory-limit=1G\tdown\t0\trefuse\twhy",
             "suite\tbaseline\tdiff\tphpunit\tmetric=failed runner=quality/bin/other.sh\tdown\t0\trefuse\twhy",
             "stan-shell\tcommit\tdiff\tshell\tparser=phpstan-all -- vendor/bin/phpstan analyse\tdown\t0\trefuse\twhy",
+            "argv-runner\tpush\tdiff\tphpunit\tmetric=failed -- runner=quality/bin/in-tree.sh run=no nice -n 1\tdown\t0\trefuse\twhy",
         ])]);
 
         $this->assertSame([
             'quality/checks.tsv row phpstan-host runs a CPU-bound tool without a nice -n prefix.',
             'quality/checks.tsv row suite runs a CPU-bound tool without a nice -n prefix.',
             'quality/checks.tsv row stan-shell runs a CPU-bound tool without a nice -n prefix.',
+            'quality/checks.tsv row argv-runner runs a CPU-bound tool without a nice -n prefix.',
         ], (new ParallelWorkersCappedCheck)->check($root, []));
     }
 

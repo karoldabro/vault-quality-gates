@@ -57,7 +57,8 @@ case "${1:-}" in
             [ "$tests" -gt 0 ] 2>/dev/null || { qg_fail phpunit tests "${report}: zero tests ran"; exit 0; }
             failures="$(attr failures '(//testsuite)[1]' "$f")" errors="$(attr errors '(//testsuite)[1]' "$f")"
             # Anyone can write the report, and $(( )) would run a command hidden in an attribute.
-            [[ "${failures:-0}" =~ ^[0-9]+$ ]] && [[ "${errors:-0}" =~ ^[0-9]+$ ]] \
+            # At most nine digits: a longer number wraps in $(( )) and could read as 0.
+            [[ "${failures:-0}" =~ ^[0-9]{1,9}$ ]] && [[ "${errors:-0}" =~ ^[0-9]{1,9}$ ]] \
                 || { qg_fail phpunit tests "${report}: failures or errors is not a whole number"; exit 0; }
             # One finding per failing testcase, the first 50.
             xmllint --xpath '//testcase[failure or error]' "$f" 2>/dev/null | grep -o '<testcase [^>]*>' | head -50 \
@@ -71,7 +72,7 @@ case "${1:-}" in
         else
             total="$(attr statements '/coverage/project/metrics' "$f")" covered="$(attr coveredstatements '/coverage/project/metrics' "$f")"
             [ -n "$total" ] || { qg_fail phpunit percent "${report} has no /coverage/project/metrics"; exit 0; }
-            [[ "$total" =~ ^[0-9]+$ ]] && [[ "${covered:-0}" =~ ^[0-9]+$ ]] \
+            [[ "$total" =~ ^[0-9]{1,9}$ ]] && [[ "${covered:-0}" =~ ^[0-9]{1,9}$ ]] \
                 || { qg_fail phpunit percent "${report}: statements or coveredstatements is not a whole number"; exit 0; }
             [ "$total" -gt 0 ] 2>/dev/null || { qg_fail phpunit percent "${report}: zero statements, nothing was measured"; exit 0; }
             qg_result phpunit measured "$(awk -v c="${covered:-0}" -v t="$total" 'BEGIN { printf "%.2f", c / t * 100 }')" percent - -

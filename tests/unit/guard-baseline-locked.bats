@@ -101,6 +101,16 @@ set_cov() { printf 'id\tvalue\tcommit\treason\ncov\t%s\tabc\t%s\n' "$1" "${2:--}
     [[ "$output" == *'uncommitted changes'* ]]
 }
 
+@test "release: with guard_measure_worktree false a dirty protected file outside guard_commit_paths is refused" {
+    printf 'guard_commit_paths: app\nguard_protected_paths: quality pint.json\nguard_measure_worktree: false\n' > VAULT.md
+    printf '{}\n' > pint.json
+    commit_all measure-worktree
+    printf '{"exclude": ["app"]}\n' > pint.json
+    GUARD_SHA="$(git rev-parse HEAD)" run bash /code/bin/guard.sh release refs/heads/release/x
+    [ "$status" -eq 2 ]
+    [[ "$output" == *'pint.json'* ]]
+}
+
 @test "release: with guard_measure_worktree false a dirty file outside guard_commit_paths does not block" {
     printf 'guard_commit_paths: app\nguard_protected_paths: quality\nguard_measure_worktree: false\n' > VAULT.md
     mkdir -p docs; printf 'x\n' > docs/graph.json

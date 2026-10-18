@@ -34,6 +34,9 @@ fi
 
 [ -r "$here/parity.tsv" ] \
     || { echo "apply.sh: $here/parity.tsv is missing; run checks/qg-parity-recycling-api.sh first" >&2; exit 2; }
+for d in quality/bin tests/Quality/IndicationChecks tests/Unit/Quality/IndicationChecks; do
+    [ -d "$target/$d" ] || { echo "apply.sh: $target/$d does not exist; nothing was copied" >&2; exit 2; }
+done
 
 cp "$here/checks.tsv" "$target/quality/checks.tsv"
 cp "$here/config" "$target/quality/config"
