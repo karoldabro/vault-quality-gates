@@ -32,9 +32,9 @@ long='This sentence exists only so that the gate check can prove the commit gate
 printf '\n%s\n' "$long" >> "$KB"
 if git commit -qam 'long sentence' > "${tmp}/c2.out" 2>&1; then
     printf '  FAILING  a 37-word sentence in %s was accepted\n' "$KB"; bad=1
-elif grep -q 'doc-lint' "${tmp}/c2.out"; then
-    printf '  ok       a 37-word sentence in %s is refused by doc-lint\n' "$KB"
+elif grep -q 'LONG1' "${tmp}/c2.out"; then
+    printf '  ok       a 37-word sentence in %s is refused with LONG1\n' "$KB"
 else
-    printf '  FAILING  the commit failed without naming doc-lint:\n'; tail -20 "${tmp}/c2.out"; bad=1
+    printf '  FAILING  the commit failed without naming LONG1:\n'; tail -20 "${tmp}/c2.out"; bad=1
 fi
 exit "$bad"

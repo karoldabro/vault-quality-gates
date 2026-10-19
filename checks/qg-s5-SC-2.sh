@@ -9,7 +9,9 @@ exec < /dev/null
 qg_cases \
     qg-migrate.bats \
     "init protects exactly the gate files and leaves other quality files unprotected" \
-    "init --profile docs adds .doc-lint and writes an absolute guard_doc_lint" \
+    "init --profile docs protects .doc-lint and every tracked .doc-lint and writes an absolute guard_doc_lint" \
     "init --profile docs warns when the doc-lint it names is not executable" \
-    "init --profile docs then qg doctor exits 0" \
-    "init --profile hugo then qg doctor exits 0"
+    "init --profile docs --force with an existing quality/config writes nothing to it and warns naming guard_doc_lint" \
+    "init prints Next as hooks install, then commit, then qg doctor" \
+    "init --profile docs: qg doctor exits 1 before the init commit and 0 after it" \
+    "init --profile hugo: qg doctor exits 0 after the init commit"
