@@ -58,12 +58,13 @@ case "${1:-}" in
             || { qg_fail dart-analyze findings "$QG_ERROR"; exit 0; }
         # SEVERITY|TYPE|CODE|FILE|LINE|COLUMN|LENGTH|MESSAGE; a | inside a field is written \|.
         codes=",$(qg_kv code | tr '[:upper:]' '[:lower:]' || true),"
-        grep -E "^(${levels})\|" "${QG_OUT}/stdout" | sed 's/\\|/\x01/g' \
-            | awk -F'|' -v codes="$codes" 'BEGIN { OFS = "\t" }
-                { code = tolower($3); if (codes != ",," && index(codes, "," code ",") == 0) next
-                  msg = $8; for (i = 9; i <= NF; i++) msg = msg "|" $i
-                  gsub(/\x01/, "|", msg); gsub(/\x01/, "|", $4)
-                  print $1, code, $4, $5, msg }' \
+        grep -E "^(${levels})\|" "${QG_OUT}/stdout" \
+            | awk -v codes="$codes" 'BEGIN { OFS = "\t" }
+                { line = $0; gsub(/\\\|/, "\001", line); n = split(line, f, "|")
+                  code = tolower(f[3]); if (codes != ",," && index(codes, "," code ",") == 0) next
+                  msg = f[8]; for (i = 9; i <= n; i++) msg = msg "|" f[i]
+                  file = f[4]; gsub(/\001/, "|", msg); gsub(/\001/, "|", file)
+                  print f[1], code, file, f[5], msg }' \
             | jq -R -s -c '[split("\n")[] | select(length > 0) | split("\t")
                 | {ruleId: .[1], file: .[2], line: (.[3] | tonumber? // null),
                    level: ({"ERROR": "error", "WARNING": "warning"}[.[0]] // "note"), message: .[4],

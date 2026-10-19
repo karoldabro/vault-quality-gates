@@ -52,7 +52,7 @@ qg_dart_packages() {
     [ -z "$tracked" ] || { QG_ERROR="${tracked} is committed; .dart_tool must never be tracked"; return 1; }
     # --enforce-lockfile: a pubspec.yaml dependency_overrides entry the lock does not record is refused.
     out="$(cd "$QG_TREE" && "$QG_DART" pub get --offline --enforce-lockfile 2>&1)" || {
-        QG_ERROR="dart pub get --offline --enforce-lockfile failed: $(printf '%s' "$out" | tail -5 | tr '\n' ' ')- run flutter pub get, commit pubspec.lock, then retry"
+        QG_ERROR="dart pub get --offline --enforce-lockfile failed: $(printf '%s' "$out" | tail -5 | tr "\n" " "); run flutter pub get, commit pubspec.lock, then retry"
         return 1
     }
 }
