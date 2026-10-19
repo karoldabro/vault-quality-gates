@@ -45,7 +45,7 @@ case "${1:-}" in
         # One line per <error>: file, line, source, message, with the XML entities undone.
         awk 'BEGIN { RS = "<"; FS = "\n" }
              function attr(s, k,   r) { r = ""; if (match(s, " " k "=\"[^\"]*\"")) r = substr(s, RSTART + length(k) + 3, RLENGTH - length(k) - 4); return r }
-             function unesc(s) { gsub(/&quot;/, "\"", s); gsub(/&apos;/, "'"'"'", s); gsub(/&lt;/, "<", s); gsub(/&gt;/, ">", s); gsub(/&amp;/, "\\&", s); return s }
+             function unesc(s) { gsub(/&quot;/, "\"", s); gsub(/&apos;|&#0?39;/, "\047", s); gsub(/&lt;/, "<", s); gsub(/&gt;/, ">", s); gsub(/&amp;/, "\\&", s); return s }
              /^file / { file = unesc(attr($0, "name")) }
              /^error / { printf "%s\t%s\t%s\t%s\n", file, attr($0, "line"), unesc(attr($0, "source")), unesc(attr($0, "message")) }' "$f" \
             | jq -R -s -c '[split("\n")[] | select(length > 0) | split("\t")

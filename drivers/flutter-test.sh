@@ -40,7 +40,8 @@ produce() {
         | map(select(.type == "testDone")) as $done
         | {done: any(.[]; .type == "done"), rc: $rc,
            tests: ($done | map(select(.hidden != true and .skipped != true)) | length),
-           failed: ($done | map(select(.result == "failure" or .result == "error")) | length),
+           failed: (([$done[] | select(.result == "failure" or .result == "error") | .testID]
+                     + [.[] | select(.type == "error") | .testID]) | unique | length),
            findings: ($done | map(select(.result == "failure" or .result == "error"))[0:50]
                | map($t[.testID | tostring] as $s
                  | {ruleId: "flutter-test.failure", file: (($s.root_url // $s.url // null) | if . == null then null else sub("^file://"; "") end),
@@ -48,7 +49,9 @@ produce() {
                     message: ("failed: " + ($s.name // "a test")), doc: null}))}' \
         > "${d}/summary" 2> /dev/null || { QG_ERROR='the flutter test stream holds no readable event'; rm -rf "$d"; return 1; }
     if [ -s "${d}/lcov.info" ]; then
-        awk -v t="${QG_TREE%/}/" -v inc="$inc" -v exc="$exc" '
+        # The EREs travel in the environment: awk -v would turn \. into . under gawk.
+        QG_INC="$inc" QG_EXC="$exc" awk -v t="${QG_TREE%/}/" '
+            BEGIN { inc = ENVIRON["QG_INC"]; exc = ENVIRON["QG_EXC"] }
             /^SF:/ { f = substr($0, 4); if (index(f, t) == 1) f = substr(f, length(t) + 1); sub(/^\.\//, "", f)
                      keep = (inc == "" || f ~ inc) && (exc == "" || f !~ exc) }
             /^LH:/ && keep { h += substr($0, 4) }

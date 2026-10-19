@@ -41,7 +41,11 @@ case "${1:-}" in
             || { qg_fail layerlens edges "$QG_ERROR"; exit 0; }
         (cd "$QG_TREE" && find "${QG_PATH_LIST[@]}" -name DEPS.md -type f -print0) > "${QG_OUT}/deps"
         [ -s "${QG_OUT}/deps" ] || { qg_fail layerlens edges "layerlens wrote no DEPS.md under ${QG_PATH_LIST[*]}"; exit 0; }
-        (cd "$QG_TREE" && xargs -0 grep -Hn -- '--!--' < "${QG_OUT}/deps") > "${QG_OUT}/hits" || true
+        mapfile -d '' deps < "${QG_OUT}/deps"
+        rc=0
+        (cd "$QG_TREE" && grep -Hn -- '--!--' "${deps[@]}") > "${QG_OUT}/hits" || rc=$?
+        # grep exits 1 when no file holds a cycle, 2 when one could not be read.
+        [ "$rc" -le 1 ] || { qg_fail layerlens edges "reading the DEPS.md files failed (grep exit ${rc})"; exit 0; }
         n="$(grep -c . "${QG_OUT}/hits")"
         head -200 "${QG_OUT}/hits" | jq -R -s -c '[split("\n")[] | select(length > 0)
             | capture("^(?<f>[^:]+):(?<l>[0-9]+):(?<m>.*)$")

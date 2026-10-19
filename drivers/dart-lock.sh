@@ -72,7 +72,8 @@ case "${1:-}" in
                 NR == FNR { old[$1] = $0; os[$1] = $2; next }
                 { seen[$1] = 1
                   isn = index(named, "," $1 ",") > 0
-                  if (isn && old[$1] != $0) print $1 "\t" (($1 in old) ? "changed from " old[$1] : "added") " at " base
+                  inold = ($1 in old)
+                  if (isn && (!inold || old[$1] != $0)) print $1 "\t" (inold ? "changed from " old[$1] : "added") " at " base
                   else if (!isn && ($2 == "path" || $2 == "git") && os[$1] != $2) print $1 "\tbecomes a " $2 " package"
                 }
                 END { for (p in old) if (!(p in seen) && index(named, "," p ",") > 0) print p "\tremoved" }' \

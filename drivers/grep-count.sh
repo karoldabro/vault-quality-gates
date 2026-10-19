@@ -69,7 +69,7 @@ case "${1:-}" in
             [ -n "$pattern" ] || { qg_fail grep-count findings 'grep-count needs a pattern after -- , or awk='; exit 0; }
             case "$count" in
                 files) flag=-rlZ ;;
-                lines) flag=-rnZ ;;
+                lines) flag=-rHnZ ;;
                 *) qg_fail grep-count findings "count=${count} is not files or lines"; exit 0 ;;
             esac
             rc=0

@@ -9,7 +9,7 @@ tags: [quality, gates, drivers, dart, flutter]
 # Dart and Flutter drivers: what each one runs, reads and counts
 
 Each driver below lives in `drivers/`, follows `vault/architecture/qg-driver-contract.md` and sources
-`lib/qg-driver-kit.sh`. Every one declares `needs_tree: true`. The shared keys `files=changed`,
+`lib/qg-driver-kit.sh`. Every one but `dart-lock` declares `needs_tree: true`. The shared keys `files=changed`,
 `paths=`, `include=`, `exclude=` and `lines=added` mean what `vault/architecture/qg-builtin-drivers.md`
 says, unless a section below states otherwise.
 
@@ -21,17 +21,22 @@ Dart tool and do not source it.
 
 | step | function | what it does | `status: error` when |
 |---|---|---|---|
-| read the SDK path | `qg_dart_config_key guard_flutter_root` | reads the key with `git show` at `QG_CONFIG_REV`, else `HEAD`, from `quality/config`; reads `VAULT.md` only when `quality/config` is absent at that revision | the key is absent or empty |
+| read the SDK path | `qg_dart_config_key guard_flutter_root` | reads the key through `lib/qg-config.sh` at `QG_CONFIG_REV`; an empty `QG_CONFIG_REV` is a first commit and reads the index | the key is absent or empty |
+| refuse a runner | `qg_dart_env` | a Dart row runs the pinned SDK itself | the row sets `runner=` |
 | pin the SDK | `qg_dart_env` | sets `QG_FLUTTER=<root>/bin/flutter` and `QG_DART=<root>/bin/cache/dart-sdk/bin/dart`; every tool runs by that absolute path | either file is missing or not executable |
 | check `PATH` | `qg_dart_env` | resolves `command -v flutter` with `readlink -f`; no `flutter` on `PATH` is allowed | `flutter` on `PATH` is another file |
 | drop the caller's environment | `qg_dart_env` | unsets `PUB_CACHE`, `XDG_CACHE_HOME` and `FLUTTER_ROOT`, then exports `FLUTTER_ROOT=<root>` | — |
 | refuse repo-chosen packages | `qg_dart_packages` | checks `QG_TREE/pubspec_overrides.yaml`, and `.dart_tool` with `git ls-files` (`:index`) or `git ls-tree` (`QG_TARGET`) | the overrides file exists, or any `.dart_tool` path is tracked |
-| resolve packages | `qg_dart_packages` | runs `dart pub get --offline` inside `QG_TREE`, never in the caller's checkout | resolution fails; the error carries its last 5 lines and `run flutter pub get` |
-| hide the run from commit code | `qg_without_qg` | runs the tool with every `QG_*` variable removed | — |
+| resolve packages | `qg_dart_packages` | runs `dart pub get --offline --enforce-lockfile` inside `QG_TREE`, so a `pubspec.yaml` `dependency_overrides` entry the lock does not record is refused | resolution fails; the error carries its last 5 lines and the fix |
+| isolate commit code | `qg_isolated <dir>` | runs the tool in its own session with only `HOME`, `PATH`, `LANG`, `FLUTTER_ROOT` and `TMPDIR=<dir>`, then kills every process it left | — |
 
 `qg_dart_prepare <driver> <unit>` runs `qg_dart_env`, then `qg_dart_packages`, and writes the error.
-`dart-format` runs `qg_dart_env` only and resolves no packages. Every other driver in the list above
-runs both. `flutter-test` and `mutation-test` run the suite through `qg_without_qg`.
+Every driver in the list above runs both. `flutter-test` and `mutation-test` run the suite through
+`qg_isolated`.
+
+**Constraint: `qg baseline` never measures the caller's checkout with these drivers.** In a repo that
+measures commits (no `guard_measure_worktree: false`), `bin/guard.sh baseline` measures a detached
+worktree of `HEAD` whenever a selected row's driver needs a tree.
 
 **Failure mode:** a pushed `pubspec.lock` that names a package missing from the pub cache makes every
 Dart row `status: error`. Run `flutter pub get` in the checkout, then push again.
@@ -45,10 +50,10 @@ Dart row `status: error`. Run `flutter pub get` in the checkout, then push again
 |---|---|---|---|
 | `dart-analyze` | 0, 1, 2, 3 | diagnostics at or above `severity=`, kept by `code=`; under `lines=added`, those on added lines | findings |
 | `dart-format` | 0, and 1 with at least one `Changed <path>` line | `Changed` lines; the summary line is never counted | files |
-| `dart-code-linter` | 0, 1 with the report written this run | `<id>><N>`: entries of `.functions` and `.classes` whose metric `<id>` is over N; `issue:<rule>`: issues of that rule | findings |
+| `dart-code-linter` | 0, 1 with the report written this run | `<id>><N>`: entries of `.functions` (`.classes` for `number-of-methods`) whose metric `<id>` is over N; `issue:<rule>`: issues of that rule | findings |
 | `layerlens` | 0 with at least one `DEPS.md` written under `paths=` | `--!--` lines in those `DEPS.md` files | edges |
 | `lakos` | 0, 5 with a numeric `.metrics.<metric>` | `.metrics.<metric>` | ratio |
-| `flutter-test` | 0, 1; a `done` event and one `testDone` neither hidden nor skipped; exit 1 needs a failure | `failed`: `testDone` with result `failure` or `error`; `coverage`: kept LH over kept LF times 100, two decimals | tests, percent |
+| `flutter-test` | 0, 1; a `done` event and one `testDone` neither hidden nor skipped; exit 1 needs a failure | `failed`: tests with a `testDone` result `failure` or `error`, or an `error` event; `coverage`: kept LH over kept LF times 100, two decimals | tests, percent |
 | `mutation-test` | 0, 255 with an `Undetected Mutations: <n> (<p>%)` line and `Total tests:` over 0 | 100 minus `<p>`, two decimals | percent |
 | `copydetect` | python exit 0 | pairs with both similarities at or over `min-similarity` and at least `min-tokens` tokens | pairs |
 | `grep-count` | grep 0, 1; awk 0 | files with a match, matching lines, or lines the awk script prints, after `exclude=` | files, lines |
@@ -73,7 +78,7 @@ nothing. The findings list holds at most 200 entries, 50 for `flutter-test`; `me
 | `copydetect` | `requirements=<repo path>`, `venv-root=<name>`, `paths=`, `ext=`, `exclude=`, `min-similarity=`, `min-tokens=`, `noise=`, `guarantee=` | `requirements` | `venv-root=qg-tools`, `paths=lib`, `ext=dart`, `exclude=\.(g\|freezed\|mocks\|config)\.dart$\|/generated/`, `min-similarity=0.8`, `min-tokens=600`, `noise=25`, `guarantee=25` |
 | `grep-count` | `paths=`, `count=files\|lines`, `name=<glob>`, `exclude=`, `awk=<repo path>`, `-- <ERE>` | `paths`; the pattern unless `awk=` is set | `count=files` |
 | `checkstyle` | `runner=<repo path>`, `report=<tree path>`, `lines=added` | `runner`, `report` | — |
-| `dart-lock` | `packages=<name,name>`, `lock=<tree path>` | `packages` | `lock=pubspec.lock` |
+| `dart-lock` | `packages=<name,name>`, `lock=<repo path>` | `packages` | `lock=pubspec.lock` |
 
 **`dart-analyze` nested options:** the driver lists every `analysis_options.yaml` in the tree except
 the root one, skipping `.dart_tool`, `build` and `.git`. Each one missing from `options-allow=` is
@@ -90,27 +95,31 @@ the root one, skipping `.dart_tool`, `build` and `.git`. Each one missing from `
 
 **`flutter-test` runs once per run and target:** both rows read one shared summary from `QG_RUN_DIR`.
 The command is `<root>/bin/flutter test --no-pub --coverage --coverage-path <dir>/lcov.info --machine`.
-A `concurrency=<n>` key adds `--concurrency=<n>`. `<dir>` is a `mktemp -d` folder of mode 0700 outside `QG_TREE`, deleted
-after the parse. The parser reads only lines that start with `{`.
+A `concurrency=<n>` key adds `--concurrency=<n>`. `<dir>` is a `mktemp -d` folder of mode 0700 outside
+`QG_TREE`, deleted after the parse. The parser reads only lines that start with `{`. Coverage counts
+only the libraries some test loads, as the v1 row did: a new file no test imports leaves it unchanged.
 
 **`flutter-test` coverage filter:** `include=` and `exclude=` match each `SF:` path after the driver
 strips the `QG_TREE/` prefix and a leading `./`. No `lcov.info`, or LF 0 after the filter, is `status: error`.
 
 **`copydetect` interpreter:** the driver runs
 `$HOME/.cache/<venv-root>/copydetect-<first 12 hex of sha256(requirements)>/bin/python -I` with
-`XDG_CACHE_HOME` unset. It never takes python from `PATH`. A `venv-root` other than one plain folder
+`XDG_CACHE_HOME` unset. The requirements file is read at `QG_CONFIG_REV`. It never takes python from `PATH`. A `venv-root` other than one plain folder
 name is `status: error`.
 
-**`dart-lock` counts, per base:**
+**`dart-lock` counts, per base:** it reads the lock and the `pubspec.yaml` beside it from git at
+`QG_TARGET` (the index under commit), never from the tree, which an earlier row's `pub get` may rewrite.
 
 | change in the measured lock against `git show <base>:<lock>` | counts |
 |---|---|
 | a named package's version, source or url differs | 1 |
 | a named package is added or removed | 1 |
 | an unnamed package becomes a `path` or `git` package it was not at the base | 1 |
+| the `dependency_overrides:` section of `pubspec.yaml` differs | 1 |
 | an unnamed hosted package changes version | 0 |
 
-A lock missing at a base or in the tree, or an empty `QG_BASES`, is `status: error`. Name every tool
+A lock missing at a base or the target, a lock line in any form but pub's block form, or an empty
+`QG_BASES`, is `status: error`. Name every tool
 package in `packages=`, and every package an `include:` in `analysis_options.yaml` loads. A hosted
 transitive bump of an unnamed package is not seen; `pubspec.lock` holds no dependency graph.
 
@@ -120,9 +129,9 @@ transitive bump of an unnamed package is not seen; `pubspec.lock` holds no depen
 row in `quality/checks.tsv`.** `guard_run` runs rows in file order, and these two drivers run code the
 commit wrote. That code can write into `QG_RUN_DIR` or the tree and change what a later row reads.
 
-**Failure mode left open:** code running as the same user can still rewrite its own test stream, lcov
-file or mutation output after the suite exits and before the driver reads it. That forges the
-`flutter-test` and `mutation-test` values only; every other row has already run.
+**Failure mode left open:** `qg_isolated` kills what the suite leaves running, but code running as the
+same user can still read the gate's files while the suite runs. Only an OS sandbox closes that; until
+then this can forge the `flutter-test` and `mutation-test` values, and every other row has already run.
 
 ## `checkstyle`: a runner that is the tool
 
@@ -144,14 +153,14 @@ the same commit wrote, and it deletes both reports when it fails.
 
 - Each `paths=` entry must exist and be non-empty in the tree. The driver strips a leading `./` and a
   trailing `/`, so `./lib`, `lib/` and `lib` give one count.
-- `exclude=` matches the path as grep or find prints it, relative to `QG_TREE`, such as
-  `lib/generated/a.dart`. With `paths=.` that path starts with `./`.
+- `exclude=` matches the path relative to `QG_TREE` with any leading `./` removed, such as
+  `lib/generated/a.dart`.
 - `exclude=` applies in every mode: `count=files`, `count=lines` and `awk=`.
 - Convert a v1 post-filter `grep -vE "<re>:"` on `grep -n` output to `exclude=<re>$`. The v1 filter
   matched `path:line:`; the driver matches the path alone.
 - The pattern is the argv after ` -- `, taken whole, spaces included.
-- `awk=` runs `find <paths> -type f [-name <glob>]`, then `xargs -0 -r awk -f <file>`. With no file
-  left, awk never runs and the count is 0.
+- `awk=` runs `find <paths> -type f [-name <glob>]`, then `xargs -0 -r awk -f <file>`. The script is
+  read at `QG_CONFIG_REV`, never from the tree. With no file left, awk never runs and the count is 0.
 
 **Constraint: a TSV args cell holds `|`, never `\|`.** A `\|` in a markdown table on this page is table
 escaping. Copied into an ERE, `\|` matches a literal pipe and changes the count.
