@@ -53,7 +53,7 @@ an agent outside a guarded Claude Code session still meets the second.
 | `qg doctor` | checks the setup | 0 healthy (warnings allowed), 1 something is broken | yes |
 | `qg config get <key>` | a gate key as committed: `quality/config`, else `VAULT.md` | 0 and the value; 1 when unset; 2 on bad usage | yes |
 | `qg override --reason "<why>" [--push <sha>]` | lets the next commit of what is staged now, or the push of `<sha>`, through once within 10 minutes | 0 token written; 1 no terminal or a bad `--push` sha; 2 no reason or an agent | no |
-| `qg init --profile docs\|php\|nuxt\|flutter\|hugo [--force]` | writes `quality/checks.tsv`, `rules.tsv`, `baseline.tsv` and `config` from `templates/init/<profile>.tsv` | 0; 2 on a bad profile or an existing `checks.tsv` without `--force` | no |
+| `qg init --profile docs\|php\|nuxt\|flutter\|hugo [--force]` | writes `quality/checks.tsv`, `rules.tsv`, `baseline.tsv` and `config` from `templates/init/<profile>.tsv`. `config` protects the five gate files by exact path, plus every tracked `.doc-lint` for docs, which also gets `guard_doc_lint`. An existing `config` is kept, with a warning naming what it lacks. Next: `qg hooks install`, commit, `qg doctor` | 0; 2 on a bad profile or an existing `checks.tsv` without `--force` | no |
 | `qg migrate [--draft]` | rewrites a v1 `checks.tsv` as v2 and writes `quality/config` from the `VAULT.md` keys | 1 without `--draft`, listing rows with no why; 0 with `--draft`; 2 when there is nothing to migrate | no |
 | `qg hooks status` | the installed git hooks and Claude Code entries | from `guard.sh hooks` | yes |
 | `qg hooks install [--claude]`, `qg hooks remove` | installs or removes the hooks | from `guard.sh hooks` | no |

@@ -59,6 +59,7 @@ insights rows that differ only in `metric=` run PHP Insights once.
 | `infection` | 0, 1 with the summary | `.stats.msi`, else `.msi` | percent | `infection` |
 | `jscpd-added` | 0 with a report | clone sides in changed files that cover an added line, each once | clones | recycling-api `jscpd-added.sh` with `--checkstyle` |
 | `cloc` | 0 | `comment-ratio`: comment over code lines, three places; or `code`, `comment` | ratio, lines | `cloc` |
+| `doc-lint` | 0 with no finding, 1 with a finding | findings the commit adds, as the next section counts them | findings | none: the v1 row lints whole files |
 
 Any other exit code, a missing report, or a report without the field the metric needs writes
 `status: error`, and the engine makes the row unmeasurable.
@@ -77,6 +78,28 @@ Any other exit code, a missing report, or a report without the field the metric 
 | `infection` | `summary=<tree path>`, `log=<tree path>`, `run=no` | `summary` | `bin=vendor/bin/infection` |
 | `jscpd-added` | `version=`, `min-lines=`, `min-tokens=`, `format=`, `ignore=<glob>` | — | `version=5.3.2`, `paths=app` |
 | `cloc` | `metric=comment-ratio\|code\|comment` | — | `bin=cloc`, `paths=.` |
+| `doc-lint` | none; the config key `guard_doc_lint` names the linter | `guard_doc_lint` | — |
+
+## What the doc-lint driver counts
+
+`doc-lint` runs the vault framework linter at the absolute path `guard_doc_lint` names. Its `../lib`
+must hold `sentence-count.sh`, `prose-match.sh` and `doc-lint-patterns.tsv`.
+
+| code | counted when |
+|---|---|
+| `doc-lint.<CODE>` on a line | the line is an added line |
+| `doc-lint.<CODE>` with no line (`FILE`, or DUP1's `x<n>`) | no parent's version of the file has that code; renames are followed, and a new file has no parent version |
+| `doc-lint.SKIPFILE` | the commit adds or changes a `.doc-lint` or `VAULT.md` at any depth |
+| `doc-lint.TYPE` | the type doc-lint reads differs from every parent's, renames followed, or a new file is `persona`, `command`, `skill` or `output-style` |
+
+**Constraint: a commit cannot change what is checked.** Before it lints, the driver replaces every
+`.doc-lint` and `VAULT.md` in the measured tree with the config revision's copies. It writes empty
+root ones when that revision has none. The linter gets no variable or function of the caller beyond
+`PATH` and `HOME`. The driver refuses any measured tree but `<git-common-dir>/guard-tree`.
+
+**Limits:** the driver lints `.md` files only. doc-lint does not treat a new file with no `type:`
+outside the document folders as a document. A sentence wrapped across lines is never measured. An
+existing file that grows past its size cap is not counted, because its parent already has the code.
 
 **`run=no`:** the driver reads the report a previous run left and runs nothing. Use it for a row that
 reads a whole-suite report a `baseline` row wrote. Any process can write that report, so such a row
@@ -104,5 +127,6 @@ in `guard_protected_paths` (`vault/architecture/guard-commit-gate.md`).
 | `infection` | `infection.json5`, `infection.json`, `infection.json.dist` |
 | `jscpd-added` | `.jscpd.json` |
 | `cloc` | none |
+| `doc-lint` | every `.doc-lint` and `VAULT.md`, read from the config revision only |
 
 A runner the row names is committed and read from the config revision; protect it too.

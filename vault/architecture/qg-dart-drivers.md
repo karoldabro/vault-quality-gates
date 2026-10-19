@@ -21,7 +21,7 @@ Dart tool and do not source it.
 
 | step | function | what it does | `status: error` when |
 |---|---|---|---|
-| read the SDK path | `qg_dart_config_key guard_flutter_root` | reads the key through `lib/qg-config.sh` at `QG_CONFIG_REV`; an empty `QG_CONFIG_REV` is a first commit and reads the index | the key is absent or empty |
+| read the SDK path | `qg_dart_config_key guard_flutter_root` | calls the kit's `qg_kit_config_key`, which reads the key through `lib/qg-config.sh` at `QG_CONFIG_REV`; an empty `QG_CONFIG_REV` is a first commit and reads the index | the key is absent or empty |
 | refuse a runner | `qg_dart_env` | a Dart row runs the pinned SDK itself | the row sets `runner=` |
 | pin the SDK | `qg_dart_env` | sets `QG_FLUTTER=<root>/bin/flutter` and `QG_DART=<root>/bin/cache/dart-sdk/bin/dart`; every tool runs by that absolute path | either file is missing or not executable |
 | check `PATH` | `qg_dart_env` | resolves `command -v flutter` with `readlink -f`; no `flutter` on `PATH` is allowed | `flutter` on `PATH` is another file |
