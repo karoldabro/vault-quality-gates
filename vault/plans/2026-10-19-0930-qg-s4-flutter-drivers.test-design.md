@@ -81,10 +81,10 @@ state twice gives the same table.
 | T-9 | W-10 SC-1 | unit | `tests/unit/qg-driver-copydetect.bats` | similarity at the threshold, 0 pairs, stub python failure, `venv-root=../x` | should | |
 | T-10 | W-11 SC-1 | unit | `tests/unit/qg-driver-grep-count.bats` | modes, path spellings, missing or empty path, anchored exclude equals v1 `grep -vE "<re>:"`, exclude in awk mode, empty glob with stdin fed, pattern with spaces, `.g.dart` hit unchanged | must | |
 | T-11 | W-12 SC-1 SC-6 | unit | `tests/unit/qg-driver-checkstyle.bats` | runner failures, tracked report → err, report not deleted, added vs unchanged line, two rows one runner call | must | |
-| T-12 | W-0..W-12 SC-1 | unit | `checks/qg-s4-SC-1.sh` | required keys, no number on error, `cmp`-equal results across all eleven drivers | must | |
-| T-13 | W-1 W-15 SC-2 | unit | `checks/qg-s4-SC-2.sh` | checkout porcelain and checksum unchanged after each Dart driver and `commit-lint.sh`; caller env ignored | must | |
-| T-14 | W-16 SC-3 | unit | `checks/qg-s4-SC-3.sh` | v1 ids, distinct whys, protected files, no `\|`, suite rows last | must | |
-| T-15 | W-8 W-16 SC-5 | integration | `checks/qg-s4-SC-5.sh` | each row alone equals the full run; shuffled pre-suite rows; a fake flutter writing into `QG_RUN_DIR` and the tree leaves earlier rows unchanged | must | |
-| T-16 | W-12 W-15 SC-6 | unit | `checks/qg-s4-SC-6.sh` | staged `commit-lint.sh` edit runs the parent copy and is refused; tool bumps and `path` packages refused | must | |
-| T-17 | W-19 SC-4 | integration | `checks/qg-parity-recycling_mobile_app.sh` | new clean state; 2× delta; generated-hit pass; per-state mutation shim; new side under `unshare -rn`; renamed-row clean drift exits 1; live checkout unchanged; repeat run identical | must | |
-| T-18 | W-19 SC-4 | integration | `checks/qg-parity-recycling_mobile_app.sh` | rename inside `lib/generated/` changes nothing; moving a hit file there lowers filtered rows by its hits | should | |
+| T-12 | W-0..W-12 SC-1 | unit | checks/qg-s4-SC-1.sh | required keys, no number on error, `cmp`-equal results across all eleven drivers | must | |
+| T-13 | W-1 W-15 SC-2 | unit | checks/qg-s4-SC-2.sh | checkout porcelain and checksum unchanged after each Dart driver and `commit-lint.sh`; caller env ignored | must | |
+| T-14 | W-16 SC-3 | unit | checks/qg-s4-SC-3.sh | v1 ids, distinct whys, protected files, no `\|`, suite rows last | must | |
+| T-15 | W-8 W-16 SC-5 | integration | checks/qg-s4-SC-5.sh | each row alone equals the full run; shuffled pre-suite rows; a fake flutter writing into `QG_RUN_DIR` and the tree leaves earlier rows unchanged | must | |
+| T-16 | W-12 W-15 SC-6 | unit | checks/qg-s4-SC-6.sh | staged `commit-lint.sh` edit runs the parent copy and is refused; tool bumps and `path` packages refused | must | |
+| T-17 | W-19 SC-4 | integration | checks/qg-parity-recycling_mobile_app.sh | new clean state; 2× delta; generated-hit pass; per-state mutation shim; new side under `unshare -rn`; renamed-row clean drift exits 1; live checkout unchanged; repeat run identical | must | |
+| T-18 | W-19 SC-4 | integration | checks/qg-parity-recycling_mobile_app.sh | rename inside `lib/generated/` changes nothing; moving a hit file there lowers filtered rows by its hits | should | |
