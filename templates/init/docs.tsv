@@ -1,5 +1,5 @@
 id	on	kind	driver	args	direction	threshold	gate	why
 # Starter rows for a markdown or notes repo. Columns: vault/architecture/guard-file-formats.md.
 conflict-markers	commit	diff	shell	-- {{guard}}/guard-added-lines.sh --added --bases "{{bases}}" --target {{target}} | awk -F"\t" '$3 ~ /^(<<<<<<<|>>>>>>>)( |$)/ { n++ } END { print n + 0 }'	down	0	refuse	a merge-conflict marker left in a file breaks it for every reader
-doc-lint	commit	diff	shell	parser=exitcode -- { {{files}} | tr "\0" "\n" | grep -E '\.md$' || true; } | xargs -r "${VAULT_FRAMEWORK_PATH:-$HOME/workspace/vault}"/bin/doc-lint.sh --quiet > /dev/null || exit 1	down	0	refuse	changed documents follow the document standard, so a later reader can act on them
+doc-lint	commit	diff	doc-lint	-	down	0	refuse	changed documents follow the document standard, so a later reader can act on them
 gate-config-touched	commit	diff	shell	-- {{guard}}/guard-protected-paths.sh --bases "{{bases}}" --target {{target}}	down	0	refuse	the gate configuration is changed by a human only, so an agent cannot loosen the gate that judges it

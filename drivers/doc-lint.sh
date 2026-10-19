@@ -77,7 +77,7 @@ dl_parent() {
 
 dl_run() {
     : "${QG_OUT:?}" "${QG_TREE:?}" "${QG_REPO:?}"
-    local common tree repo raw linter lib f code loc msg sha old status
+    local common tree repo raw linter lib f code msg sha old status _loc _msg
 
     # (1) The driver rewrites skip files in the tree it measures, so that tree must be the gate's copy.
     common="$(git -C "$QG_REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || dl_fail "cannot read the git dir of ${QG_REPO}"
@@ -87,16 +87,8 @@ dl_run() {
     case "$tree/" in "${common}/guard-tree/"*) ;; *) dl_fail "QG_TREE ${QG_TREE} is not the gate's copy under ${common}/guard-tree" ;; esac
     [ "$tree" != "$repo" ] || dl_fail "QG_TREE is the repo itself"
 
-    # (2) The linter path comes from the config revision only.
-    raw="$(qg_kit_config_key guard_doc_lint)" && [ -n "$raw" ] || dl_fail 'guard_doc_lint is not set in quality/config'
-    case "$raw" in /*) ;; *) dl_fail "guard_doc_lint ${raw} is not an absolute path" ;; esac
-    linter="$(readlink -f "$raw")" && [ -f "$linter" ] && [ -x "$linter" ] || dl_fail "guard_doc_lint ${raw} is not an executable file"
-    for lib in sentence-count.sh prose-match.sh doc-lint-patterns.tsv; do
-        [ -r "$(dirname "$linter")/../lib/${lib}" ] || dl_fail "guard_doc_lint ${raw}: ../lib/${lib} is missing beside it"
-    done
-    DL_LINTER="$linter"
-
-    # (3) What the commit changed, read before the tree is rewritten.
+    # (2) What the commit changed, read before the tree is rewritten. A commit with nothing the
+    # driver reads needs no linter.
     local -a docs=() skips=()
     while IFS= read -r -d '' f; do
         case "$f" in
@@ -107,6 +99,15 @@ dl_run() {
     if [ "${#docs[@]}" -eq 0 ] && [ "${#skips[@]}" -eq 0 ]; then
         qg_result doc-lint measured 0 findings - -; return
     fi
+
+    # (3) The linter path comes from the config revision only.
+    raw="$(qg_kit_config_key guard_doc_lint)" && [ -n "$raw" ] || dl_fail 'guard_doc_lint is not set in quality/config'
+    case "$raw" in /*) ;; *) dl_fail "guard_doc_lint ${raw} is not an absolute path" ;; esac
+    linter="$(readlink -f "$raw")" && [ -f "$linter" ] && [ -x "$linter" ] || dl_fail "guard_doc_lint ${raw} is not an executable file"
+    for lib in sentence-count.sh prose-match.sh doc-lint-patterns.tsv; do
+        [ -r "$(dirname "$linter")/../lib/${lib}" ] || dl_fail "guard_doc_lint ${raw}: ../lib/${lib} is missing beside it"
+    done
+    DL_LINTER="$linter"
     # Parent path of each changed path, per parent: renames map back, an added path has none.
     local -A parent=()
     local -a bases
@@ -175,11 +176,11 @@ dl_run() {
             [ "${#pfiles[@]}" -gt 0 ] || continue
             dl_lint "$bdir" "${bdir}.txt" "${pfiles[@]}"
             [ "$DL_RC" -le 1 ] || { tail -20 "${bdir}.txt"; dl_fail "doc-lint exited ${DL_RC} on the parent ${sha}"; }
-            while IFS=$'\t' read -r old loc code msg; do
+            while IFS=$'\t' read -r old _loc code _msg; do
                 pcodes["${sha}"$'\t'"${old}"$'\t'"${code}"]=1
             done < <(dl_parse "${bdir}.txt" | awk -F'\t' '$2 !~ /^L[0-9]+$/')
         done
-        while IFS=$'\t' read -r f loc code msg; do
+        while IFS=$'\t' read -r f _loc code msg; do
             local had=0
             for sha in "${bases[@]}"; do
                 old="$(dl_parent "$sha" "$f")"
