@@ -15,7 +15,8 @@
 # Each clone is measured in three states, each with that engine's commit gate (the staged seeds),
 # release gate (`guard.sh release`, the committed seeds) and `baseline --only mutation`:
 #
-#   clean   a neutral staged file, test/qg-parity-clean.txt
+#   clean   a neutral formatted Dart file, lib/qg_parity/clean.dart, staged in every state: v1 format
+#           exits 1 on a diff with no Dart file, because its grep fails under pipefail
 #   seed1   one violation per v1 row (seed_<id> below), and one hit per generated-file form for every
 #           row whose v2 args carry exclude=, ignore= or cloc filters (gen_<id> below)
 #   seed2   the same with two violations per row and the same generated hits
@@ -57,7 +58,8 @@ STEP_TIMEOUT="${QG_PARITY_TIMEOUT:-3600}"
 RENAMED='format=format-files tests-failing=tests-failed comment-density=comment-ratio gate-config-touched=protected-paths-touched'
 CLEAN_RULE='format=zero tests-failing=zero comment-density=equal gate-config-touched=equal'
 # Ratio, percentage and exit-code rows, by v1 and by v2 id: no seed2 = 2 x seed1 relation holds.
-NONLINEAR=' format tests-failing comment-density comment-ratio coverage duplication architecture-nccd '
+# format-files counts files, and the seeds that append to an existing Dart file add it once at any n.
+NONLINEAR=' format format-files tests-failing comment-density comment-ratio coverage duplication architecture-nccd '
 # Rows whose seeds run in the push phase only: the failing tests import the generated hits.
 ROWS_B=' tests-failing coverage '
 
@@ -115,7 +117,7 @@ t_complexity() {  # 21 if blocks: cyclomatic complexity 22, 66 source lines
     for k in $(seq 1 21); do printf '  if (qgC%s == %d) {\n    return %d;\n  }\n' "$1" "$k" "$k"; done
     printf '  return 0;\n}\n'
 }
-t_dup() {  # 13 lines, about 70 tokens: one jscpd clone between the a and b copy
+t_dup() {  # 18 lines, about 100 tokens: one clone between the a and b copy, over duplication-new's 70
     cat <<EOF
 int qgParityDup$1(List<int> qgD$1) {
   var qgS$1 = 0;
@@ -128,11 +130,17 @@ int qgParityDup$1(List<int> qgD$1) {
       qgS$1 -= qgV$1;
     }
   }
+  qgS$1 = qgS$1 * 7 + 1;
+  qgS$1 = qgS$1 ~/ 3 - 2;
+  qgS$1 = qgS$1 % 1000 + 4;
+  qgS$1 = qgS$1 * 11 - 5;
+  qgS$1 = qgS$1 ~/ 13 + 6;
   return qgS$1;
 }
 EOF
 }
-t_comment_density() { local k; for k in $(seq 1 200); do printf '/// qg parity doc line %d\n' "$k"; done; printf 'int qgParityDocumented%s() => 0;\n' "$1"; }
+t_comment_density() {  # each violation's lines differ, so two violations are no jscpd clone
+    local k; for k in $(seq 1 200); do printf '/// qg parity %s doc line %d\n' "$1" "$k"; done; printf 'int qgParityDocumented%s() => 0;\n' "$1"; }
 t_coverage() {  # 24 instrumented lines, 3 of them run by the failing test
     local k; printf 'int qgParityCoverage%s(int v) {\n  if (v > 0) {\n    return v;\n  }\n  var qgU%s = v;\n' "$1" "$1"
     for k in $(seq 1 20); do printf '  qgU%s = qgU%s + %d;\n' "$1" "$1" "$((k + 2))"; done
@@ -344,7 +352,7 @@ seed_architecture_cycles() {   # +1 folder cycle (a <-> b) in its own lib/ folde
     printf "import '../b/b.dart';\n\nint qgParityCycleA%s(int v) => v > 0 ? qgParityCycleB%s(v - 1) : 0;\n" "$2" "$2" | put "$1/lib/qg_parity_cycle_$2/a/a.dart"
     printf "import '../a/a.dart';\n\nint qgParityCycleB%s(int v) => v > 0 ? qgParityCycleA%s(v - 1) : 1;\n" "$2" "$2" | put "$1/lib/qg_parity_cycle_$2/b/b.dart"
 }
-seed_duplication() { t_dup "$2" | put "$1/lib/qg_parity/dup_$2_a.dart"; t_dup "$2" | put "$1/lib/qg_parity/dup_$2_b.dart"; }   # +1 jscpd clone of 13 lines
+seed_duplication() { t_dup "$2" | put "$1/lib/qg_parity/dup_$2_a.dart"; t_dup "$2" | put "$1/lib/qg_parity/dup_$2_b.dart"; }   # +1 jscpd clone of 18 lines
 seed_duplication_clones() { :; }   # the duplication seed's clone pair: +1 clone
 seed_comment_density() { t_comment_density "$2" | put "$1/lib/qg_parity/comment_density_$2.dart"; }   # +200 comment lines, +1 code line
 seed_tests_failing() { t_fail_test "$2" | put "$1/test/qg_parity/qg_parity_fail_$2_test.dart"; }   # +1 failing test (push phase)
@@ -472,7 +480,7 @@ seed_long_functions() { t_long "$2" | put "$1/lib/qg_parity/long_$2.dart"; }   #
 seed_large_classes() { t_large "$2" | put "$1/lib/qg_parity/large_$2.dart"; }   # +1 class over 10 methods
 seed_lint_refuse_new() { printf 'void qgParityVoidAsync%s() async {}\n' "$2" | put "$1/lib/qg_parity/lint_refuse_$2.dart"; }   # +1 avoid_void_async (error tier)
 seed_lint_warn_new() { printf 'int qgParityFinalLocal%s() {\n  var qgW%s = 0;\n  return qgW%s;\n}\n' "$2" "$2" "$2" | put "$1/lib/qg_parity/lint_warn_$2.dart"; }   # +1 prefer_final_locals (warning tier)
-seed_duplication_new() { :; }   # the duplication seed's clone pair: +13 added cloned lines
+seed_duplication_new() { :; }   # the duplication seed's clone pair: +2 errors, one per side
 seed_suppressions_added() { printf '// ignore: avoid_print\nconst qgParitySuppress%s = 0;\n' "$2" | put "$1/lib/qg_parity/suppress_$2.dart"; }   # +1 ignore comment
 seed_gate_config_touched() { printf 'qg parity %s\n' "$2" | put "$1/tool/checks/qg_parity_$2.txt"; }   # +1 protected path in both lists
 
@@ -643,7 +651,8 @@ measure() {  # measure <side> <state> <n>
     local side="$1" state="$2" n="$3" d="$WORK/$1" fixture="FIXTURE_$1"
     git -C "$d" reset -q --hard "${!fixture}" && git -C "$d" clean -qfd || die "$side $state: cannot reset the clone"
     printf '%s\n' "$n" > "$WORK/state"
-    if [ "$n" -eq 0 ]; then printf 'parity\n' | put "$d/test/qg-parity-clean.txt"; else seed "$d" "$n" a; fi
+    printf 'int qgParityClean() => 0;\n' | put "$d/lib/qg_parity/clean.dart"
+    [ "$n" -eq 0 ] || seed "$d" "$n" a
     git -C "$d" add -A || die "$side $state: cannot stage the seeds"
 
     say "$side $state: commit rows"
