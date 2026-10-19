@@ -1,0 +1,15 @@
+id	new-id	kind	verdict	old-clean	old-seed1	old-seed2	new-clean	new-seed1	new-seed2
+lint-new	lint-new	diff	SAME	0/ok	1/worse	2/worse	0/ok	1/worse	2/worse
+typecheck-new	typecheck-new	diff	SAME	0/ok	1/worse	2/worse	0/ok	1/worse	2/worse
+duplication-new	duplication-new	diff	SAME	0/ok	1/worse	2/worse	0/ok	1/worse	2/worse
+suppressions-added	suppressions-added	diff	SAME	0/ok	1/worse	2/worse	0/ok	1/worse	2/worse
+gate-config-touched	protected-paths-touched	diff	NEW	0/ok	1/worse	1/worse	0/ok	1/worse	2/worse
+lint-errors	lint-errors	repo	SAME	6/ok	7/worse	8/worse	6/ok	7/worse	8/worse
+typecheck-errors	typecheck-errors	repo	SAME	119/ok	120/worse	121/worse	119/ok	120/worse	121/worse
+duplication	duplication	repo	SAME	1.88/ok	2.03/worse	2.18/worse	1.88/ok	2.03/worse	2.18/worse
+duplication-clones	duplication-clones	repo	SAME	117/ok	118/worse	119/worse	117/ok	118/worse	119/worse
+tests-suite	tests-suite-failed	diff	NEW	0/ok	1/worse	1/worse	0/ok	1/worse	2/worse
+tests-failing	tests-failing	diff	SAME	0/ok	1/worse	2/worse	0/ok	1/worse	2/worse
+coverage	coverage	repo	SAME	53.43/ok	50.90/worse	48.37/worse	53.43/ok	50.90/worse	48.37/worse
+coverage-age-days	coverage-age-days	diff	SAME	0/ok	10/worse	20/worse	0/ok	10/worse	20/worse
+-	tools-changed	diff	NEW	-	-	-	0/ok	1/worse	2/worse

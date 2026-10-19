@@ -1,0 +1,26 @@
+id	on	kind	driver	args	direction	threshold	gate	why
+# Columns, the `on` grammar and driver keys: vault/architecture/guard-file-formats.md and
+# vault/architecture/qg-builtin-drivers.md in the vault-quality-gates repo. quality/README.md
+# describes every row in this repo. Empty cells are `-`.
+#
+# eslint, nuxt typecheck and vitest run through quality/bin/in-node.sh. Under commit it measures a
+# copy of the staged tree with the main checkout's node_modules and a fresh copy of its .nuxt, so
+# `pnpm install` must have run there; on push it measures this checkout as it is. jscpd 5.3.2 runs
+# through an isolated `pnpm dlx`. tests-failing, coverage and coverage-age-days read the reports the
+# last baseline run of tests-suite-failed left behind.
+lint-new	commit	diff	eslint	runner=quality/bin/in-node.sh files=changed lines=added metric=errors include=\.(ts|vue|js|mjs|cjs)$	down	0	refuse	A commit may not add an ESLint error on the lines it adds, so lint errors only shrink.
+typecheck-new	commit	diff	nuxt-typecheck	runner=quality/bin/in-node.sh lines=added	down	0	refuse	A commit may not add a nuxt typecheck error on the lines it adds, so type errors never reach a pushed branch.
+duplication-new	commit	diff	jscpd-added	version=5.3.2 config=quality/jscpd.json paths=app,server include=^(app|server)/.*\.(ts|vue|js)$ exclude=__tests__/|\.(spec|test)\.ts$|^app/types/api\.ts$	down	0	refuse	A commit may not add a line in app/ or server/ inside a block jscpd finds elsewhere, so shared logic is extracted instead of copied.
+suppressions-added	commit	diff	shell	-- ( set -o pipefail; for e in ts vue js mjs cjs; do "{{guard}}/guard-added-lines.sh" --ext "$e" --grep 'eslint-disable|@ts-ignore|@ts-nocheck|@ts-expect-error|/\*[[:space:]]*eslint[[:space:]]' --bases "{{bases}}" --target "{{target}}" || exit 2; done | awk -v l="${GUARD_LIST:-}" 'l != "" { print; next } { s += $1 } END { if (l == "") print s + 0 }' ) || echo "suppressions-added: guard-added-lines.sh failed"	down	0	refuse	A commit may not add an eslint-disable, inline eslint config or @ts-ignore, @ts-nocheck or @ts-expect-error comment, so a finding is fixed instead of hidden.
+gate-config-touched	-	absent	-	-	-	-	-	replaced by protected-paths-touched, which reads the longer protected list of quality/config
+protected-paths-touched	commit	diff	shell	-- "{{guard}}/guard-protected-paths.sh" --bases "{{bases}}" --target "{{target}}"	down	0	refuse	A commit may not change a protected gate or tool config file, so an agent cannot loosen the rules that judge it.
+tools-changed	commit	diff	shell	-- bash -c "$(git show HEAD:quality/bin/in-node.sh)" in-node.sh --tools-diff "{{tree}}"	down	0	refuse	A commit may not change the locked version of a dev tool, an eslint plugin, nuxt or @nuxt/cli without a human override, so looser tools never arrive unseen.
+lint-errors	push:refs/*	repo	eslint	runner=quality/bin/in-node.sh metric=errors	down	0	refuse	The whole-repo ESLint error count may not rise above its baseline.
+typecheck-errors	push:refs/*	repo	nuxt-typecheck	runner=quality/bin/in-node.sh	down	0	refuse	The whole-repo nuxt typecheck error count may not rise above its baseline.
+duplication	push:refs/*	repo	jscpd	version=5.3.2 metric=percentage config=quality/jscpd.json paths=app,server	down	0.1	refuse	The share of duplicated lines in app/ and server/ may not rise more than 0.1 points above its baseline.
+duplication-clones	push:refs/*	repo	jscpd	version=5.3.2 metric=clones config=quality/jscpd.json paths=app,server	down	0	refuse	The number of duplicated blocks in app/ and server/ may not rise above its baseline.
+tests-failing	push:refs/*	diff	vitest	run=no metric=failed	down	0	refuse	A push may not go out while the last whole-suite run has a failing test.
+coverage	push:refs/*	repo	vitest	run=no metric=coverage	up	0.5	refuse	Line coverage from the last whole-suite run may not drop more than half a point below its baseline.
+coverage-age-days	push:refs/*	diff	shell	-- bash quality/bin/metric.sh coverage-age-days	down	7	refuse	The whole-suite reports may be at most seven days old, so tests-failing and coverage read a recent run.
+tests-suite	-	absent	-	-	-	-	-	replaced by tests-suite-failed, which counts the failed tests in the junit report instead of reading the exit code
+tests-suite-failed	baseline	diff	vitest	runner=quality/bin/in-node.sh metric=failed -- run --coverage --reporter=junit --outputFile.junit=quality-reports/junit.xml	down	0	refuse	The whole suite may not fail or miss a coverage threshold on a baseline run, and it writes the reports the push rows read.
