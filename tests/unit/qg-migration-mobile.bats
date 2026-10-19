@@ -44,7 +44,8 @@ rows() { awk -F'\t' 'NR > 1 && $0 !~ /^#/' "$1"; }
     printf 'id\ttool\tenforced_by\temits\n' > quality/rules.tsv
     commit_all v2
     run bash -c '. /code/lib/guard-metrics.sh; . /code/lib/guard-pass.sh; guard_load_checks quality/checks.tsv && echo loaded'
-    [ "$status" -eq 0 ] && [[ "$output" == *loaded* ]]
+    [ "$status" -eq 0 ]
+    [[ "$output" == *loaded* ]]
     local ids id why repl
     ids="$(rows quality/checks.tsv | cut -f1)"
     for id in $V1_IDS; do grep -qx "$id" <<<"$ids" || { echo "v1 id missing: $id"; return 1; }; done
@@ -104,7 +105,8 @@ unprotected() {
             if ($4 == "flutter-test" || $4 == "mutation-test") suite = 1
             else if (suite) { print $1; late = 1 }
         } END { exit late }' "$WORK/c.tsv"
-    [ "$status" -eq 1 ] && [ "$output" = late ]
+    [ "$status" -eq 1 ]
+    [ "$output" = late ]
 }
 
 # v1_mobile <dir> — a checkout shaped like recycling_mobile_app with its v1 checks.tsv and hooks that
@@ -138,7 +140,8 @@ migration() {
     cmp "$M/commit-lint.sh" quality/bin/commit-lint.sh && [ -x quality/bin/commit-lint.sh ]
     [ "$(git rev-parse HEAD)" = "$before" ]
     [[ "$output" == *'qg baseline --only comment-ratio'$'\n'* ]]
-    [[ "$output" != *'dart-tools-changed'*'qg baseline'* ]] && [[ "$output" != *'baseline --only'*'format-files'* ]]
+    [[ "$output" != *'dart-tools-changed'*'qg baseline'* ]]
+    [[ "$output" != *'baseline --only'*'format-files'* ]]
     [[ "$output" == *'qg override --reason'* ]]
 }
 
@@ -146,19 +149,23 @@ migration() {
     v1_mobile "$WORK/app"
     migration "$WORK/m" $'complexity\tcomplexity\trepo\tDIFF\n'
     run bash "$WORK/m/apply.sh" "$WORK/app"
-    [ "$status" -eq 2 ] && [[ "$output" == *'not proven: complexity=DIFF'* ]]
+    [ "$status" -eq 2 ]
+    [[ "$output" == *'not proven: complexity=DIFF'* ]]
     rm "$WORK/m/parity.tsv"
     run bash "$WORK/m/apply.sh" "$WORK/app"
-    [ "$status" -eq 2 ] && [[ "$output" == *'parity.tsv is missing'* ]]
+    [ "$status" -eq 2 ]
+    [[ "$output" == *'parity.tsv is missing'* ]]
     migration "$WORK/m" $'complexity\tcomplexity\trepo\tSAME\n'
     sed -i 's#^guard_flutter_root:.*#guard_flutter_root: /nonexistent/sdk#' "$WORK/m/config"
     run bash "$WORK/m/apply.sh" "$WORK/app"
-    [ "$status" -eq 2 ] && [[ "$output" == *'not a Flutter SDK'* ]]
+    [ "$status" -eq 2 ]
+    [[ "$output" == *'not a Flutter SDK'* ]]
     [ "$(git status --porcelain)" = '' ]
     [ -w /dev/shm ] || skip 'no writable folder outside /tmp in this container'
     v1_mobile /dev/shm/qg-apply-$$
     migration "$WORK/m2" $'complexity\tcomplexity\trepo\tSAME\n'
     CLAUDECODE=1 run bash "$WORK/m2/apply.sh" /dev/shm/qg-apply-$$
     rm -rf /dev/shm/qg-apply-$$
-    [ "$status" -eq 2 ] && [[ "$output" == *'agents may not apply'* ]]
+    [ "$status" -eq 2 ]
+    [[ "$output" == *'agents may not apply'* ]]
 }
