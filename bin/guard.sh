@@ -434,6 +434,8 @@ case "${1:-}" in
             case "$1" in
                 --only) [ $# -ge 2 ] || { guard_err 'usage: guard.sh release [<ref>] [--only <id,id>]'; exit 2; }
                         only="$2"; GUARD_ONLY="${only//[[:space:]]/}"; shift 2 ;;
+                # An unknown flag read as the ref would name a ref no row runs on, and pass the push.
+                -?*) guard_err "guard: release does not take $1"; guard_err 'usage: guard.sh release [<ref>] [--only <id,id>]'; exit 2 ;;
                 *) rel_ref="$1"; shift ;;
             esac
         done
