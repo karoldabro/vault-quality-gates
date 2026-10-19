@@ -23,13 +23,13 @@ qg_cases \
     "a .doc-lint the commit adds at the root is ignored and counts 1 as doc-lint.SKIPFILE" \
     "a commit that edits a tracked .doc-lint is linted with the config revision's copy and counts 1 as doc-lint.SKIPFILE" \
     "a committed .doc-lint at the config revision still applies" \
-    "a VAULT.md the commit removes, edits or adds in a subfolder does not change INDEX3 and counts 1 as doc-lint.SKIPFILE" \
+    "a VAULT.md the commit edits or adds, at the root or in a subfolder, does not change INDEX3 and counts 1 as doc-lint.SKIPFILE" \
     "changing or removing an existing file's type: counts 1 as doc-lint.TYPE" \
     "type:guide with no space, and a blank line before the frontmatter, count 1 as doc-lint.TYPE" \
     "a renamed file whose type changes counts 1 as doc-lint.TYPE" \
     "a new file with an instruction type counts 1 as doc-lint.TYPE" \
     "a plain rename of a file with an old file-level finding counts 0" \
-    "DOC_LINT, DOC_LINT_SKIP, DOC_LINT_PATTERNS, VAULT_FRAMEWORK_PATH, BASH_ENV and ENV from the caller do not reach the linter" \
+    "DOC_LINT, DOC_LINT_SKIP, DOC_LINT_PATTERNS, VAULT_FRAMEWORK_PATH, BASH_ENV, ENV and an exported function from the caller do not reach the linter" \
     "guard_doc_lint unset, relative or not executable is status error naming the key" \
     "a missing linter library in ../lib of the linter's folder is status error naming it" \
     "guard_doc_lint is read at the config revision, not from the working tree" \
