@@ -233,14 +233,16 @@ config. After the migration commit, the operator first reverts that commit in mo
 ## Test plan
 
 Bats unit tests in `tests/unit/`, run by `./tests/run.sh tests/unit` (image `tests/Dockerfile`). Each
-driver test feeds a tool output recorded from a real run, and its exit code, through a fake tool on
-`PATH` (`dart`, `flutter`, `python`). It compares `metric` with the v1 command on the same output. A fake
-`flutter` that writes into `QG_RUN_DIR` and the tree checks the isolation half of SC-5. End to end:
-`checks/qg-parity-recycling_mobile_app.sh` on scratch clones with the real Flutter toolchain.
+driver test runs a fake SDK folder named as `guard_flutter_root` and placed first on `PATH`, fed a tool
+output recorded from a real run. It compares `metric` with the v1 command on the same output. End to
+end: `checks/qg-parity-recycling_mobile_app.sh` on scratch clones with the real Flutter toolchain, the
+new side without network. The dossier, the outcome of every edge case, and the backlog are in
+`2026-10-19-0930-qg-s4-flutter-drivers.test-design.md`; its driver table binds the implementation.
 
 ## Refs
 
 - `vault/plans/2026-10-18-1121-qg-common-interface.md` — the master plan; this is session S4.
 - `vault/plans/2026-10-18-1500-qg-s2-php-drivers.md` — S2, whose method this session follows.
 - `vault/architecture/qg-driver-contract.md` — the contract every driver here follows.
+- `2026-10-19-0930-qg-s4-flutter-drivers.test-design.md` — edge-case outcomes and the test backlog.
 - `2026-10-19-0930-qg-s4-flutter-drivers.trail.md` — how this plan was reached.
