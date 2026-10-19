@@ -13,6 +13,18 @@
 # shellcheck source=qg-row.sh
 . "$(dirname "${BASH_SOURCE[0]}")/qg-row.sh"
 QG_KIT_BIN="$(cd "$(dirname "${BASH_SOURCE[0]}")/../bin" && pwd)"
+QG_KIT_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# qg_kit_config_key <key> -> the key's value at QG_CONFIG_REV through the engine's one reader,
+# lib/qg-config.sh. An empty QG_CONFIG_REV means a first commit, which reads the index.
+qg_kit_config_key() (
+    cd "${QG_REPO:-.}" || exit 1
+    # shellcheck source=qg-config.sh
+    . "${QG_KIT_LIB}/qg-config.sh"
+    GUARD_CONFIG_REV="${QG_CONFIG_REV:-}"
+    guard_config_show() { git show ":$1" 2>/dev/null; }
+    qg_config_key "$1"
+)
 
 # Maps a finding path to one relative to QG_TREE: a runner reports /app/<path>, a host tool the
 # absolute tree path, some tools ./<path>.

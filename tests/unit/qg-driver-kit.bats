@@ -144,3 +144,19 @@ kit() { bash -c ". $KIT; $1"; }
     [ "$(jq -r '.status' "$QG_OUT/result.json")" = error ]
     [[ "$(jq -r '.error' "$QG_OUT/result.json")" == *'ruleset='* ]]
 }
+
+@test "qg_kit_config_key reads the key at QG_CONFIG_REV, never the working tree" {
+    new_repo "$WORK/cfg"
+    mkdir -p quality
+    printf 'guard_doc_lint: /committed\n' > quality/config
+    commit_all config
+    rev="$(git rev-parse HEAD)"
+    printf 'guard_doc_lint: /staged\n' > quality/config
+    git add quality/config
+    printf 'guard_doc_lint: /worktree\n' > quality/config
+    QG_REPO="$WORK/cfg" QG_CONFIG_REV="$rev" run kit 'qg_kit_config_key guard_doc_lint'
+    [ "$status" -eq 0 ]
+    [ "$output" = /committed ]
+    QG_REPO="$WORK/cfg" QG_CONFIG_REV="$rev" run kit 'qg_kit_config_key no_such_key'
+    [ "$status" -ne 0 ]
+}
