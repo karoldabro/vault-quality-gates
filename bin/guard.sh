@@ -7,7 +7,9 @@
 #   guard.sh verify <range>      the same for each commit `git rev-list <range>` lists,
 #                                against its own parents; writes its pass record
 #   guard.sh release [<ref>]     rows scoped release|both, against the merge-base; checks.tsv,
-#                                baseline.tsv and VAULT.md read from GUARD_SHA (else HEAD)
+#                                baseline.tsv and VAULT.md read from GUARD_SHA (else HEAD);
+#                                --record-pass writes a push pass record after a full pass,
+#                                --use-pass accepts a valid one instead of measuring
 #   guard.sh baseline [--skip <regex> | --only <id,id>]
 #                                rows scoped baseline plus every kind: repo row,
 #                                then rewrites quality/baseline.tsv. --skip omits
@@ -36,6 +38,8 @@ set -uo pipefail
 # GUARD_SKIP and GUARD_ONLY drop rows from a run. Only `baseline --skip` and `--only` set them,
 # below; a value inherited from the caller would let `GUARD_SKIP=. git push` skip every gated row.
 unset GUARD_SKIP GUARD_ONLY
+# Set only by `release --use-pass` or `--record-pass`; an inherited value must not pick either.
+GUARD_PASS_MODE=''
 
 # git hands hooks a relative GIT_INDEX_FILE; pin it before anything changes directory.
 if [ -n "${GIT_INDEX_FILE:-}" ] && [ "${GIT_INDEX_FILE#/}" = "$GIT_INDEX_FILE" ]; then
@@ -304,9 +308,28 @@ cmd_release() {
         printf 'vault-guard: no gate row runs on %s\n' "$ref" >&2
         exit 0
     fi
+    # A push pass record binds every input that picks the rows or what they compare against. A
+    # pinned config, a partial run and ref `-` neither write nor read one.
+    local key='' age
+    if [ -n "$GUARD_PASS_MODE" ] && [ "$ref" != '-' ] && [ -z "${GUARD_CONFIG_PIN:-}" ] && [ -z "${GUARD_ONLY:-}" ]; then
+        key="$(guard_push_pass_key "$ref" "$(git rev-parse "${rev}^{commit}")" "$base" "${GUARD_BASE:-$base}")" || key=''
+    fi
+    if [ "$GUARD_PASS_MODE" = use ] && [ -n "$key" ] && age="$(guard_push_pass_valid "$key")"; then
+        printf 'vault-guard: %s at %s passed qg run push %s min ago; not measured again\n' "$ref" "${rev:0:12}" "$age" >&2
+        exit 0
+    fi
     printf 'vault-guard: measuring %d rows on %s (%s); this can take several minutes\n' "$n" "$ref" "${rev:0:12}" >&2
     guard_release_tree_matches || exit 2
-    cmd_measure 'release' "$base" "$ref"
+    cmd_measure 'release' "$base" "$ref" || return
+    if [ "$GUARD_PASS_MODE" = record ] && [ -n "$key" ]; then
+        # The working tree a guard_measure_worktree: false repo measured may have moved during the run.
+        if guard_release_tree_matches && guard_push_pass_write "$key"; then
+            printf 'vault-guard: pass recorded; git push of %s to %s within %s minutes skips the measurement\n' \
+                "${rev:0:12}" "$ref" "$((GUARD_PUSH_PASS_TTL / 60))" >&2
+        else
+            printf 'vault-guard: pass record not written; git push will measure again\n' >&2
+        fi
+    fi
 }
 
 cmd_baseline() {
@@ -432,8 +455,12 @@ case "${1:-}" in
         rel_ref='-'
         while [ $# -gt 0 ]; do
             case "$1" in
+                --use-pass)    GUARD_PASS_MODE=use; shift ;;
+                --record-pass) GUARD_PASS_MODE=record; shift ;;
                 --only) [ $# -ge 2 ] || { guard_err 'usage: guard.sh release [<ref>] [--only <id,id>]'; exit 2; }
                         only="$2"; GUARD_ONLY="${only//[[:space:]]/}"; shift 2 ;;
+                # An unknown flag read as the ref would name a ref no row runs on, and pass the push.
+                -?*) guard_err "guard: release does not take $1"; guard_err 'usage: guard.sh release [<ref>] [--only <id,id>]'; exit 2 ;;
                 *) rel_ref="$1"; shift ;;
             esac
         done

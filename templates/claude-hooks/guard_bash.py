@@ -461,6 +461,7 @@ def scan_program(w, ctx, depth, remote):
     if os.path.realpath(os.path.join(ctx.cwd, w[0])) == GUARD_SH and '/' in w[0]:
         return scan_guard(args)
     if w[0] == 'qg' or ('/' in w[0] and os.path.realpath(os.path.join(ctx.cwd, w[0])) == QG_SH):
+        ctx.flags.add('qg')
         return scan_qg(args)
     if cmd in ('cd', 'pushd'):
         ctx.cwd = os.path.join(ctx.cwd, args[0]) if args and not args[0].startswith(('-', '+')) else ctx.cwd
@@ -710,6 +711,9 @@ def main():
             scan_script(command, ctx)
             if 'git' in ctx.flags and 'env-redirect' in ctx.flags:
                 raise Deny('HOME, XDG_CONFIG_HOME or PATH changed in a command that runs git')
+            # qg run push --ref records a pass that git push accepts unmeasured; shimmed tools must not write it.
+            if 'qg' in ctx.flags and 'env-redirect' in ctx.flags:
+                raise Deny('HOME, XDG_CONFIG_HOME or PATH changed in a command that runs qg')
             if {'clone', 'push'} <= ctx.flags:
                 raise Deny('git clone and git push in one command push from a copy that has no hooks')
     except Deny as d:

@@ -56,7 +56,8 @@ case "$branch" in
 vault-guard: ${n} commit(s) on ${branch:-a detached HEAD} are on no remote, and a push there deploys.
 Move them to a branch, then push that branch:
   git switch -c <type>/<slug>
-  git push -u origin <type>/<slug>      (run with a 600000 ms timeout; the push gate takes up to 10 minutes)
+  qg run push --ref refs/heads/<type>/<slug>      (run with a 600000 ms timeout; the push gate takes up to 10 minutes)
+  git push -u origin <type>/<slug>      (accepts the pass qg recorded, so the connection does not sit idle)
 If the push is refused, fix the named rows in code, commit, and push again; qg explain <id> says how.
 Never edit quality/baseline.tsv, quality/checks.tsv, quality/config, quality/drivers/ or VAULT.md to make it pass.
 EOF
@@ -64,7 +65,8 @@ EOF
     *)
         cat >&2 <<EOF
 vault-guard: ${n} commit(s) on ${branch} are on no remote. Push before you finish:
-  git push -u origin ${branch}      (run with a 600000 ms timeout; the push gate takes up to 10 minutes)
+  qg run push --ref refs/heads/${branch}      (run with a 600000 ms timeout; the push gate takes up to 10 minutes)
+  git push -u origin ${branch}      (accepts the pass qg recorded, so the connection does not sit idle)
 If the push is refused, fix the named rows in code, commit, and push again; qg explain <id> says how.
 Never edit quality/baseline.tsv, quality/checks.tsv, quality/config, quality/drivers/ or VAULT.md to make it pass.
 EOF

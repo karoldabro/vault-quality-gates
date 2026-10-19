@@ -84,7 +84,7 @@ new_commit() { printf '%s\n' "$1" >> file.txt; commit_all "$1"; git rev-parse HE
     run push_through_hook 20000 refs/heads/feature/widget "$SHA"
     [[ "$output" == *'writer=0'* ]]
     [[ "$output" == *'hook=0'* ]]
-    [ "$(grep -c 'STUB release refs/heads/feature/widget' "$RAN")" -eq 1 ]
+    [ "$(grep -c 'STUB release --use-pass refs/heads/feature/widget' "$RAN")" -eq 1 ]
 }
 
 @test "an inherited GUARD_SKIP or config pin never reaches the engine" {
@@ -96,7 +96,7 @@ new_commit() { printf '%s\n' "$1" >> file.txt; commit_all "$1"; git rev-parse HE
 @test "release ref runs the release suite" {
     run push_through_hook 1 refs/heads/release/1.17.0 "$SHA"
     [[ "$output" == *'hook=0'* ]]
-    grep -q 'STUB release refs/heads/release/1.17.0' "$RAN"
+    grep -q 'STUB release --use-pass refs/heads/release/1.17.0' "$RAN"
     grep -q "GUARD_SHA=${SHA}" "$RAN"
 }
 
@@ -123,7 +123,7 @@ commit_vault() {
 
 @test "each pushed ref is measured on its own commit; one refusal refuses the push" {
     second="$(new_commit two)"; record "$second"
-    printf '#!/usr/bin/env bash\nprintf "%%s %%s\\n" "$2" "$GUARD_SHA" >> %s\n[ "$2" = refs/heads/b ] && exit 1\nexit 0\n' "$RAN" > "$PLUGIN/bin/guard.sh"
+    printf '#!/usr/bin/env bash\nprintf "%%s %%s\\n" "$3" "$GUARD_SHA" >> %s\n[ "$3" = refs/heads/b ] && exit 1\nexit 0\n' "$RAN" > "$PLUGIN/bin/guard.sh"
     run bash -c "printf '%s\n' 'refs/heads/a $SHA refs/heads/a cafe' 'refs/heads/b $second refs/heads/b cafe' | '$HOOK' origin"
     [ "$status" -eq 1 ]
     grep -qx "refs/heads/a $SHA" "$RAN"
@@ -202,7 +202,7 @@ commit_vault() {
     export QG_SKIP_REASON='hotfix' STUB_OVERRIDE=1
     run push_through_hook 1 refs/heads/release/1.0.0 "$c"
     [[ "$output" == *'hook=1'* ]]
-    grep -q 'STUB release refs/heads/release/1.0.0' "$RAN"
+    grep -q 'STUB release --use-pass refs/heads/release/1.0.0' "$RAN"
 }
 
 # --- commit hooks (T1) --------------------------------------------------------
