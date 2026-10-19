@@ -58,7 +58,7 @@ nothing.
 | `QG_OUT` | an empty directory; write `result.json` here, and any scratch files |
 | `QG_ROW` | the row id |
 | `QG_BASE` | the base ref: the first parent under `commit` and `verify`, the merge-base under push |
-| `QG_FILES` | the path of a file listing the changed paths, NUL-separated; read it with `read -d ''` |
+| `QG_FILES` | the path of a file listing the added, copied, modified and renamed paths, NUL-separated; read it with `read -d ''`. A type change and a deletion are not listed: a driver that must see them runs its own `--name-status` diff, as `drivers/doc-lint.sh` does |
 | `QG_BASES` | every parent, space-separated, under `commit` and `verify`; `QG_BASE` otherwise |
 | `QG_TARGET` | `:index` under `commit`, the commit sha under `verify`, the pushed sha under push |
 | `QG_REPO` | the absolute repo root |
