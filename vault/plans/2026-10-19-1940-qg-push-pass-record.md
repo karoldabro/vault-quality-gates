@@ -87,7 +87,7 @@ for the commit gate, and server-side enforcement.
 | artifact | what requires it | who writes it | who reads it | missing or wrong |
 |---|---|---|---|---|
 | `<git-common-dir>/guard-pass/push/<key>` | `cmd_release --use-pass` in `bin/guard.sh`, called by `templates/git-hooks/pre-push` | `cmd_release --record-pass`, called by `cmd_run` in `bin/qg` | `guard_push_pass_valid` in `lib/guard-pass.sh` | absent, unparsable, a non-numeric or future epoch, or older than 3600 s → the push measures every row as today |
-| `--use-pass` / `--record-pass` flags of `guard.sh release` | `templates/git-hooks/pre-push`, `bin/qg` `cmd_run` | `templates/git-hooks/pre-push`, `bin/qg` | `bin/guard.sh` argument parser | an old installed `pre-push` passes neither → measures as today; an unknown flag → `guard.sh` exits 2 with usage |
+| `--use-pass` / `--record-pass` flags of `guard.sh release` | `templates/git-hooks/pre-push`, `bin/qg` `cmd_run` | `templates/git-hooks/pre-push`, `bin/qg` | `bin/guard.sh` argument parser | an old installed `pre-push` passes neither → measures as today; after W-1a an unknown flag → `guard.sh` exits 2 with usage and the push is refused |
 | the stop-hook push instruction | an agent session ending with unpushed commits | `templates/claude-hooks/guard-stop.sh` | the agent | an agent that skips `qg run push` pushes and measures as today |
 
 ## Work items
@@ -108,9 +108,9 @@ for the commit gate, and server-side enforcement.
 
 ## Rollback
 
-`git revert` the merge on `main` of `~/workspace/vault-quality-gates`. A reinstalled `pre-push` then
-passes `--use-pass` to an engine that rejects it with exit 2, so the operator runs `qg hooks install`
-again in each gated repo. Leftover record files are ignored and harmless; delete
+`git revert` the feature commits on `main` of `~/workspace/vault-quality-gates`, keeping the W-1a
+commit. A reinstalled `pre-push` then passes `--use-pass` to an engine that refuses it with exit 2,
+so every push is refused until the operator runs `qg hooks install` again in each gated repo. Leftover record files are ignored and harmless; delete
 `<git-common-dir>/guard-pass/push/` to clear them.
 
 ## Test plan
@@ -146,6 +146,8 @@ Writer partitions: `--only` · exit 1 · exit 2 · ref `-` · `GUARD_CONFIG_PIN`
 | T-8 | W-2 | unit | `tests/unit/qg-push-pass.bats` | a recorded pass with a worse baseline against the remote tip is never written: the writer's baseline check uses the remote tip | must | |
 | T-9 | W-3 | unit | `tests/unit/qg-push-pass.bats` | an old installed `pre-push` (no flag) measures even with a valid record | should | |
 | T-10 | W-7 | unit | `tests/unit/guard-claude-hooks.bats` | agent writes into `guard-pass/push/` are denied | must | |
+| T-11 | W-11 | unit | `tests/unit/guard-claude-hooks.bats` | `PATH=… qg run push --ref`, `HOME=… qg …` and `export PATH=…; qg …` are denied for an agent | must | |
+| T-12 | W-1a W-3 | unit | `tests/unit/qg-push-pass.bats` | `guard.sh release --bogus <ref>` exits 2; an engine without `--use-pass` given `release --use-pass <ref>` refuses rather than passing | must | |
 
 ## Refs
 

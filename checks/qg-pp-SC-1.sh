@@ -13,4 +13,5 @@ qg_cases \
     "a record older than an hour, dated in the future, or unparsable makes the push measure" \
     "qg run push with --only, a worse row, an unmeasurable row, or no --ref writes no record" \
     "qg run push --ref refuses a baseline loosened against the remote tip and records nothing" \
-    "an installed pre-push without --use-pass measures although a record exists"
+    "an installed pre-push without --use-pass measures although a record exists" \
+    "guard.sh release refuses an unknown flag, so an engine without --use-pass never passes a push"

@@ -4,4 +4,5 @@
 . "$(dirname "${BASH_SOURCE[0]}")/_qg-cases.sh"
 qg_cases \
     guard-claude-hooks.bats \
-    "an agent write into guard-pass/push is denied"
+    "an agent write into guard-pass/push is denied" \
+    "an agent cannot set PATH, HOME or XDG_CONFIG_HOME for qg"
