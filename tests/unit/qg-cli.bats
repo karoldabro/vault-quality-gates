@@ -109,7 +109,7 @@ teardown() {
 
 @test "drivers lists the built-ins; drivers <name> describes one; config get reads quality/config" {
     run "$QG" drivers --json
-    [ "$(jq -r '.drivers | map(.name) | sort | join(",")' <<<"$output")" = cloc,composer-dependency-analyser,infection,jscpd-added,phpcs,phpinsights,phpmd,phpstan,phpunit,pint,shell ]
+    [ "$(jq -r '.drivers | map(.name) | sort | join(",")' <<<"$output")" = checkstyle,cloc,composer-dependency-analyser,copydetect,dart-analyze,dart-code-linter,dart-format,dart-lock,flutter-test,grep-count,infection,jscpd-added,lakos,layerlens,mutation-test,phpcs,phpinsights,phpmd,phpstan,phpunit,pint,shell ]
     run "$QG" drivers phpstan
     [[ "$output" == *'phpstan: PHPStan static analysis'* ]]
     printf 'guard_commit_paths: app\n' > quality/config

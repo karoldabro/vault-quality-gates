@@ -90,8 +90,11 @@ qg_init() {
         # The Dart drivers run only the SDK this key names; the human running init picks it.
         if [ "$profile" = flutter ]; then
             local flutter
-            flutter="$(command -v flutter)" || qg_die 'init: --profile flutter needs flutter on PATH, to record guard_flutter_root'
-            printf 'guard_flutter_root: %s\n' "$(dirname "$(dirname "$(readlink -f "$flutter")")")" >> quality/config
+            if flutter="$(command -v flutter)"; then
+                printf 'guard_flutter_root: %s\n' "$(dirname "$(dirname "$(readlink -f "$flutter")")")" >> quality/config
+            else
+                printf 'qg init: no flutter on PATH; add guard_flutter_root: <Flutter SDK folder> to quality/config, or every Dart row refuses.\n' >&2
+            fi
         fi
     fi
     printf 'qg init: wrote quality/checks.tsv (profile %s), rules.tsv, baseline.tsv and config.\n' "$profile"

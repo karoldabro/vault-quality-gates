@@ -53,9 +53,16 @@ migration, then less code.
 - open: code running as the same user, such as the committed test suite, can still rewrite its own
   stream or coverage report after the suite exits and before the driver reads it. That forges
   `tests-failed` and `coverage` only; every other row runs before it.
-- open: S3 (`feat/qg-web-drivers`, unmerged) also edits `vault/architecture/qg-builtin-drivers.md` and
-  `templates/init/`. The second branch to merge resolves those lines by hand; S4 does not edit
-  `lib/qg-driver-kit.sh` or `vault/architecture/qg-driver-contract.md`.
+- open: S3 (`feat/qg-web-drivers`, unmerged) also edits `vault/architecture/qg-builtin-drivers.md`,
+  `vault/architecture/qg-driver-contract.md` and `templates/init/`. The second branch to merge resolves
+  those lines by hand; S4 does not edit `lib/qg-driver-kit.sh`.
+- open: after S3 merges, move into `lib/qg-driver-kit.sh`: a `qg_tracked <path>` helper (now inline in
+  `lib/qg-dart.sh` and `drivers/checkstyle.sh`), `qg_tool` accepting an empty argv so
+  `drivers/checkstyle.sh` stops repeating its runner branch, and one findings cap in `qg_result` in
+  place of the `head -200` in `drivers/grep-count.sh`, `layerlens.sh`, `copydetect.sh` and
+  `dart-code-linter.sh`.
+- open: `flutter-test` coverage counts only libraries some test loads, as v1 does; a new file no test
+  imports leaves `coverage` unchanged.
 - open: `dart-tools-changed` does not see a version bump of a hosted transitive dependency;
   `pubspec.lock` holds no dependency graph.
 - open: `layerlens` is a global `dart pub global activate` install; the driver refuses a version other
@@ -118,11 +125,16 @@ migration, then less code.
 
 | decision | reason | record |
 |----------|--------|--------|
-| Branch from `main`; `lib/qg-driver-kit.sh` and `vault/architecture/qg-driver-contract.md` are not edited | S3 is unmerged and edits the kit; the contract is at its line cap | local |
+| Branch from `main`; `lib/qg-driver-kit.sh` is not edited | S3 is unmerged and edits the kit | local |
+| The engine passes `QG_CONFIG_REV` (`lib/qg-driver.sh` `guard_run_driver`), the judging commit; empty on a first commit. `qg-driver-contract.md` gains its row and stays at 200 lines; a rebase on S3 keeps both edits | a driver must read a config key at the judging commit, and `bin/qg` clears the revision variables | local |
+| `bin/guard.sh baseline` measures a detached worktree of `HEAD` when the repo measures commits and a selected row's driver needs a tree | the Dart drivers write packages, reports and mutations into the tree they measure | local |
+| `qg init --profile flutter` writes `guard_flutter_root` from the `flutter` on the operator's `PATH`; `qg migrate` copies the key; `extend/dod-keys.tsv` lists it | a new Flutter repo's Dart rows would otherwise all refuse | local |
 | Helpers for one language live in `lib/qg-<lang>.sh`; built-in drivers are catalogued per ecosystem; `qg-builtin-drivers.md` states both | the PHP kit and the Dart helpers need one rule for where code goes | local |
-| `qg_dart_env` in `lib/qg-dart.sh` reads `guard_flutter_root` with `qg config get`, unsets `PUB_CACHE`, `FLUTTER_ROOT` and `XDG_CACHE_HOME`, and runs `<root>/bin/flutter` and `<root>/bin/cache/dart-sdk/bin/dart` by absolute path. It is `status: error` when the key is absent or `flutter` on `PATH` resolves elsewhere | neither a caller's environment nor a planted file on `PATH` may choose the tool that judges | local |
-| `qg_dart_packages` refuses `pubspec_overrides.yaml` or a tracked `.dart_tool/` in `QG_TREE`, then runs `dart pub get --offline` there; its error names `flutter pub get` as the fix | a commit must never point a tool at code in the repo | local |
-| `dart-lock` driver compares `QG_TREE/pubspec.lock` with `git show <base>:pubspec.lock` for each of `QG_BASES`. `metric` = named packages (`packages=`) whose version, source or url differ, plus every package whose source becomes `path` or `git` | mobile runs its tools on push, so the commit is the only point that can refuse a tool change; S2's runner check compares at commit for the same reason | local |
+| `qg_dart_env` in `lib/qg-dart.sh` reads `guard_flutter_root` through `lib/qg-config.sh` at `QG_CONFIG_REV`, unsets `PUB_CACHE`, `FLUTTER_ROOT` and `XDG_CACHE_HOME`, exports `FLUTTER_ROOT=<root>`, and runs `<root>/bin/flutter` and `<root>/bin/cache/dart-sdk/bin/dart` by absolute path. It is `status: error` when the key is absent, `flutter` on `PATH` resolves elsewhere, or the row sets `runner=` | neither a caller's environment nor a planted file on `PATH` may choose the tool that judges | local |
+| `qg_dart_packages` refuses `pubspec_overrides.yaml` or a tracked `.dart_tool/` in `QG_TREE`, then runs `dart pub get --offline --enforce-lockfile` there; its error names `flutter pub get` as the fix | a commit must never point a tool at code in the repo, through an overrides file or a `pubspec.yaml` override the lock does not record | local |
+| `dart-lock` driver reads `pubspec.lock` and `pubspec.yaml` from git at `QG_TARGET` and at each of `QG_BASES`. `metric` = the most, over the bases, of: named packages (`packages=`) whose version, source or url differ; every package whose source becomes `path` or `git`; 1 when `dependency_overrides:` differs. A lock line outside pub's block form is `status: error` | mobile runs its tools on push, so the commit is the only point that can refuse a tool change; S2's runner check compares at commit for the same reason | local |
+| `flutter-test` and `mutation-test` run commit code through `qg_isolated`: its own session, an environment of `HOME PATH LANG FLUTTER_ROOT TMPDIR` only, every leftover process killed | the suite must find neither the run directory nor the gate's variables | local |
+| `grep-count` reads its `awk=` script, and `copydetect` its `requirements=` file, at `QG_CONFIG_REV` | a commit cannot change the rule or the venv that judges it | local |
 | One `dart-analyze` driver covers `dart analyze` and `flutter analyze`: `dart analyze --format=machine`; keys `paths` (default `.`) `files=changed include exclude lines=added code severity options-allow`. A nested `analysis_options.yaml` below `paths` outside `options-allow=` is `status: error` | both give 487; a nested options file would loosen a directory | local |
 | The givore lint runner stays repo code. The `checkstyle` driver calls the committed runner as `<runner> <tree> <cache>` with no `bin` or argv, never deletes `report=`, and is `status: error` when the runner exits non-zero or the report is missing. Its catalogue entry states that a runner may be the tool itself | the runner owns its memo and deletes both reports on failure | local |
 | `commit-lint.sh` reads changed paths from `$QG_FILES` when set, else stdin. It takes the SDK from `HEAD:quality/config` `guard_flutter_root`, unsets `PUB_CACHE` and `XDG_CACHE_HOME`, refuses `pubspec_overrides.yaml`, and always runs `dart pub get --offline` in the tree | the lint rows get the same protection as the drivers | local |
