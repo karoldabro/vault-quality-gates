@@ -6,7 +6,8 @@
 #      commit runs no pre-commit hook and has none. One unrecorded commit refuses the whole
 #      push, unless a human at a terminal overrides with QG_SKIP_REASON. Overrides logged
 #      since the last push are printed.
-#   2. Every pushed ref goes to `guard.sh release`, which runs the rows whose `on` cell names
+#   2. Every pushed ref goes to `guard.sh release --use-pass`, which accepts a pass record that
+#      `qg run push --ref` wrote for exactly this push, else runs the rows whose `on` cell names
 #      that ref and exits 0 at once when none does. The push is refused when any ref is worse
 #      than quality/baseline.tsv, or loosens that file against the remote ref's old tip, also
 #      after an override of check 1.
@@ -61,22 +62,6 @@ if [ "${#shas[@]}" -gt 0 ]; then
 fi
 guard_print_bypass_log
 
-# baseline_base <local sha> <remote sha> -> the commit whose quality/baseline.tsv this push may
-# not loosen: the remote ref's old tip when git has it, else the parent of the oldest pushed
-# commit on no remote (the fork point of a new branch), else the pushed commit itself.
-baseline_base() {
-    local oldest
-    if [ -n "${2:-}" ] && [ "$2" != "$ZERO" ] && git cat-file -e "${2}^{commit}" 2>/dev/null; then
-        printf '%s' "$2"; return
-    fi
-    oldest="$(git rev-list --topo-order --reverse "$1" --not --remotes 2>/dev/null | head -1)"
-    if [ -n "$oldest" ] && git rev-parse -q --verify "${oldest}^" >/dev/null 2>&1; then
-        git rev-parse "${oldest}^"
-    else
-        printf '%s' "$1"
-    fi
-}
-
 # Every pushed ref goes to the engine, each on its own commit; the rows' `on` cells decide what
 # runs there. One refusal refuses the whole push.
 gated=()
@@ -99,7 +84,9 @@ done
 status=0
 for line in "${gated[@]}"; do
     read -r gated_ref gated_sha remote_sha <<<"$line"
-    GUARD_SHA="$gated_sha" GUARD_BASE="$(baseline_base "$gated_sha" "$remote_sha")" "$GUARD" release "$gated_ref" || status=1
+    # --use-pass accepts a pass `qg run push --ref` recorded for exactly this push. It goes before
+    # the ref, so an engine that predates it refuses the flag rather than reading it as the ref.
+    GUARD_SHA="$gated_sha" GUARD_BASE="$(guard_baseline_base "$gated_sha" "$remote_sha")" "$GUARD" release --use-pass "$gated_ref" || status=1
 done
 [ "$status" -eq 0 ] || printf 'vault-guard: push refused. What failed and how to pass: qg last   (all commands: qg help)\n' >&2
 exit "$status"

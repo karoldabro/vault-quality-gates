@@ -66,6 +66,70 @@ guard_pass_write() {  # guard_pass_write <key> <content: ok | override <reason>>
 
 guard_pass_read() { cat "$(guard_pass_file "$1")" 2>/dev/null; }
 
+# guard_baseline_base <local sha> <remote sha> -> the commit whose quality/baseline.tsv a push may
+# not loosen: the remote ref's old tip when git has it, else the parent of the oldest pushed
+# commit on no remote (the fork point of a new branch), else the pushed commit itself.
+guard_baseline_base() {
+    local oldest
+    if [ -n "${2:-}" ] && [ "$2" != '0000000000000000000000000000000000000000' ] && git cat-file -e "${2}^{commit}" 2>/dev/null; then
+        printf '%s' "$2"; return
+    fi
+    oldest="$(git rev-list --topo-order --reverse "$1" --not --remotes 2>/dev/null | head -1)"
+    if [ -n "$oldest" ] && git rev-parse -q --verify "${oldest}^" >/dev/null 2>&1; then
+        git rev-parse "${oldest}^"
+    else
+        printf '%s' "$1"
+    fi
+}
+
+# Push pass record: `qg run push --ref <ref>` writes one after a full pass, and `pre-push` accepts it
+# instead of measuring again. Contract: vault/architecture/guard-push-pass.md.
+GUARD_PUSH_PASS_TTL=3600
+
+# guard_engine_digest -> SHA-1 over "<path> <x|-> <blob>" of every file the engine runs from, so an
+# edit, a move or a lost exec bit under bin/, lib/ or drivers/ invalidates every record.
+guard_engine_digest() {
+    (
+        set -o pipefail
+        cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 2
+        find bin lib drivers -type f | LC_ALL=C sort | while IFS= read -r f; do
+            if [ -x "$f" ]; then m=x; else m=-; fi
+            printf '%s %s %s\n' "$f" "$m" "$(git hash-object --no-filters -- "$f")" || exit 2
+        done | guard_sha1
+    )
+}
+
+# guard_push_pass_key <remote ref> <sha> <row base> <baseline base> -> the record key.
+guard_push_pass_key() {
+    local digest
+    digest="$(guard_engine_digest)" || return 2
+    printf 'push %s %s %s %s %s' "$1" "$2" "$3" "$4" "$digest" | guard_sha1
+}
+
+guard_push_pass_dir() { printf '%s/guard-pass/push' "$(guard_common_dir)"; }
+
+# guard_push_pass_write <key> -> writes "ok <epoch>" through a temp file, after deleting expired records.
+guard_push_pass_write() {
+    local dir tmp
+    dir="$(guard_push_pass_dir)"
+    mkdir -p "$dir" || return 1
+    find "$dir" -type f -mmin +$((GUARD_PUSH_PASS_TTL / 60)) -delete 2>/dev/null
+    tmp="$(mktemp "${dir}/.write.XXXXXX")" || return 1
+    if printf 'ok %s\n' "$(date +%s)" > "$tmp" && mv -f "$tmp" "${dir}/$1"; then return 0; fi
+    rm -f "$tmp"; return 1
+}
+
+# guard_push_pass_valid <key> -> minutes since the pass. Exit 1 when the record is absent, malformed,
+# dated in the future or older than GUARD_PUSH_PASS_TTL.
+guard_push_pass_valid() {
+    local line epoch now
+    line="$(cat "$(guard_push_pass_dir)/$1" 2>/dev/null)" || return 1
+    [[ "$line" =~ ^ok\ ([0-9]{1,12})$ ]] || return 1
+    epoch="${BASH_REMATCH[1]}"; now="$(date +%s)"
+    [ "$epoch" -le "$now" ] && [ $((now - epoch)) -le "$GUARD_PUSH_PASS_TTL" ] || return 1
+    printf '%s' "$(((now - epoch) / 60))"
+}
+
 # guard_config_show <path> -> the file as committed at GUARD_CONFIG_AT, else at HEAD; from
 # the index on a first commit, when no HEAD exists. The gate never reads its configuration
 # from the working tree. guard_gate sets GUARD_CONFIG_AT to GUARD_CONFIG_PIN (the caller's GUARD_CONFIG_REV) when it

@@ -494,3 +494,25 @@ no_bad() {
     edit_case deny  "$HOME/.config/husky/init.sh" Write
     no_bad
 }
+
+@test "an agent write into guard-pass/push is denied" {
+    bash_case deny  'printf "ok 1\n" > .git/guard-pass/push/abc'
+    bash_case deny  'mkdir -p .git/guard-pass/push && touch .git/guard-pass/push/abc'
+    bash_case deny  'cp /tmp/x "$(git rev-parse --git-common-dir)/guard-pass/push/abc"'
+    bash_case deny  '/code/bin/guard.sh release --record-pass refs/heads/x'
+    bash_case deny  '/code/bin/guard.sh release --use-pass refs/heads/x'
+    edit_case deny  "$PWD/.git/guard-pass/push/abc" Write
+    bash_case allow 'qg run push --ref refs/heads/feat/x'
+    no_bad
+}
+
+@test "an agent cannot set PATH, HOME or XDG_CONFIG_HOME for qg" {
+    bash_case deny  'PATH=/tmp/shim:$PATH qg run push --ref refs/heads/x'
+    bash_case deny  'HOME=/tmp/h qg run push --ref refs/heads/x'
+    bash_case deny  'XDG_CONFIG_HOME=/tmp/c qg run commit'
+    bash_case deny  'export PATH=/tmp/shim:$PATH; qg run push --ref refs/heads/x'
+    bash_case deny  'PATH=/tmp/shim:$PATH /code/bin/qg run push --ref refs/heads/x'
+    bash_case allow 'qg run push --ref refs/heads/x'
+    bash_case allow 'PATH=/tmp/shim:$PATH ls'
+    no_bad
+}

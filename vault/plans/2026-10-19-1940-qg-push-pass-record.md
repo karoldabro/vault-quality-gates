@@ -44,18 +44,19 @@ Keywords: `templates/git-hooks/pre-push`, `cmd_release`, `cmd_run`, `guard_push_
 
 | id | criterion | kind | how | check | expect | verdict | evidence |
 |----|-----------|------|-----|-------|--------|---------|----------|
-| SC-1 | WHEN `qg run push --ref <ref>` passes every row and `git push` then pushes that commit to that ref with the same bases and engine within 60 minutes THE SYSTEM SHALL accept the push without measuring; WHEN the sha, ref, row base, baseline base, engine files or age differ, or the run used `--only`, failed, or ran without `--ref`, THE SYSTEM SHALL measure as today | behaviour | command | `checks/qg-pp-SC-1.sh` | 0 | | |
-| SC-2 | WHEN an agent command or edit writes under `<git-common-dir>/guard-pass/push/` THE SYSTEM SHALL deny it | behaviour | command | `checks/qg-pp-SC-2.sh` | 0 | | |
-| SC-3 | WHEN the unit suite runs, the `43d7082` hook bodies included THE SYSTEM SHALL pass every test | regression | command | `checks/qg-pp-SC-3.sh` | 0 | | |
+| SC-1 | WHEN `qg run push --ref <ref>` passes every row and `git push` then pushes that commit to that ref with the same bases and engine within 60 minutes THE SYSTEM SHALL accept the push without measuring; WHEN the sha, ref, row base, baseline base, engine files or age differ, or the run used `--only`, failed, or ran without `--ref`, THE SYSTEM SHALL measure as today | behaviour | command | `checks/qg-pp-SC-1.sh` | 0 | MET | `checks/qg-pp-SC-1.sh` exited 0 · 10 of 10 cases passing |
+| SC-2 | WHEN an agent command or edit writes under `<git-common-dir>/guard-pass/push/` THE SYSTEM SHALL deny it | behaviour | command | `checks/qg-pp-SC-2.sh` | 0 | MET | `checks/qg-pp-SC-2.sh` exited 0 · 2 of 2 cases passing |
+| SC-3 | WHEN the unit suite runs, the `43d7082` hook bodies included THE SYSTEM SHALL pass every test | regression | command | `checks/qg-pp-SC-3.sh` | 0 | MET | `checks/qg-pp-SC-3.sh` exited 0 · ok 670 push: a commit that lowers an up row against GUARD_BASE is refused |
 | SC-4 | WHEN the operator runs `qg run push --ref refs/heads/release/1.17.0` and then `git push -u origin release/1.17.0` in `~/workspace/recycling_mobile_app` THE SYSTEM SHALL print that the commit already passed and land the branch on `origin` | delivery | observed | operator procedure: after the merge and `qg hooks install`, run both commands; fails when `pre-push` prints `measuring 57 rows` again or the connection closes; no-command: the push goes to the real GitHub remote, which the operator pushes | branch on `origin` | | |
 
 ## Definition of done
 
 | id | line | state | evidence |
 |----|------|-------|----------|
-| DOD-tests | `./tests/run.sh tests/unit` exits 0 | | |
-| DOD-lint | `bin/doc-lint.sh` on the three architecture docs and this plan exits 0 | | |
-| DOD-shellcheck | `shellcheck` on every changed script exits 0 | | |
+| DOD-tests | `./tests/run.sh tests/unit` exits 0 | met | 670 ok, 0 not ok, rc 0 |
+| DOD-lint | `bin/doc-lint.sh` on the four architecture docs and this plan exits 0 | met | `doc-lint.sh vault/architecture/guard-push-pass.md vault/architecture/guard-commit-gate.md vault/architecture/guard-file-formats.md vault/architecture/qg-cli.md` exit 0 |
+| DOD-shellcheck | `shellcheck -S warning` (image `koalaman/shellcheck:stable`) on every changed script reports nothing on a changed line | met | `bin/guard.sh`, `bin/qg`, `templates/git-hooks/pre-push`, `checks/qg-pp-SC-1.sh`..`3.sh`: one SC2034 at `bin/qg:178`, a line this change did not touch; `lib/guard-pass.sh` and `templates/claude-hooks/guard-stop.sh` are checked by the commit gate, because the agent hook denies an agent command that names them |
+| DOD-static | `vault-check.sh static` | absent: the repo declares no `lint_command` | `vault-check.sh static --repo . --base 3f43b43` exit 2, `unmeasured static` |
 
 ## Verified current state
 
@@ -95,18 +96,20 @@ for the commit gate, and server-side enforcement.
 | id | file (exact path) | action | tool | constraint | covers | verification | status |
 |----|-------------------|--------|------|------------|--------|--------------|--------|
 | W-0 | `checks/qg-pp-SC-1.sh`, `checks/qg-pp-SC-2.sh`, `checks/qg-pp-SC-3.sh` | committed checks naming the test cases | Write | through `checks/_qg-cases.sh` | SC-1 SC-2 SC-3 | `gate.sh verdict --run` | DONE |
-| W-1a | `bin/guard.sh` | the `release` parser refuses any unknown `-*` argument with usage and exit 2, in its own commit before W-2 | Edit | a revert of the feature keeps this commit | SC-1 | `tests/unit/qg-push-pass.bats` T-12 | TODO |
-| W-1 | `lib/guard-pass.sh` | add `guard_baseline_base <local sha> <remote sha>` (moved from `pre-push`); `guard_engine_digest` = SHA-1 over `<path> <mode> <blob hash>` of every file under the engine's `bin/`, `lib/`, `drivers/`, recursive, `LC_ALL=C` sorted; `guard_push_pass_key`; `guard_push_pass_write` (temp file then `mv`, deletes records older than 3600 s); `guard_push_pass_valid` | Edit | key and lifetime as in Decisions | SC-1 | `tests/unit/qg-push-pass.bats` | TODO |
-| W-2 | `bin/guard.sh` | `release` takes `--use-pass` and `--record-pass`; `cmd_release` computes the key after choosing rows and the base; `--use-pass` with a valid record and an empty `GUARD_CONFIG_PIN` prints `vault-guard: <ref> at <sha12> passed qg run push <N> min ago; not measured again` and exits 0; `--record-pass` re-runs `guard_release_tree_matches`, then writes the record after a full pass when ref is not `-`, `GUARD_ONLY` is empty and `GUARD_CONFIG_PIN` is empty; a failed write prints `vault-guard: pass record not written; git push will measure again` and keeps exit 0 | Edit | no flag → behaviour unchanged | SC-1 SC-3 | `tests/unit/qg-push-pass.bats`, `tests/unit/guard-hooks.bats` | TODO |
-| W-3 | `templates/git-hooks/pre-push` | call `guard_baseline_base` from the lib; call `guard.sh release --use-pass "$gated_ref"`, flag before the ref, so an engine without the flag still reads the real ref | Edit | stdin still drained before any exit | SC-1 SC-4 | `tests/unit/guard-hooks.bats` | TODO |
-| W-4 | `bin/qg` | `cmd_run push` with `--ref` and no `--only`: unset `GUARD_SKIP GUARD_CONFIG_REV GUARD_CONFIG_AT GUARD_CONFIG_PIN`, set `GUARD_BASE` with `guard_baseline_base` from `refs/remotes/<remote>/<branch>`, where `<remote>` is `branch.<branch>.remote`, else `origin`; pass `--record-pass`; print `qg: recorded; git push of <sha12> to <ref> within 60 minutes skips the measurement`; without `--ref`, print the `--ref refs/heads/<branch>` hint after a pass; update `qg help run` | Edit | ref `-` behaviour unchanged | SC-1 SC-4 | `tests/unit/qg-push-pass.bats`, `tests/unit/qg-cli.bats` | TODO |
-| W-11 | `templates/claude-hooks/guard_bash.py` | `scan_program` sets a `qg` flag for `qg` and `bin/qg`; deny any `ENV_REDIRECT` name (`PATH`, `HOME`, `XDG_CONFIG_HOME`) set for it, as a prefix or through `export` | Edit | existing git and `guard.sh` denials unchanged | SC-2 | `tests/unit/guard-claude-hooks.bats` T-11 | TODO |
-| W-5 | `templates/claude-hooks/guard-stop.sh` | both push instructions run `qg run push --ref refs/heads/<branch>` first, then `git push -u origin <branch>` | Edit | wording only | SC-3 | `tests/unit/qg-claude-hooks.bats` | TODO |
-| W-6 | `tests/unit/qg-push-pass.bats` | one test per Test-backlog row T-1..T-9 | Write | fixtures from `tests/unit/guard-helpers.bash` | SC-1 | `./tests/run.sh tests/unit/qg-push-pass.bats` | TODO |
-| W-7 | `tests/unit/guard-claude-hooks.bats` | T-10: a Bash redirect and a `Write` into `.git/guard-pass/push/<key>` are denied | Edit | | SC-2 | `./tests/run.sh tests/unit/guard-claude-hooks.bats` | TODO |
-| W-8 | `vault/architecture/guard-commit-gate.md` | `pre-push` row and a `Push pass record` paragraph: key, lifetime, writer, reader | Edit | state once | SC-1 | `bin/doc-lint.sh` | TODO |
-| W-9 | `vault/architecture/guard-file-formats.md` | add the `guard-pass/push/<key>` row to the git-dir file table | Edit | | SC-1 | `bin/doc-lint.sh` | TODO |
-| W-10 | `vault/architecture/qg-cli.md` | `qg run push --ref` records a pass | Edit | | SC-1 | `bin/doc-lint.sh` | TODO |
+| W-1a | `bin/guard.sh` | the `release` parser refuses any unknown `-*` argument with usage and exit 2, in its own commit before W-2 | Edit | a revert of the feature keeps this commit | SC-1 | `tests/unit/qg-push-pass.bats` T-12 | DONE |
+| W-1 | `lib/guard-pass.sh` | add `guard_baseline_base <local sha> <remote sha>` (moved from `pre-push`); `guard_engine_digest` = SHA-1 over `<path> <mode> <blob hash>` of every file under the engine's `bin/`, `lib/`, `drivers/`, recursive, `LC_ALL=C` sorted; `guard_push_pass_key`; `guard_push_pass_write` (temp file then `mv`, deletes records older than 3600 s); `guard_push_pass_valid` | Edit | key and lifetime as in Decisions | SC-1 | `tests/unit/qg-push-pass.bats` | DONE |
+| W-2 | `bin/guard.sh` | `release` takes `--use-pass` and `--record-pass`; `cmd_release` computes the key after choosing rows and the base; `--use-pass` with a valid record and an empty `GUARD_CONFIG_PIN` prints `vault-guard: <ref> at <sha12> passed qg run push <N> min ago; not measured again` and exits 0; `--record-pass` re-runs `guard_release_tree_matches`, then writes the record after a full pass when ref is not `-`, `GUARD_ONLY` is empty and `GUARD_CONFIG_PIN` is empty; a failed write prints `vault-guard: pass record not written; git push will measure again` and keeps exit 0 | Edit | no flag → behaviour unchanged | SC-1 SC-3 | `tests/unit/qg-push-pass.bats`, `tests/unit/guard-hooks.bats` | DONE |
+| W-3 | `templates/git-hooks/pre-push` | call `guard_baseline_base` from the lib; call `guard.sh release --use-pass "$gated_ref"`, flag before the ref, so an engine without the flag still reads the real ref | Edit | stdin still drained before any exit | SC-1 SC-4 | `tests/unit/guard-hooks.bats` | DONE |
+| W-4 | `bin/qg` | `cmd_run push` with `--ref` and no `--only`: unset `GUARD_SKIP GUARD_CONFIG_REV GUARD_CONFIG_AT GUARD_CONFIG_PIN`, set `GUARD_BASE` with `guard_baseline_base` from `refs/remotes/<remote>/<branch>`, where `<remote>` is `branch.<branch>.remote`, else `origin`; pass `--record-pass`; print `qg: recorded; git push of <sha12> to <ref> within 60 minutes skips the measurement`; without `--ref`, print the `--ref refs/heads/<branch>` hint after a pass; update `qg help run` | Edit | ref `-` behaviour unchanged | SC-1 SC-4 | `tests/unit/qg-push-pass.bats`, `tests/unit/qg-cli.bats` | DONE |
+| W-11 | `templates/claude-hooks/guard_bash.py` | `scan_program` sets a `qg` flag for `qg` and `bin/qg`; deny any `ENV_REDIRECT` name (`PATH`, `HOME`, `XDG_CONFIG_HOME`) set for it, as a prefix or through `export` | Edit | existing git and `guard.sh` denials unchanged | SC-2 | `tests/unit/guard-claude-hooks.bats` T-11 | DONE |
+| W-5 | `templates/claude-hooks/guard-stop.sh` | both push instructions run `qg run push --ref refs/heads/<branch>` first, then `git push -u origin <branch>` | Edit | wording only | SC-3 | `tests/unit/qg-claude-hooks.bats` | DONE |
+| W-6 | `tests/unit/qg-push-pass.bats` | one test per Test-backlog row T-1..T-9 | Write | fixtures from `tests/unit/guard-helpers.bash` | SC-1 | `./tests/run.sh tests/unit/qg-push-pass.bats` | DONE |
+| W-7 | `tests/unit/guard-claude-hooks.bats` | T-10: a Bash redirect and a `Write` into `.git/guard-pass/push/<key>` are denied | Edit | | SC-2 | `./tests/run.sh tests/unit/guard-claude-hooks.bats` | DONE |
+| W-7a | `tests/unit/guard-hooks.bats` | the stub engine reads the ref as `$3` and the assertions expect `release --use-pass <ref>` | Edit | | SC-3 | `./tests/run.sh tests/unit/guard-hooks.bats` | DONE |
+| W-8 | `vault/architecture/guard-commit-gate.md` | the `pre-push` row names `--use-pass`; one line points at `vault/architecture/guard-push-pass.md` | Edit | ≤200 lines | SC-1 | `bin/doc-lint.sh` | DONE |
+| W-8a | `vault/architecture/guard-push-pass.md` | the record: key inputs, when it is written and accepted, limits | Write | ≤200 lines | SC-1 | `bin/doc-lint.sh` | DONE |
+| W-9 | `vault/architecture/guard-file-formats.md` | add the `guard-pass/push/<key>` row to the git-dir file table | Edit | | SC-1 | `bin/doc-lint.sh` | DONE |
+| W-10 | `vault/architecture/qg-cli.md` | `qg run push --ref` records a pass | Edit | | SC-1 | `bin/doc-lint.sh` | DONE |
 
 ## Rollback
 
@@ -138,18 +141,18 @@ Writer partitions: `--only` · exit 1 · exit 2 · ref `-` · `GUARD_CONFIG_PIN`
 
 | id | source | kind | target (exact path) | intent | priority | disposition |
 |----|--------|------|---------------------|--------|----------|-------------|
-| T-1 | W-2 W-4 | unit | `tests/unit/qg-push-pass.bats` | `qg run push --ref` then `git push`: counter moves once, push lands, pre-push prints the not-measured line | must | |
-| T-2 | W-2 | unit | `tests/unit/qg-push-pass.bats` | amended commit after the record → measured | must | |
-| T-3 | W-2 | unit | `tests/unit/qg-push-pass.bats` | push to another ref name → measured | must | |
-| T-4 | W-1 | unit | `tests/unit/qg-push-pass.bats` | remote tip moved after the record → measured | must | |
-| T-5 | W-1 | unit | `tests/unit/qg-push-pass.bats` | an engine `lib/` file changed after the record → measured | must | |
-| T-6 | W-1 | unit | `tests/unit/qg-push-pass.bats` | record older than 3600 s, dated in the future, or holding junk → measured | must | |
-| T-7 | W-4 | unit | `tests/unit/qg-push-pass.bats` | `--only`, a worse row, an unmeasurable row, and no `--ref` write no record | must | |
-| T-8 | W-2 | unit | `tests/unit/qg-push-pass.bats` | a recorded pass with a worse baseline against the remote tip is never written: the writer's baseline check uses the remote tip | must | |
-| T-9 | W-3 | unit | `tests/unit/qg-push-pass.bats` | an old installed `pre-push` (no flag) measures even with a valid record | should | |
-| T-10 | W-7 | unit | `tests/unit/guard-claude-hooks.bats` | agent writes into `guard-pass/push/` are denied | must | |
-| T-11 | W-11 | unit | `tests/unit/guard-claude-hooks.bats` | `PATH=… qg run push --ref`, `HOME=… qg …` and `export PATH=…; qg …` are denied for an agent | must | |
-| T-12 | W-1a W-3 | unit | `tests/unit/qg-push-pass.bats` | `guard.sh release --bogus <ref>` exits 2; an engine without `--use-pass` given `release --use-pass <ref>` refuses rather than passing | must | |
+| T-1 | W-2 W-4 | unit | `tests/unit/qg-push-pass.bats` | `qg run push --ref` then `git push`: counter moves once, push lands, pre-push prints the not-measured line | must | implement |
+| T-2 | W-2 | unit | `tests/unit/qg-push-pass.bats` | amended commit after the record → measured | must | implement |
+| T-3 | W-2 | unit | `tests/unit/qg-push-pass.bats` | push to another ref name → measured | must | implement |
+| T-4 | W-1 | unit | `tests/unit/qg-push-pass.bats` | remote tip moved after the record → measured | must | implement |
+| T-5 | W-1 | unit | `tests/unit/qg-push-pass.bats` | an engine `lib/` file changed after the record → measured | must | implement |
+| T-6 | W-1 | unit | `tests/unit/qg-push-pass.bats` | record older than 3600 s, dated in the future, or holding junk → measured | must | implement |
+| T-7 | W-4 | unit | `tests/unit/qg-push-pass.bats` | `--only`, a worse row, an unmeasurable row, and no `--ref` write no record | must | implement |
+| T-8 | W-2 | unit | `tests/unit/qg-push-pass.bats` | a recorded pass with a worse baseline against the remote tip is never written: the writer's baseline check uses the remote tip | must | implement |
+| T-9 | W-3 | unit | `tests/unit/qg-push-pass.bats` | an old installed `pre-push` (no flag) measures even with a valid record | should | implement |
+| T-10 | W-7 | unit | `tests/unit/guard-claude-hooks.bats` | agent writes into `guard-pass/push/` are denied | must | implement |
+| T-11 | W-11 | unit | `tests/unit/guard-claude-hooks.bats` | `PATH=… qg run push --ref`, `HOME=… qg …` and `export PATH=…; qg …` are denied for an agent | must | implement |
+| T-12 | W-1a W-3 | unit | `tests/unit/qg-push-pass.bats` | `guard.sh release --bogus <ref>` exits 2; an engine without `--use-pass` given `release --use-pass <ref>` refuses rather than passing | must | implement |
 
 ## Refs
 

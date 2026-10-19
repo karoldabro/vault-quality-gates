@@ -46,7 +46,7 @@ an agent outside a guarded Claude Code session still meets the second.
 | `qg help [<command>]` | the overview, or one subcommand's options | 0 | yes |
 | `qg list [--on commit\|push\|baseline]` | every row: id, driver, gate, when it runs, why | 0; 2 when `HEAD` has no loadable `quality/checks.tsv` | yes |
 | `qg run commit [--only id,id]` | the commit gate on what is staged now, without committing | 0 pass, 1 a row is worse, 2 a row could not be measured | yes |
-| `qg run push [--ref refs/heads/<b>] [--only id,id]` | the push gate on `HEAD` for that ref, without pushing; no `--ref` runs every push row | 0, 1, 2 as above | yes |
+| `qg run push [--ref refs/heads/<b>] [--only id,id]` | the push gate on `HEAD` for that ref, without pushing; no `--ref` runs every push row; with `--ref` and no `--only`, a pass is recorded for `git push` (`vault/architecture/guard-push-pass.md`) | 0, 1, 2 as above | yes |
 | `qg explain <id>` | one row: why, when, driver, limit, last result and output, how to reproduce and pass | 0; 2 for no id or an unknown id | yes |
 | `qg last` | the last refusal, in full, from `<git-common-dir>/qg-last/REFUSAL.txt` | 0, also when none is recorded | yes |
 | `qg drivers [<name>]` | the drivers this repo can use, or one driver's `describe` and `explain` | 0; 2 for an unknown name | yes |

@@ -44,7 +44,7 @@ qg_load_head() {
 qg_help() {
     case "${1:-}" in
         list)     printf 'qg list [--on commit|push|baseline] [--json]\n  Every gate row: id, when it runs, driver, what refuses, and why it exists.\n' ;;
-        run)      printf 'qg run commit [--only id,id] [--json]\n  Runs the commit gate on what is staged now, exactly as `git commit` would, without committing.\nqg run push [--ref refs/heads/<branch>] [--only id,id] [--json]\n  Runs the push gate on HEAD for that ref (default: every push row), without pushing.\n  Exit 0 pass, 1 a row is worse, 2 a row could not be measured.\n' ;;
+        run)      printf 'qg run commit [--only id,id] [--json]\n  Runs the commit gate on what is staged now, exactly as `git commit` would, without committing.\nqg run push [--ref refs/heads/<branch>] [--only id,id] [--json]\n  Runs the push gate on HEAD for that ref (default: every push row), without pushing.\n  With --ref and no --only, a pass is recorded: git push of HEAD to that ref within 60 minutes\n  accepts it instead of measuring again, as long as the remote tip and the engine are unchanged.\n  Exit 0 pass, 1 a row is worse, 2 a row could not be measured.\n' ;;
         explain)  printf 'qg explain <id> [--json]\n  What the row checks, why, when it runs, its limit, its last result and output,\n  how to reproduce it, and how to pass.\n' ;;
         last)     printf 'qg last\n  Prints the last refusal in full, as the commit or push printed it.\n' ;;
         drivers)  printf 'qg drivers [<name>] [--json]\n  The drivers this repo can use (built-in and quality/drivers/), or one driver'"'"'s description.\n' ;;
@@ -124,7 +124,7 @@ cmd_list() {
 }
 
 cmd_run() {
-    local event="${1:-}" only='' ref='-' rc=0
+    local event="${1:-}" only='' ref='-' rc=0 b
     shift || true
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -143,13 +143,33 @@ cmd_run() {
     : > "$(guard_common_dir)/qg-last/RESULTS.txt" 2>/dev/null || true
     case "$event" in
         commit) "$GUARD" commit "${extra[@]}" || rc=$? ;;
-        push)   GUARD_SHA="$(git rev-parse HEAD)" "$GUARD" release "$ref" "${extra[@]}" || rc=$? ;;
+        push)
+            if [ "$ref" != '-' ] && [ -z "$only" ]; then
+                # Measure exactly what pre-push will measure, so the pass it records is the one
+                # pre-push would reach: the hook's environment and its baseline base for this ref.
+                local head branch remote
+                head="$(git rev-parse HEAD)"; branch="${ref#refs/heads/}"
+                remote="$(git config --get "branch.${branch}.remote" 2>/dev/null || printf 'origin')"
+                (
+                    unset GUARD_SKIP GUARD_CONFIG_REV GUARD_CONFIG_AT GUARD_CONFIG_PIN
+                    GUARD_SHA="$head" GUARD_BASE="$(guard_baseline_base "$head" \
+                        "$(git rev-parse -q --verify "refs/remotes/${remote}/${branch}^{commit}" 2>/dev/null)")" \
+                        "$GUARD" release --record-pass "$ref"
+                ) || rc=$?
+            else
+                GUARD_SHA="$(git rev-parse HEAD)" "$GUARD" release "$ref" "${extra[@]}" || rc=$?
+            fi ;;
         *)      qg_die 'run: say commit or push (qg help run)' ;;
     esac
     if [ "$JSON" = 1 ]; then qg_results_json "$rc" | jq --arg only "$only" \
         'if $only == "" then . + {partial: false} else . + {partial: true, only: ($only | split(","))} end'
     elif [ "$rc" -eq 0 ] && [ -n "$only" ]; then printf 'qg: %s passed for %s only; the real %s runs every row\n' "$event" "$only" "$event"
-    elif [ "$rc" -eq 0 ]; then printf 'qg: %s gate passed\n' "$event"; fi
+    elif [ "$rc" -eq 0 ]; then
+        printf 'qg: %s gate passed\n' "$event"
+        if [ "$event" = push ] && [ "$ref" = '-' ] && b="$(git symbolic-ref --short -q HEAD)"; then
+            printf 'qg: to let git push skip this measurement, run: qg run push --ref refs/heads/%s\n' "$b"
+        fi
+    fi
     return "$rc"
 }
 

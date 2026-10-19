@@ -189,6 +189,7 @@ characters; the `How to pass:` footer is never cut. The whole text is written to
 | `<git-common-dir>/guard-tree`, `guard-tree.index`, `guard-tree.lock` | `lib/guard-tree.sh`, `lib/guard-commit.sh` | tree rows | no |
 | `<git-common-dir>/guard-cache` | the tools' caches | tree rows, drivers (`QG_CACHE`) | no |
 | `<git-common-dir>/guard-pass/<key>` | commit hooks, `post-rewrite`, `guard.sh verify`, `hooks install` | `pre-push` | no |
+| `<git-common-dir>/guard-pass/push/<key>` | `qg run push --ref` after a full pass (`vault/architecture/guard-push-pass.md`) | `pre-push` through `guard.sh release --use-pass` | no |
 | `<git-common-dir>/qg-override` | `qg override` | the commit hooks and `pre-push`, which delete it on use | no |
 | `<git-common-dir>/guard-bypass.log` | `lib/guard-override.sh` | `pre-push`, which prints new lines | no |
 | `<git-common-dir>/guard-bypass.printed` | `pre-push` | `pre-push`: how many log lines it already printed | no |

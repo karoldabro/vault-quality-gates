@@ -121,7 +121,7 @@ worktrees share, and records every local commit not on any remote, so the existi
 | hook | does |
 |---|---|
 | `pre-commit`, `pre-merge-commit`, `pre-applypatch` | run `guard.sh commit`; exit 1 on its exit 1 or 2, or when `guard.sh` is missing or not executable; write the pass record on a pass |
-| `pre-push` | refuses a pushed commit that is on no remote and has no pass record, naming it and `guard.sh verify <sha> --not --remotes`; prints override log lines not printed before; then hands every pushed ref to `guard.sh release`, which runs the rows whose `on` matches that ref and exits 0 when none does |
+| `pre-push` | refuses a pushed commit that is on no remote and has no pass record, naming it and `guard.sh verify <sha> --not --remotes`; prints override log lines not printed before; then hands every pushed ref to `guard.sh release --use-pass`, which accepts a valid push pass record for that ref, else runs the rows whose `on` matches that ref, and exits 0 when none does |
 | `post-rewrite` | after `commit --amend`, runs `guard.sh verify <new>^!`, which measures the amended commit against its own parents and records it only when it passes; pre-commit measured the new tree against the old commit, which proves nothing about the new one. A rebase records nothing |
 
 **Pass record.** `<git-common-dir>/guard-pass/<key>`, where `<key>` is the SHA-1 of the tree SHA
@@ -130,6 +130,9 @@ parents belong in the key: a revert that restores an old tree is a new commit th
 own pass. `cherry-pick`, `revert`, `rebase` and scripted commits run no commit hook, so their commits
 need `guard.sh verify` before they push. An amend made with `--no-verify` still runs `post-rewrite`,
 so it is measured there.
+
+**Push pass record.** `qg run push --ref` records a full push pass that `pre-push` accepts instead of
+measuring again: `vault/architecture/guard-push-pass.md`.
 
 ## Built-in checks
 
