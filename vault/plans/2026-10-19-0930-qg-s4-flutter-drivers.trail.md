@@ -87,6 +87,44 @@ Record class. Its contract document is `2026-10-19-0930-qg-s4-flutter-drivers.md
 
 Round 2 findings were applied without a third review.
 
+### Code review, round 1
+
+Reviewers: correctness, harness-engineer, quality+architect. `vault-check.sh static` measured nothing:
+the repo declares no linter; `shellcheck -S warning` ran instead.
+
+| reviewer | id | severity | grounding | finding | outcome |
+|---|---|---|---|---|---|
+| harness-engineer | hr-1 | BLOCKER | confirmed | a `pubspec.yaml` override with an unchanged lock swaps a tool | applied: `--enforce-lockfile`; dart-lock reads git and counts overrides |
+| harness-engineer | hr-2 | MAJOR | confirmed | flow-style lock entries slip past dart-lock | applied: `!bad` lines refuse |
+| harness-engineer | hr-3 | MAJOR | confirmed | baseline measured the live checkout | applied: detached worktree of HEAD |
+| harness-engineer | hr-4 | MAJOR | confirmed | a committed `analysis_options.base.yaml` replaces the lint rules | applied: refused, protected |
+| harness-engineer | hr-5 | MAJOR | advisory | the suite can plant code in caches | partly applied: `qg_isolated`, runner checksum; sandbox deferred (round 2) |
+| harness-engineer | hr-6 | MINOR | confirmed | awk scripts and requirements read from the tree | applied: config revision |
+| harness-engineer, quality | hr-7 qa-1 | MAJOR | confirmed | a second config-key reader | applied: `lib/qg-config.sh` |
+| harness-engineer | hr-9 | MINOR | advisory | coverage blind to unloaded files | applied: documented, v1 parity kept |
+| quality | qa-2 | MINOR | confirmed | unrecorded engine and contract edit | applied: Decisions row |
+| quality | qa-3, qa-6, qa-10 | MINOR | confirmed | dcl scope, `jq` in requires, tool names in errors | applied |
+| quality | qa-4, qa-5 | MINOR | confirmed | catalogue missing, key unregistered | applied |
+| quality | qa-7, qa-8, qa-9 | MINOR | confirmed | duplicated helpers that belong in the kit | deferred: open item until S3 merges |
+| correctness | cr-1..cr-7 | MINOR, NIT | confirmed, advisory | gawk escapes, single-file grep names, unreadable DEPS.md, lock wording, entity, format packages, late test errors | applied |
+
+### Code review, round 2
+
+| reviewer | id | severity | grounding | finding | outcome |
+|---|---|---|---|---|---|
+| harness+correctness | r2-1 | MAJOR | confirmed | the suite, as the operator's user, can write the pub cache, the SDK and `guard-cache` | deferred to S6: `bwrap` fails here (`setting up uid map: Permission denied`); minority flag |
+| harness+correctness | r2-2 | MINOR | confirmed | a setsid'd grandchild survives; job control breaks the wait | applied: `set +m`, wording |
+| harness+correctness | r2-3 | MINOR | confirmed | the suite finds gate paths through /proc and its TMPDIR parent | partly applied: separate TMPDIR; /proc reach documented |
+| harness+correctness | r2-4, r2-5, r2-6 | MINOR | confirmed | lock refs and paths, quoted override keys, first-commit read | applied |
+
+### Testing, round 1
+
+Two writers added 223 tests in 12 files and 8 + 1 + 5 more for the migration and engine cases. Every
+kept test failed against at least one broken copy of the code (97 and 91 copies). `vault-check.sh tests`
+measured no coverage. One production bug came back: `dart-analyze` wrote `x01` for an escaped `|` under
+busybox and BSD sed; fixed in awk. Older driver suites use `[ a ] && [ b ]` on non-final lines, which
+never fails a test; S4's files do not.
+
 ## Advisory test hints
 
 - sa-t1, co-t1, sk-t1, he-t3: every row alone in a fresh clone with no untracked files measures.

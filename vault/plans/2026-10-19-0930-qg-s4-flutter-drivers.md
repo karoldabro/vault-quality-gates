@@ -94,10 +94,10 @@ migration, then less code.
 
 | id | line | state | evidence |
 |----|------|-------|----------|
-| DOD-1 | bats suite passes: `./tests/run.sh tests/unit` | | |
-| DOD-2 | `shellcheck -S warning` (image `koalaman/shellcheck`) passes on every new and changed `.sh` | | |
-| DOD-3 | `bin/doc-lint.sh` passes on every new and changed `vault/**/*.md` | | |
-| DOD-4 | each commit goes through this repo's own commit gate, with no override | | |
+| DOD-1 | bats suite passes: `./tests/run.sh tests/unit` | met | 658 ok, 0 not ok on `69b0f5b` (421 at the start of S4) |
+| DOD-2 | `shellcheck -S warning` (image `koalaman/shellcheck`) passes on every new and changed `.sh` | met | 23 scripts from `git diff --name-only --diff-filter=AM 6479a22..HEAD -- '*.sh'`: no finding (`koalaman/shellcheck:stable`) |
+| DOD-3 | `bin/doc-lint.sh` passes on every new and changed `vault/**/*.md` | met | no findings on the plan, test design, trail, `qg-dart-drivers.md`, `qg-builtin-drivers.md`, `qg-driver-contract.md` and the master plan |
+| DOD-4 | each commit goes through this repo's own commit gate, with no override | met | every S4 commit printed its `comment-density` and `doc-lint` rows; none used `qg override` |
 
 ## Verified current state
 
@@ -188,27 +188,27 @@ that stay shell; the S3, S5 and S6 work; agent write guards for tool caches.
 
 | id | file (exact path) | action | tool | constraint | covers | verification | status |
 |----|-------------------|--------|------|------------|--------|--------------|--------|
-| W-0 | `checks/qg-s4-SC-1.sh`, `qg-s4-SC-2.sh`, `qg-s4-SC-3.sh`, `qg-s4-SC-5.sh`, `qg-s4-SC-6.sh`, `checks/qg-parity-recycling_mobile_app.sh` (skeleton exiting 2) | one script per criterion, committed first | Write | exit 0 pass, 1 fail, 2 could not run | SC-1..SC-6 | `gate.sh criteria` passes | TODO |
-| W-1 | `lib/qg-dart.sh` | `qg_dart_env`, `qg_dart_packages` per Decisions | Write | writes only under `QG_TREE`; offline | SC-2 | `tests/unit/qg-dart.bats` | TODO |
-| W-2 | `drivers/dart-lock.sh` | per Decisions; reads each base lock with `git show` | Write | — | SC-6 | `tests/unit/qg-driver-dart-lock.bats` | TODO |
-| W-3 | `drivers/dart-analyze.sh` | per Decisions; ok exits 0..3; level ERROR→error, WARNING→warning, INFO→note; ruleId = code lower-cased | Write | — | SC-1 | `tests/unit/qg-driver-dart-analyze.bats` | TODO |
-| W-4 | `drivers/dart-format.sh` | `dart format --output=none --set-exit-if-changed` on changed `.dart` files kept by `include=`, `exclude=`; ok exits 0, 1; `metric` = `Changed` lines | Write | — | SC-1 | `tests/unit/qg-driver-dart-format.bats` | TODO |
-| W-5 | `drivers/dart-code-linter.sh` | `dart run dart_code_linter:metrics analyze <paths> --reporter=json --json-path=quality-reports/dcl.json [--exclude=<ignore>]`, stdout to a file; ok exits 0, 1 with the report | Write | stdout never printed | SC-1 SC-5 | `tests/unit/qg-driver-dart-code-linter.bats` | TODO |
-| W-6 | `drivers/layerlens.sh` | per Decisions; keys `package` (required) `only paths version` | Write | — | SC-1 | `tests/unit/qg-driver-layerlens.bats` | TODO |
-| W-7 | `drivers/lakos.sh` | `dart run lakos --format json --metrics [--ignore <ignore>] <path>`; `metric` one of `nccd`, `ccd`, `acd` | Write | — | SC-1 | `tests/unit/qg-driver-lakos.bats` | TODO |
-| W-8 | `drivers/flutter-test.sh` | per Decisions; keys `metric` (required) `concurrency include exclude` | Write | fixture recorded from a real `--coverage --machine` run | SC-1 SC-2 SC-5 | `tests/unit/qg-driver-flutter-test.bats` | TODO |
-| W-9 | `drivers/mutation-test.sh` | `dart run mutation_test --rules <rules> [-b] <paths>`; keys `rules` (required) `builtin=yes paths` | Write | — | SC-1 | `tests/unit/qg-driver-mutation-test.bats` | TODO |
-| W-10 | `drivers/copydetect.sh` | the detection of `tool/checks/semantic_clones.py` inside the driver; keys `paths ext exclude min-similarity min-tokens noise guarantee requirements venv-root`; interpreter `$HOME/.cache/<venv-root>/copydetect-<sha256 of requirements, 12 chars>/bin/python` | Write | prints the pairs `semantic_clones.py` prints | SC-1 | `tests/unit/qg-driver-copydetect.bats` (stub python) | TODO |
-| W-11 | `drivers/grep-count.sh` | per Decisions; `grep` exit 2 or an `awk` failure → `status: error` | Write | — | SC-1 | `tests/unit/qg-driver-grep-count.bats` | TODO |
-| W-12 | `drivers/checkstyle.sh` | per Decisions; `lines=added` through `qg_added_only` | Write | refuses `bin=` and argv | SC-1 SC-6 | `tests/unit/qg-driver-checkstyle.bats` | TODO |
-| W-13 | `vault/architecture/qg-dart-drivers.md`, `vault/architecture/qg-builtin-drivers.md` | Dart catalogue: keys, measured exits, metric, unit, default config files, the row-order rule, the runner-as-tool case; the general page links it and states the helper and catalogue rule | Write, Edit | each ≤200 lines (`wc -l`) | SC-3 | doc-lint | TODO |
-| W-14 | `templates/init/flutter.tsv` | `format-changed` uses `dart-format`, `analyze` uses `dart-analyze`, `tests` uses `flutter-test` | Edit | — | — | `tests/unit/qg-migrate.bats` init case | TODO |
-| W-15 | `migrations/recycling_mobile_app/commit-lint.sh` | mobile `quality/bin/commit-lint.sh` per Decisions | Write | everything else byte-identical | SC-2 SC-6 | `checks/qg-s4-SC-6.sh`, a caller `PUB_CACHE` case | TODO |
-| W-16 | `migrations/recycling_mobile_app/checks.tsv` | v2 header; rows per `## Row mapping`, ids taken from the v1 file; each with its own `why` | Write | `kind`, direction, threshold, gate unchanged except `coverage-age-days` | SC-3 SC-4 | `checks/qg-s4-SC-3.sh` | TODO |
-| W-17 | `migrations/recycling_mobile_app/config` | mobile `VAULT.md` gate keys plus `guard_flutter_root: /home/kdabrow/workspace/flutter/flutter`; `guard_protected_paths` adds `quality/drivers quality/config quality/jscpd.json mutation_test.xml dart_test.yaml test/flutter_test_config.dart pubspec_overrides.yaml .dart_tool .npmrc .jscpd.json` | Write | — | SC-3 | SC-3 | TODO |
-| W-18 | `migrations/recycling_mobile_app/apply.sh` | copy `checks.tsv`, `config` into `quality/` and `commit-lint.sh` into `quality/bin/`; print the operator steps with the new repo ids from `parity.tsv` | Write | commits nothing; refuses a checkout without a v1 `quality/checks.tsv` | — | `tests/unit/qg-migration-mobile.bats` | TODO |
-| W-19 | `checks/qg-parity-recycling_mobile_app.sh` | S2's method: two `git clone --shared` scratch clones, clean, seed1 and seed2 states; a generated-file hit seeded for every row with `exclude=` or `ignore=`; the suite rows run the real suite with one seeded failing test; `mutation` reads a recorded report | Write | reads the live checkout only to copy the recorded mutation output | SC-4 | runs to exit 0 | TODO |
-| W-20 | `vault/plans/2026-10-18-1121-qg-common-interface.md` | S6 row: deny agent writes under `~/.pub-cache`, `~/.cache/<venv-root>` and `guard_flutter_root` | Edit | — | — | doc-lint | TODO |
+| W-0 | `checks/qg-s4-SC-1.sh`, `qg-s4-SC-2.sh`, `qg-s4-SC-3.sh`, `qg-s4-SC-5.sh`, `qg-s4-SC-6.sh`, `checks/qg-parity-recycling_mobile_app.sh` (skeleton exiting 2) | one script per criterion, committed first | Write | exit 0 pass, 1 fail, 2 could not run | SC-1..SC-6 | `gate.sh criteria` passes | DONE |
+| W-1 | `lib/qg-dart.sh` | `qg_dart_env`, `qg_dart_packages` per Decisions | Write | writes only under `QG_TREE`; offline | SC-2 | `tests/unit/qg-dart.bats` | DONE |
+| W-2 | `drivers/dart-lock.sh` | per Decisions; reads each base lock with `git show` | Write | — | SC-6 | `tests/unit/qg-driver-dart-lock.bats` | DONE |
+| W-3 | `drivers/dart-analyze.sh` | per Decisions; ok exits 0..3; level ERROR→error, WARNING→warning, INFO→note; ruleId = code lower-cased | Write | — | SC-1 | `tests/unit/qg-driver-dart-analyze.bats` | DONE |
+| W-4 | `drivers/dart-format.sh` | `dart format --output=none --set-exit-if-changed` on changed `.dart` files kept by `include=`, `exclude=`; ok exits 0, 1; `metric` = `Changed` lines | Write | — | SC-1 | `tests/unit/qg-driver-dart-format.bats` | DONE |
+| W-5 | `drivers/dart-code-linter.sh` | `dart run dart_code_linter:metrics analyze <paths> --reporter=json --json-path=quality-reports/dcl.json [--exclude=<ignore>]`, stdout to a file; ok exits 0, 1 with the report | Write | stdout never printed | SC-1 SC-5 | `tests/unit/qg-driver-dart-code-linter.bats` | DONE |
+| W-6 | `drivers/layerlens.sh` | per Decisions; keys `package` (required) `only paths version` | Write | — | SC-1 | `tests/unit/qg-driver-layerlens.bats` | DONE |
+| W-7 | `drivers/lakos.sh` | `dart run lakos --format json --metrics [--ignore <ignore>] <path>`; `metric` one of `nccd`, `ccd`, `acd` | Write | — | SC-1 | `tests/unit/qg-driver-lakos.bats` | DONE |
+| W-8 | `drivers/flutter-test.sh` | per Decisions; keys `metric` (required) `concurrency include exclude` | Write | fixture recorded from a real `--coverage --machine` run | SC-1 SC-2 SC-5 | `tests/unit/qg-driver-flutter-test.bats` | DONE |
+| W-9 | `drivers/mutation-test.sh` | `dart run mutation_test --rules <rules> [-b] <paths>`; keys `rules` (required) `builtin=yes paths` | Write | — | SC-1 | `tests/unit/qg-driver-mutation-test.bats` | DONE |
+| W-10 | `drivers/copydetect.sh` | the detection of `tool/checks/semantic_clones.py` inside the driver; keys `paths ext exclude min-similarity min-tokens noise guarantee requirements venv-root`; interpreter `$HOME/.cache/<venv-root>/copydetect-<sha256 of requirements, 12 chars>/bin/python` | Write | prints the pairs `semantic_clones.py` prints | SC-1 | `tests/unit/qg-driver-copydetect.bats` (stub python) | DONE |
+| W-11 | `drivers/grep-count.sh` | per Decisions; `grep` exit 2 or an `awk` failure → `status: error` | Write | — | SC-1 | `tests/unit/qg-driver-grep-count.bats` | DONE |
+| W-12 | `drivers/checkstyle.sh` | per Decisions; `lines=added` through `qg_added_only` | Write | refuses `bin=` and argv | SC-1 SC-6 | `tests/unit/qg-driver-checkstyle.bats` | DONE |
+| W-13 | `vault/architecture/qg-dart-drivers.md`, `vault/architecture/qg-builtin-drivers.md` | Dart catalogue: keys, measured exits, metric, unit, default config files, the row-order rule, the runner-as-tool case; the general page links it and states the helper and catalogue rule | Write, Edit | each ≤200 lines (`wc -l`) | SC-3 | doc-lint | DONE |
+| W-14 | `templates/init/flutter.tsv` | `format-changed` uses `dart-format`, `analyze` uses `dart-analyze`, `tests` uses `flutter-test` | Edit | — | — | `tests/unit/qg-migrate.bats` init case | DONE |
+| W-15 | `migrations/recycling_mobile_app/commit-lint.sh` | mobile `quality/bin/commit-lint.sh` per Decisions | Write | everything else byte-identical | SC-2 SC-6 | `checks/qg-s4-SC-6.sh`, a caller `PUB_CACHE` case | DONE |
+| W-16 | `migrations/recycling_mobile_app/checks.tsv` | v2 header; rows per `## Row mapping`, ids taken from the v1 file; each with its own `why` | Write | `kind`, direction, threshold, gate unchanged except `coverage-age-days` | SC-3 SC-4 | `checks/qg-s4-SC-3.sh` | DONE |
+| W-17 | `migrations/recycling_mobile_app/config` | mobile `VAULT.md` gate keys plus `guard_flutter_root: /home/kdabrow/workspace/flutter/flutter`; `guard_protected_paths` adds `quality/drivers quality/config quality/jscpd.json mutation_test.xml dart_test.yaml test/flutter_test_config.dart pubspec_overrides.yaml .dart_tool .npmrc .jscpd.json` | Write | — | SC-3 | SC-3 | DONE |
+| W-18 | `migrations/recycling_mobile_app/apply.sh` | copy `checks.tsv`, `config` into `quality/` and `commit-lint.sh` into `quality/bin/`; print the operator steps with the new repo ids from `parity.tsv` | Write | commits nothing; refuses a checkout without a v1 `quality/checks.tsv` | — | `tests/unit/qg-migration-mobile.bats` | DONE |
+| W-19 | `checks/qg-parity-recycling_mobile_app.sh` | S2's method: two `git clone --shared` scratch clones, clean, seed1 and seed2 states; a generated-file hit seeded for every row with `exclude=` or `ignore=`; the suite rows run the real suite with one seeded failing test; `mutation` reads a recorded report | Write | reads the live checkout only to copy the recorded mutation output | SC-4 | runs to exit 0 | DONE |
+| W-20 | `vault/plans/2026-10-18-1121-qg-common-interface.md` | S6 row: deny agent writes under `~/.pub-cache`, `~/.cache/<venv-root>` and `guard_flutter_root` | Edit | — | — | doc-lint | DONE |
 
 ## Row mapping
 
