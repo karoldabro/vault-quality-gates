@@ -7,7 +7,7 @@
 # <tree>   the plugin's copy of the staged tree ({{tree}}); every file analysed is <tree>/<path>.
 # <cache>  the plugin's cache dir ({{cache}}); holds the current givore-gate-<key> and its analyzer byte
 #          store analysis-<key>/ — the store does not key on rule code, so a rule change starts fresh.
-# The SDK is guard_flutter_root of quality/config at the config revision ($QG_CONFIG_REV, else HEAD);
+# The SDK is guard_flutter_root of quality/config at the config revision ($QG_CONFIG_REV; empty on a first commit, which reads the index);
 # a flutter on PATH that is another file refuses the run. The caller's PUB_CACHE and XDG_CACHE_HOME
 # are ignored, a tree holding pubspec_overrides.yaml is refused, and packages always resolve offline
 # inside the tree.
@@ -60,9 +60,9 @@ fi
 
 # (2) SDK and runner key: the Flutter-bundled Dart SDK, and a key over the runner source, its lock
 # file and the SDK version.
-flutter_root="$(git show "${QG_CONFIG_REV:-HEAD}:quality/config" 2>/dev/null \
+flutter_root="$(git show "${QG_CONFIG_REV:-}:quality/config" 2>/dev/null \
     | sed -n 's/^guard_flutter_root:[[:space:]]*//p' | head -1 | sed 's/[[:space:]]*$//')"
-[ -n "$flutter_root" ] || fail "step 2 (sdk)" "guard_flutter_root is not set in quality/config at ${QG_CONFIG_REV:-HEAD}"
+[ -n "$flutter_root" ] || fail "step 2 (sdk)" "guard_flutter_root is not set in quality/config at ${QG_CONFIG_REV:-the index}"
 [ -x "$flutter_root/bin/flutter" ] || fail "step 2 (sdk)" "guard_flutter_root $flutter_root has no bin/flutter"
 if flutter_bin="$(command -v flutter)" && [ "$(readlink -f "$flutter_bin")" != "$(readlink -f "$flutter_root/bin/flutter")" ]; then
     fail "step 2 (sdk)" "flutter on PATH is $flutter_bin, not $flutter_root/bin/flutter from guard_flutter_root"

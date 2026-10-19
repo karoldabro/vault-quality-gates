@@ -28,7 +28,7 @@ Dart tool and do not source it.
 | drop the caller's environment | `qg_dart_env` | unsets `PUB_CACHE`, `XDG_CACHE_HOME` and `FLUTTER_ROOT`, then exports `FLUTTER_ROOT=<root>` | — |
 | refuse repo-chosen packages | `qg_dart_packages` | checks `QG_TREE/pubspec_overrides.yaml`, and `.dart_tool` with `git ls-files` (`:index`) or `git ls-tree` (`QG_TARGET`) | the overrides file exists, or any `.dart_tool` path is tracked |
 | resolve packages | `qg_dart_packages` | runs `dart pub get --offline --enforce-lockfile` inside `QG_TREE`, so a `pubspec.yaml` `dependency_overrides` entry the lock does not record is refused | resolution fails; the error carries its last 5 lines and the fix |
-| isolate commit code | `qg_isolated <dir>` | runs the tool in its own session with only `HOME`, `PATH`, `LANG`, `FLUTTER_ROOT` and `TMPDIR=<dir>`, then kills every process it left | — |
+| isolate commit code | `qg_isolated <dir>` | runs the tool in its own session with only `HOME`, `PATH`, `LANG`, `FLUTTER_ROOT` and `TMPDIR=<dir>`, then kills its process group; a process that starts its own session is not reached | — |
 
 `qg_dart_prepare <driver> <unit>` runs `qg_dart_env`, then `qg_dart_packages`, and writes the error.
 Every driver in the list above runs both. `flutter-test` and `mutation-test` run the suite through
@@ -112,7 +112,7 @@ name is `status: error`.
 
 | change in the measured lock against `git show <base>:<lock>` | counts |
 |---|---|
-| a named package's version, source or url differs | 1 |
+| a named package's version, source, url, git ref or path differs | 1 |
 | a named package is added or removed | 1 |
 | an unnamed package becomes a `path` or `git` package it was not at the base | 1 |
 | the `dependency_overrides:` section of `pubspec.yaml` differs | 1 |
@@ -129,9 +129,11 @@ transitive bump of an unnamed package is not seen; `pubspec.lock` holds no depen
 row in `quality/checks.tsv`.** `guard_run` runs rows in file order, and these two drivers run code the
 commit wrote. That code can write into `QG_RUN_DIR` or the tree and change what a later row reads.
 
-**Failure mode left open:** `qg_isolated` kills what the suite leaves running, but code running as the
-same user can still read the gate's files while the suite runs. Only an OS sandbox closes that; until
-then this can forge the `flutter-test` and `mutation-test` values, and every other row has already run.
+**Failure mode left open:** the suite runs as the operator's user. While it runs it can forge its own
+`flutter-test` and `mutation-test` values, and it can write files later runs reuse: the pub cache, the
+Flutter SDK, `<git-common-dir>/guard-cache` (a commit-lint runner and its checksum). That plants code
+every later commit and push gate runs. Only an OS sandbox closes it; `bwrap` needs unprivileged user
+namespaces, which this host refuses. Owner: S6.
 
 ## `checkstyle`: a runner that is the tool
 

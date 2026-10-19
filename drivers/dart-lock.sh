@@ -6,7 +6,7 @@
 #   packages   required: the packages that judge the code, such as dart_code_linter,lakos
 #   lock       default pubspec.lock; its pubspec.yaml is the file beside it
 #
-# metric = the most, over every base in QG_BASES, of: named packages whose version, source or url
+# metric = the most, over every base in QG_BASES, of: named packages whose version, source, url, git ref or path
 # differ from the base, or that only one side holds; every other package that becomes a path or git
 # package; and 1 when pubspec.yaml's dependency_overrides section differs from the base's. Both sides
 # are read from git (the index under commit), never from the measured tree, which an earlier row's
@@ -30,13 +30,18 @@ entries() {
                            else if (k == "version:") { v = $2; gsub(/"/, "", v) }
                            else if (k != "dependency:" && k != "description:") print "!bad " $0
                            next }
-         /^      [a-z0-9_-]+:/ { if ($1 == "url:") { u = $2; gsub(/"/, "", u) }; next }
+         /^      [a-z0-9_-]+:/ { if ($1 ~ /^(url|path|ref|resolved-ref|sha256):$/) { x = $2; gsub(/"/, "", x); u = u $1 x ";" }; next }
          { print "!bad " $0 }
          END { flush() }' "$1" | sort
 }
 
 # overrides <pubspec.yaml> -> the dependency_overrides section, every line of it.
-overrides() { awk '/^dependency_overrides:/ { on = 1; print; next } /^[^ #]/ { on = 0 } on' "$1"; }
+overrides() {
+    awk '/^["\047]?dependency_overrides["\047]?[[:space:]]*:/ { on = 1; print; next }
+         /^[[:space:]]*#/ { next }
+         /^[^ ]/ { on = 0 }
+         on' "$1"
+}
 
 # show <rev or empty for the index> <path> -> the file at that revision of QG_REPO.
 show() { git -C "${QG_REPO:-.}" show "${1}:${2}" 2>/dev/null; }

@@ -67,14 +67,19 @@ qg_dart_prepare() {
 
 # qg_isolated <private dir> <argv...> -> runs argv for a tool that runs code the commit wrote (tests,
 # mutation runs): in its own session, with only HOME, PATH, LANG, FLUTTER_ROOT and TMPDIR=<private dir>
-# in its environment, so it finds neither the run directory nor the gate's variables. Every process it
-# leaves behind is killed before the caller reads its output. Returns argv's exit code.
+# in its environment. Its process group is killed before the caller reads its output; a process that
+# starts its own session is not reached. It runs as the operator's user, so it can still read the
+# gate's processes under /proc and write the pub cache, the SDK and the gate cache: only an OS sandbox
+# closes that (owner: S6). Returns argv's exit code.
 qg_isolated() {
     local dir="$1" pid rc=0
     shift
-    setsid env -i HOME="$HOME" PATH="$PATH" LANG="${LANG:-C.UTF-8}" FLUTTER_ROOT="${FLUTTER_ROOT:-}" TMPDIR="$dir" "$@" &
+    set +m
+    env -i HOME="$HOME" PATH="$PATH" LANG="${LANG:-C.UTF-8}" FLUTTER_ROOT="${FLUTTER_ROOT:-}" TMPDIR="$dir" \
+        setsid "$@" &
     pid=$!
     wait "$pid" || rc=$?
+    # Without job control setsid runs in place, so the pid names the group it leads.
     kill -KILL -- "-${pid}" 2>/dev/null
     return "$rc"
 }

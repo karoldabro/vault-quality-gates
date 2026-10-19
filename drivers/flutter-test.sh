@@ -21,15 +21,16 @@ export LC_ALL=C
 
 # produce -> $QG_OUT/flutter-test holds {failed, tests, done, rc, lh, lf, findings}.
 produce() {
-    local d rc=0 conc inc exc argv=()
+    local d tmp rc=0 conc inc exc argv=()
     qg_dart_env && qg_dart_packages || return 1
     conc="$(qg_kv concurrency)" && argv+=("--concurrency=${conc}")
     inc="$(qg_kv include)" || inc=''
     exc="$(qg_kv exclude)" || exc=''
     d="$(mktemp -d)" && chmod 700 "$d" || { QG_ERROR='cannot create a private folder for the test stream'; return 1; }
-    mkdir "${d}/tmp" || { QG_ERROR='cannot create a private temp folder for the suite'; rm -rf "$d"; return 1; }
-    ( cd "$QG_TREE" && qg_isolated "${d}/tmp" "$QG_FLUTTER" test --no-pub --coverage --coverage-path "${d}/lcov.info" \
+    tmp="$(mktemp -d)" || { QG_ERROR='cannot create a private temp folder for the suite'; rm -rf "$d"; return 1; }
+    ( cd "$QG_TREE" && qg_isolated "$tmp" "$QG_FLUTTER" test --no-pub --coverage --coverage-path "${d}/lcov.info" \
         --machine "${argv[@]}" ) > "${d}/stream" 2> "${d}/stderr" || rc=$?
+    rm -rf "$tmp"
     tail -20 "${d}/stderr"
     if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then
         QG_ERROR="flutter test exited ${rc}"; rm -rf "$d"; return 1
