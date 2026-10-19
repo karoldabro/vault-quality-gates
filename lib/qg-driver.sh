@@ -110,6 +110,7 @@ guard_run_driver() {
         export QG_RUNNER="$tmp/runner"
     fi
     mkdir -p "$tmp/out"
+    QG_CONFIG_REV="${GUARD_CONFIG_REV:-${GUARD_CONFIG_AT:-$(git rev-parse -q --verify HEAD 2>/dev/null)}}" \
     QG_ARGS="$args" QG_OUT="$tmp/out" QG_ROW="$(guard_row_field "$row" id)" QG_BASE="$base" QG_FILES="$files" \
     QG_BASES="${GUARD_BASES:-$base}" QG_TARGET="${GUARD_TARGET:-${GUARD_SHA:-HEAD}}" QG_REPO="$REPO_ROOT" \
     QG_TREE="${GUARD_TREE_DIR:-$PWD}" QG_CACHE="${GUARD_CACHE_DIR:-$(git rev-parse --path-format=absolute --git-common-dir)/guard-cache}" \

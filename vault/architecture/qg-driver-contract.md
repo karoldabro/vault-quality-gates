@@ -12,7 +12,6 @@ A driver is one executable that wraps one tool. The engine (`bin/guard.sh`) call
 subcommands and reads one file it writes, `result.json`. The driver measures; the engine judges.
 The built-in drivers and their keys are listed in `vault/architecture/qg-builtin-drivers.md`; they
 share `lib/qg-driver-kit.sh`. A repo driver cannot source that file: copy the `todo.sh` example below.
-
 Decision: `vault/decisions/ADR-001-driver-contract.md`. Row format: `vault/architecture/guard-file-formats.md`.
 
 ## Where a driver lives
@@ -67,6 +66,7 @@ nothing.
 | `QG_CACHE` | `<git-common-dir>/guard-cache`, kept between runs for tool caches |
 | `QG_RUNNER` | the path of a copy of the committed runner; set only when `args` holds `runner=` |
 | `QG_RUN_DIR` | a directory the engine creates for one invocation and deletes at exit, for reports rows share |
+| `QG_CONFIG_REV` | the commit whose configuration judges this run; read a config key there with `git show`, never from the working tree |
 
 **`QG_TREE` is the only directory a driver measures.** Under `commit` it is
 `<git-common-dir>/guard-tree` when the gate prepared the staged-tree copy. Otherwise it is the

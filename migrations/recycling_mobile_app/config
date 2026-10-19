@@ -1,0 +1,4 @@
+# Gate keys for vault-quality-gates (lib/qg-config.sh). Once this file is committed, VAULT.md's gate keys are no longer read.
+guard_commit_paths: lib test integration_test tool quality pubspec.yaml pubspec.lock analysis_options.yaml analysis_options.commit.yaml many_lints.yaml
+guard_protected_paths: analysis_options.yaml analysis_options.commit.yaml many_lints.yaml quality/checks.tsv quality/rules.tsv quality/bin tool/checks tool/givore_lints .claude/settings.json VAULT.md quality/drivers quality/config quality/jscpd.json mutation_test.xml dart_test.yaml test/flutter_test_config.dart pubspec_overrides.yaml .dart_tool .npmrc .jscpd.json
+guard_flutter_root: /home/kdabrow/workspace/flutter/flutter
