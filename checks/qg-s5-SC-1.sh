@@ -33,6 +33,6 @@ qg_cases \
     "guard_doc_lint unset, relative or not executable is status error naming the key" \
     "a missing linter library in ../lib of the linter's folder is status error naming it" \
     "guard_doc_lint is read at the config revision, not from the working tree" \
-    "a measured tree that is the repo itself is status error and writes nothing" \
+    "a measured tree outside the gate's guard-tree copy is status error and deletes nothing" \
     "no changed markdown, .doc-lint or VAULT.md is metric 0 and the linter never runs" \
     "a linter exit above 1, or exit 1 with no parsed finding, is status error"

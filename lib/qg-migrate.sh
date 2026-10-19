@@ -117,7 +117,10 @@ qg_init() {
             fi
         fi
     else
-        printf 'qg init: quality/config exists and is left as it is; it needs guard_protected_paths: %s\n' "$protected" >&2
+        local have p missing=''
+        have=" $(sed -n 's/^guard_protected_paths:[[:space:]]*//p' quality/config | head -1) "
+        for p in $protected; do [[ "$have" == *" ${p} "* ]] || missing="${missing} ${p}"; done
+        [ -z "$missing" ] || printf 'qg init: quality/config exists and is left as it is; add to guard_protected_paths:%s\n' "$missing" >&2
         [ -z "$lint" ] || grep -q '^guard_doc_lint:' quality/config \
             || printf 'qg init: quality/config has no guard_doc_lint; add guard_doc_lint: %s, or every doc-lint measurement refuses.\n' "$lint" >&2
     fi

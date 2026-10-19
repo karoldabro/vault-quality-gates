@@ -89,13 +89,14 @@ must hold `sentence-count.sh`, `prose-match.sh` and `doc-lint-patterns.tsv`.
 |---|---|
 | `doc-lint.<CODE>` on a line | the line is an added line |
 | `doc-lint.<CODE>` with no line (`FILE`, or DUP1's `x<n>`) | no parent's version of the file has that code; renames are followed, and a new file has no parent version |
-| `doc-lint.SKIPFILE` | the commit adds or changes a `.doc-lint` or `VAULT.md` at any depth |
+| `doc-lint.SKIPFILE` | the commit adds, changes, retypes or deletes a path named `.doc-lint` or `VAULT.md`, or one under such a folder, that no parent holds in that form |
 | `doc-lint.TYPE` | the type doc-lint reads differs from every parent's, renames followed, or a new file is `persona`, `command`, `skill` or `output-style` |
 
 **Constraint: a commit cannot change what is checked.** Before it lints, the driver replaces every
 `.doc-lint` and `VAULT.md` in the measured tree with the config revision's copies. It writes empty
-root ones when that revision has none. The linter gets no variable or function of the caller beyond
-`PATH` and `HOME`. The driver refuses any measured tree but `<git-common-dir>/guard-tree`.
+root ones when that revision has none. The linter gets no variable or function of the caller beyond `PATH`, `HOME` and
+`LC_ALL=C`. The driver refuses any measured tree but `<git-common-dir>/guard-tree`, and a config
+path under a folder linked out of that tree. A link turned into a markdown file is linted whole.
 
 **Limits:** the driver lints `.md` files only. doc-lint does not treat a new file with no `type:`
 outside the document folders as a document. A sentence wrapped across lines is never measured. An

@@ -81,5 +81,6 @@ for file in "$@"; do
 done
 if [ -f "${HERE}/print-on-zero" ]; then printf '%s  [fixture]\n  LONG1  L1       printed\n' "${1:-x}"; exit 0; fi
 [ -f "${HERE}/exit-code" ] && exit "$(cat "${HERE}/exit-code")"
+case "$PWD" in */base/*) [ -f "${HERE}/exit-code-base" ] && exit "$(cat "${HERE}/exit-code-base")" ;; esac
 [ "$violations" -eq 0 ] || { printf '\ndoc-lint: %s violation(s).\n' "$violations"; exit 1; }
 exit 0

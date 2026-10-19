@@ -120,8 +120,10 @@ rules() { result '[.findings[].ruleId] | sort | join(",")'; }
     printf 'unrelated\n' > support/other.md
     commit_all main-side
     main="$(git rev-parse HEAD)"
-    git -c core.hooksPath=/dev/null merge -q --no-commit "$side" >/dev/null 2>&1 || true
-    git add -A
+    git -c core.hooksPath=/dev/null merge -q --no-commit --no-ff "$side" >/dev/null 2>&1
+    git show :support/guide.md | grep -q 'FILELINT:SIZE1'
+    measure "$main"
+    [ "$(metric)" = 1 ]
     measure "$main" "$side"
     [ "$(metric)" = 0 ]
     [ -n "$base" ]
@@ -309,7 +311,7 @@ rules() { result '[.findings[].ruleId] | sort | join(",")'; }
     [ "$(metric)" = 1 ]
 }
 
-@test "a measured tree that is the repo itself is status error and writes nothing" {
+@test "a measured tree outside the gate's guard-tree copy is status error and deletes nothing" {
     printf 'LONG1\n' > plans/.doc-lint
     commit_all skipfile
     printf 'x\n' >> plans/p.md
@@ -319,6 +321,7 @@ rules() { result '[.findings[].ruleId] | sort | join(",")'; }
     QG_OUT="$WORK/out" QG_TREE="$QG_REPO" QG_FILES="$WORK/files" QG_BASE=HEAD QG_BASES=HEAD \
         QG_TARGET=:index QG_CONFIG_REV=HEAD run "$DRIVER" run
     [ "$(result .status)" = error ]
+    [[ "$(result .error)" == *"is not the gate's copy"* ]]
     [ -f plans/.doc-lint ] && [ ! -e .doc-lint ] && [ ! -e VAULT.md ]
 }
 
@@ -367,13 +370,125 @@ rules() { result '[.findings[].ruleId] | sort | join(",")'; }
     [ "$(metric)" = 0 ]
 }
 
-@test "a .doc-lint or VAULT.md the commit deletes counts 0 and the config revision's copy applies" {
+@test "a .doc-lint the commit deletes counts 1 as doc-lint.SKIPFILE and the config revision's copy applies" {
     printf 'LONG1\n' > plans/.doc-lint
     commit_all skipfile
     git rm -q plans/.doc-lint
     printf 'LINT:LONG1 long\n' >> plans/p.md
     git add plans/p.md
     measure
+    [ "$(rules)" = doc-lint.SKIPFILE ]
+}
+
+@test "a VAULT.md the commit adds alone in a subfolder counts 1 as doc-lint.SKIPFILE, not an error" {
+    mkdir -p docs && printf 'indication_scopes: [x]\n' > docs/VAULT.md
+    git add docs/VAULT.md
+    measure
+    [ "$(result .status)" = measured ]
+    [ "$(rules)" = doc-lint.SKIPFILE ]
+}
+
+@test "a .doc-lint staged as a link to a file outside the tree is replaced, never written through, and counts" {
+    printf 'outside\n' > "$WORK/outside"
+    ln -s "$WORK/outside" .doc-lint
+    printf 'LINT:LONG1 long\n' >> support/guide.md
+    git add .doc-lint support/guide.md
+    measure
+    [ "$(result .status)" = measured ]
+    [ "$(rules)" = doc-lint.LONG1,doc-lint.SKIPFILE ]
+    [ "$(cat "$WORK/outside")" = outside ]
+}
+
+@test "a folder staged as a link out of the tree, holding a config path, refuses the row and writes nothing there" {
+    mkdir -p "$WORK/elsewhere" && printf 'DUP1\n' > plans/.doc-lint && commit_all skip
+    git rm -q -r plans
+    ln -s "$WORK/elsewhere" plans
+    printf 'LINT:LONG1 long\n' >> support/guide.md
+    git add plans support/guide.md
+    measure
+    [ "$(result .status)" = error ]
+    [[ "$(result .error)" == *'symlinked folder'* ]]
+    [ ! -e "$WORK/elsewhere/.doc-lint" ]
+}
+
+@test "a folder named VAULT.md or .doc-lint counts as doc-lint.SKIPFILE and is removed before the lint" {
+    mkdir -p vault/VAULT.md && printf 'x\n' > vault/VAULT.md/x
+    printf 'LINT:LONG1 long\n' >> support/guide.md
+    git add vault support/guide.md
+    measure
+    [ "$(result .status)" = measured ]
+    [ "$(rules)" = doc-lint.LONG1,doc-lint.SKIPFILE ]
+}
+
+@test "a link turned into a markdown file is linted whole and each line finding counts" {
+    ln -s guide.md support/link.md
+    commit_all link
+    rm support/link.md && printf -- '---\ntype: guide\n---\nLINT:LONG1 a\n' > support/link.md
+    git add support/link.md
+    measure
+    [ "$(rules)" = doc-lint.LONG1,doc-lint.TYPE ]
+}
+
+@test "a file named with two spaces and a bracket keeps its findings" {
+    printf 'LINT:LONG1 x\n' > 'plans/a  [b.md'
+    git add 'plans/a  [b.md'
+    measure
+    [ "$(result .status)" = measured ]
+    [ "$(metric)" = 1 ]
+    [ "$(result '.findings[0].file')" = 'plans/a  [b.md' ]
+}
+
+@test "a changed path holding a newline is status error" {
+    printf 'LINT:LONG1 x\n' > "plans/a"$'\n'"b.md"
+    git add plans
+    measure
+    [ "$(result .status)" = error ]
+    [[ "$(result .error)" == *'newline or tab'* ]]
+}
+
+@test "a parent lint that exits above 1 is status error" {
+    printf 'FILELINT:SIZE1\n' >> plans/p.md
+    git add plans/p.md
+    printf '3' > "$WORK/fw/exit-code-base"
+    measure
+    [ "$(result .status)" = error ]
+    [[ "$(result .error)" == *'on the parent'* ]]
+}
+
+@test "a merge does not count a .doc-lint the second parent already holds" {
+    git checkout -q -b side
+    printf 'LONG1\n' > plans/.doc-lint
+    commit_all side
+    side="$(git rev-parse HEAD)"
+    git checkout -q master 2>/dev/null || git checkout -q main
+    printf 'x\n' > support/other.md && commit_all main-side
+    main="$(git rev-parse HEAD)"
+    git -c core.hooksPath=/dev/null merge -q --no-commit --no-ff "$side" >/dev/null 2>&1
+    measure "$main" "$side"
+    [ "$(metric)" = 0 ]
+}
+
+@test "a file-level code both versions get from a config revision's subfolder VAULT.md is not counted" {
+    mkdir -p indications
+    printf 'indication_scopes: [a]\n' > indications/VAULT.md
+    printf -- '---\ntype: index\n---\nSCOPE:zzz\n' > indications/_index.md
+    commit_all scoped
+    printf 'more\n' >> indications/_index.md
+    git add indications/_index.md
+    measure
+    [ "$(metric)" = 0 ]
+}
+
+@test "a merge that keeps the second parent's type: counts 0 as doc-lint.TYPE" {
+    git checkout -q -b side
+    sed -i 's/^type: guide$/type: reference/' support/guide.md
+    commit_all side
+    side="$(git rev-parse HEAD)"
+    git checkout -q master 2>/dev/null || git checkout -q main
+    printf 'x\n' > support/other.md && commit_all main-side
+    main="$(git rev-parse HEAD)"
+    git -c core.hooksPath=/dev/null merge -q --no-commit --no-ff "$side" >/dev/null 2>&1
+    measure "$main" "$side"
     [ "$(metric)" = 0 ]
 }
 
