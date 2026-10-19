@@ -1,0 +1,351 @@
+{
+  "modules": [
+    {
+      "source": "api/config/endpoints.ts",
+      "dependencies": [],
+      "dependents": [
+        "api/config/index.ts",
+        "composables/useChatMedia.ts"
+      ],
+      "orphan": false,
+      "valid": true
+    },
+    {
+      "source": "api/config/index.ts",
+      "dependencies": [
+        {
+          "dynamic": false,
+          "module": "./endpoints",
+          "moduleSystem": "es6",
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "api/config/endpoints.ts",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        },
+        {
+          "dynamic": false,
+          "module": "./settings",
+          "moduleSystem": "es6",
+          "exoticallyRequired": false,
+          "dependencyTypes": [
+            "local",
+            "import"
+          ],
+          "resolved": "api/config/settings.ts",
+          "coreModule": false,
+          "followable": true,
+          "couldNotResolve": false,
+          "matchesDoNotFollow": false,
+          "circular": false,
+          "valid": true
+        }
+      ],
+      "dependents": [
+        "api/services/locations.ts",
+        "api/index.ts",
+        "api/services/announcements.ts",
+        "api/services/approvals.ts",
+        "api/services/auth.ts",
+        "api/services/chats.ts",
+        "api/services/comments.ts",
+        "api/services/dynamicScreens.ts",
+        "api/services/faq.ts",
+        "api/services/featured.ts",
+        "api/services/featureRequests.ts",
+        "api/services/features.ts",
+        "api/services/feed.ts",
+        "api/services/gamification.ts",
+        "api/services/ideas.ts",
+        "api/services/images.ts",
+        "api/services/news.ts",
+        "api/services/newsletter.ts",
+        "api/services/notifications.ts",
+        "api/services/opinions.ts",
+        "api/services/permissions.ts",
+        "api/services/posts.ts",
+        "api/services/premium.ts",
+        "api/services/reactions.ts",
+        "api/services/reports.ts",
+        "api/services/seo.ts",
+        "api/services/support.ts",
+        "api/services/users.ts",
+        "api/services/valueBids.ts",
+        "api/services/videos.ts",
+        "pages/businesses/[slug].vue",
+        "pages/businesses/index.vue",
+        "plugins/echo.client.ts"
+      ],
+      "orphan": false,
+      "valid": true
+    }
+  ],
+  "summary": {
+    "violations": [
+      {
+        "type": "cycle",
+        "from": "api/core/client.ts",
+        "to": "api/core/retry.ts",
+        "unresolvedTo": "./retry",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ],
+        "rule": {
+          "severity": "warn",
+          "name": "no-circular"
+        },
+        "cycle": [
+          {
+            "name": "api/core/retry.ts",
+            "dependencyTypes": [
+              "local",
+              "import"
+            ]
+          },
+          {
+            "name": "api/types/index.ts",
+            "dependencyTypes": [
+              "local",
+              "type-only",
+              "import"
+            ]
+          },
+          {
+            "name": "api/types/auth.ts",
+            "dependencyTypes": [
+              "local",
+              "type-only",
+              "export"
+            ]
+          },
+          {
+            "name": "api/services/locations.ts",
+            "dependencyTypes": [
+              "local",
+              "type-only",
+              "import"
+            ]
+          },
+          {
+            "name": "api/core/client.ts",
+            "dependencyTypes": [
+              "local",
+              "type-only",
+              "import"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "cycle",
+        "from": "api/core/client.ts",
+        "to": "api/types/index.ts",
+        "unresolvedTo": "../types",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ],
+        "rule": {
+          "severity": "warn",
+          "name": "no-circular"
+        },
+        "cycle": [
+          {
+            "name": "api/types/index.ts",
+            "dependencyTypes": [
+              "local",
+              "type-only",
+              "import"
+            ]
+          },
+          {
+            "name": "api/types/auth.ts",
+            "dependencyTypes": [
+              "local",
+              "type-only",
+              "export"
+            ]
+          },
+          {
+            "name": "api/services/locations.ts",
+            "dependencyTypes": [
+              "local",
+              "type-only",
+              "import"
+            ]
+          },
+          {
+            "name": "api/core/client.ts",
+            "dependencyTypes": [
+              "local",
+              "type-only",
+              "import"
+            ]
+          }
+        ]
+      }
+    ],
+    "error": 0,
+    "warn": 2,
+    "info": 0,
+    "ignore": 0,
+    "advisedExitCode": 0,
+    "totalCruised": 433,
+    "totalDependenciesCruised": 671,
+    "environment": {
+      "version": "18.4.0",
+      "nodeVersionSupported": "^22||^24||>=26",
+      "nodeVersionFound": "v24.14.1",
+      "osVersionFound": "x64 linux@7.0.0-38-generic",
+      "transpilersFound": [
+        {
+          "name": "javascript",
+          "version": "*",
+          "available": true,
+          "currentVersion": "acorn@8.18.0"
+        },
+        {
+          "name": "babel",
+          "version": ">=7.0.0 <8.0.0",
+          "available": true,
+          "currentVersion": "@babel/core@7.29.0"
+        },
+        {
+          "name": "coffee-script",
+          "version": ">=1.0.0 <2.0.0",
+          "available": false,
+          "currentVersion": "-"
+        },
+        {
+          "name": "coffeescript",
+          "version": ">=1.0.0 <3.0.0",
+          "available": false,
+          "currentVersion": "-"
+        },
+        {
+          "name": "livescript",
+          "version": ">=1.0.0 <2.0.0",
+          "available": false,
+          "currentVersion": "-"
+        },
+        {
+          "name": "svelte",
+          "version": ">=3.0.0 <6.0.0",
+          "available": false,
+          "currentVersion": "-"
+        },
+        {
+          "name": "swc",
+          "version": ">=1.0.0 <2.0.0",
+          "available": false,
+          "currentVersion": "-"
+        },
+        {
+          "name": "typescript",
+          "version": ">=2.0.0 <7.0.0",
+          "available": true,
+          "currentVersion": "typescript@6.0.3"
+        },
+        {
+          "name": "vue-template-compiler",
+          "version": ">=2.0.0 <3.0.0",
+          "available": false,
+          "currentVersion": "@vue/compiler-sfc@3.5.34"
+        },
+        {
+          "name": "@vue/compiler-sfc",
+          "version": ">=3.0.0 <4.0.0",
+          "available": true,
+          "currentVersion": "@vue/compiler-sfc@3.5.34"
+        }
+      ],
+      "extensionsFound": [
+        {
+          "extension": ".js",
+          "available": true
+        },
+        {
+          "extension": ".cjs",
+          "available": true
+        },
+        {
+          "extension": ".mjs",
+          "available": true
+        },
+        {
+          "extension": ".jsx",
+          "available": true
+        },
+        {
+          "extension": ".ts",
+          "available": true
+        },
+        {
+          "extension": ".tsx",
+          "available": true
+        },
+        {
+          "extension": ".d.ts",
+          "available": true
+        },
+        {
+          "extension": ".cts",
+          "available": true
+        },
+        {
+          "extension": ".d.cts",
+          "available": true
+        },
+        {
+          "extension": ".mts",
+          "available": true
+        },
+        {
+          "extension": ".d.mts",
+          "available": true
+        },
+        {
+          "extension": ".vue",
+          "available": true
+        },
+        {
+          "extension": ".svelte",
+          "available": false
+        },
+        {
+          "extension": ".ls",
+          "available": false
+        },
+        {
+          "extension": ".coffee",
+          "available": false
+        },
+        {
+          "extension": ".litcoffee",
+          "available": false
+        },
+        {
+          "extension": ".coffee.md",
+          "available": false
+        },
+        {
+          "extension": ".csx",
+          "available": false
+        },
+        {
+          "extension": ".cjsx",
+          "available": false
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "minLines": 5,
+  "minTokens": 50,
+  "pattern": "**/*.{ts,vue,js}",
+  "ignore": [
+    "**/node_modules/**",
+    "**/.nuxt/**",
+    "**/.output/**",
+    "**/__tests__/**",
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "**/app/types/api.ts",
+    "**/*.min.*"
+  ],
+  "reporters": ["json"],
+  "output": "quality-reports/jscpd",
+  "absolute": false,
+  "gitignore": false
+}

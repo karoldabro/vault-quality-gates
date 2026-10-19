@@ -41,12 +41,14 @@ lines() { local i; for ((i = $1; i <= $2; i++)); do printf 'line %d\n' "$i"; don
 fake_pnpm() {
     cat > "$1" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "$FAKE_ARGV"
+# The driver runs pnpm with an empty environment, so the fake finds its files beside itself.
+w="$(cd "$(dirname "$0")/.." && pwd)"
+printf '%s\n' "$*" >> "$w/argv"
 out=''
 while [ $# -gt 0 ]; do [ "$1" = --output ] && out="$2"; shift; done
 [ -n "$out" ] || exit 9
-mkdir -p "$out" && cp "$FAKE_JSCPD" "$out/jscpd-report.json"
-printf '%s|%s|%s\n' "$PWD" "$out" "${npm_config_registry:-}" >> "$FAKE_SEEN"
+mkdir -p "$out" && cp "$w/jscpd.json" "$out/jscpd-report.json"
+printf '%s|%s|%s\n' "$PWD" "$out" "$(sed -n 's/^registry=//p' .npmrc 2>/dev/null)" >> "$w/seen"
 EOF
     chmod +x "$1"
 }
@@ -134,15 +136,15 @@ result() { jq -r "$1" "$QG_OUT/result.json"; }
     [ "$(result '.findings[0].file')" = app/One.php ]
 }
 
-@test "pnpm receives dlx jscpd@5.3.2 <tree>/app ... --reporters json --output <empty folder>/out" {
+@test "pnpm receives dlx jscpd@5.3.2 <tree>/app ... --absolute --reporters json --output <empty folder>/out" {
     clone app/One.php 31 35 app/Two.php 1 5 | report
     "$DRIVER" run > /dev/null
     local out; out="$(cut -d'|' -f2 "$FAKE_SEEN")"
-    [ "$(cat "$FAKE_ARGV")" = "dlx jscpd@5.3.2 $WORK/repo/app --reporters json --output $out --silent --no-colors" ]
+    [ "$(cat "$FAKE_ARGV")" = "dlx jscpd@5.3.2 $WORK/repo/app --absolute --reporters json --output $out --silent --no-colors" ]
     rm -f "$FAKE_ARGV" "$FAKE_SEEN"
     QG_ARGS='version=4.0.0 min-lines=10 min-tokens=70 format=php ignore=**/Docs/** -- --exitCode 0' "$DRIVER" run > /dev/null
     out="$(cut -d'|' -f2 "$FAKE_SEEN")"
-    [ "$(cat "$FAKE_ARGV")" = "dlx jscpd@4.0.0 $WORK/repo/app --min-lines 10 --min-tokens 70 --format php --ignore **/Docs/** --reporters json --output $out --silent --no-colors --exitCode 0" ]
+    [ "$(cat "$FAKE_ARGV")" = "dlx jscpd@4.0.0 $WORK/repo/app --min-lines 10 --min-tokens 70 --format php --ignore **/Docs/** --absolute --reporters json --output $out --silent --no-colors --exitCode 0" ]
 }
 
 @test "jscpd runs from an empty folder outside the tree, with the public registry, and the folder is removed" {
@@ -158,7 +160,7 @@ result() { jq -r "$1" "$QG_OUT/result.json"; }
 }
 
 @test "a jscpd that writes no report is status error, and the output dir is still removed" {
-    printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" >> "$FAKE_ARGV"' 'pwd > "$FAKE_SEEN"' 'exit 0' > "$WORK/path/pnpm"
+    printf '%s\n' '#!/usr/bin/env bash' 'w="$(cd "$(dirname "$0")/.." && pwd)"' 'printf "%s\n" "$*" >> "$w/argv"' 'pwd > "$w/seen"' 'exit 0' > "$WORK/path/pnpm"
     "$DRIVER" run > /dev/null
     [ -e "$FAKE_ARGV" ]
     [ "$(result .status)" = error ] && [ "$(result .metric)" = null ]
