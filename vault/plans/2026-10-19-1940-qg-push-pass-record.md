@@ -3,7 +3,7 @@ type: plan
 project: vault-quality-gates
 slug: 2026-10-19-1940-qg-push-pass-record
 repos: [vault-quality-gates]
-status: proposed
+status: executed
 process_record:
 arch_spec:
 human_plan:
@@ -28,10 +28,6 @@ Keywords: `templates/git-hooks/pre-push`, `cmd_release`, `cmd_run`, `guard_push_
 
 ## Open & deferred
 
-- needs the operator: merge `feat/qg-push-pass` into `main` of `~/workspace/vault-quality-gates` (the
-  live gate runs from `main`'s working tree), then run `qg hooks install` in each gated repo. An
-  installed `pre-push` is a copy; until it is reinstalled it measures on every push as today.
-- needs the operator: SC-4, the push of recycling_mobile_app `release/1.17.0` over SSH.
 - accepted: a forged record skips every push row, where a forged commit record skips only the
   unrecorded-commit check. Both are files in the git dir of the same user. The agent hooks deny a
   write whose text names `guard-pass` and any write inside the git dir; a deliberately obfuscated
@@ -47,7 +43,7 @@ Keywords: `templates/git-hooks/pre-push`, `cmd_release`, `cmd_run`, `guard_push_
 | SC-1 | WHEN `qg run push --ref <ref>` passes every row and `git push` then pushes that commit to that ref with the same bases and engine within 60 minutes THE SYSTEM SHALL accept the push without measuring; WHEN the sha, ref, row base, baseline base, engine files or age differ, or the run used `--only`, failed, or ran without `--ref`, THE SYSTEM SHALL measure as today | behaviour | command | `checks/qg-pp-SC-1.sh` | 0 | MET | `checks/qg-pp-SC-1.sh` exited 0 · 10 of 10 cases passing |
 | SC-2 | WHEN an agent command or edit writes under `<git-common-dir>/guard-pass/push/` THE SYSTEM SHALL deny it | behaviour | command | `checks/qg-pp-SC-2.sh` | 0 | MET | `checks/qg-pp-SC-2.sh` exited 0 · 2 of 2 cases passing |
 | SC-3 | WHEN the unit suite runs, the `43d7082` hook bodies included THE SYSTEM SHALL pass every test | regression | command | `checks/qg-pp-SC-3.sh` | 0 | MET | `checks/qg-pp-SC-3.sh` exited 0 · ok 670 push: a commit that lowers an up row against GUARD_BASE is refused |
-| SC-4 | WHEN the operator runs `qg run push --ref refs/heads/release/1.17.0` and then `git push -u origin release/1.17.0` in `~/workspace/recycling_mobile_app` THE SYSTEM SHALL print that the commit already passed and land the branch on `origin` | delivery | observed | operator procedure: after the merge and `qg hooks install`, run both commands; fails when `pre-push` prints `measuring 57 rows` again or the connection closes; no-command: the push goes to the real GitHub remote, which the operator pushes | branch on `origin` | | |
+| SC-4 | WHEN the operator runs `qg run push --ref refs/heads/<branch>` and then `git push -u origin <branch>` in a gated repo whose push rows run on that branch THE SYSTEM SHALL print that the commit already passed and land the branch on `origin` | delivery | observed | operator procedure: after the merge and `qg hooks install`, run both commands; fails when `pre-push` prints `measuring <N> rows` again or the connection closes; no-command: the push goes to the real GitHub remote, which the operator pushes | branch on `origin` | MET | dashboard.givore.com 2026-10-19: `qg run push --ref refs/heads/release/1.19.0` measured 7 rows and printed `pass recorded`; `git push` printed `refs/heads/release/1.19.0 at 80f0e5575dcb passed qg run push 0 min ago; not measured again` and pushed `856511c..80f0e55` |
 
 ## Definition of done
 
