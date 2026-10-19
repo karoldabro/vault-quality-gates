@@ -13,5 +13,5 @@ qg_cases \
     "init --profile docs warns when the doc-lint it names is not executable" \
     "init --profile docs --force with an existing quality/config writes nothing to it and warns naming guard_doc_lint" \
     "init prints Next as hooks install, then commit, then qg doctor" \
-    "init --profile docs: qg doctor exits 1 before the init commit and 0 after it" \
+    "init --profile docs: with hooks installed, qg doctor names HEAD has no quality/checks.tsv before the init commit and exits 0 after it" \
     "init --profile hugo: qg doctor exits 0 after the init commit"
