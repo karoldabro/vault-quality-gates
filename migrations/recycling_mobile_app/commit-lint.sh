@@ -90,12 +90,18 @@ rm -f "$refuse" "$warn" "$memo"
 # (4) Packages: always resolve in the tree with the SDK's pub, offline, which leaves lib/generated as
 # staged (`flutter pub get` regenerates l10n there). The live checkout's resolution is never copied:
 # an edit there would choose the lint code.
-(cd "$tree" && FLUTTER_ROOT="$flutter_root" nice -n 15 "$dart" pub get --offline) > "$work/pub" 2>&1 \
-    || fail "step 4 (dart pub get --offline)" "$(tail -n 5 "$work/pub") - run flutter pub get, then retry"
+# --enforce-lockfile: a pubspec.yaml dependency_overrides entry the lock does not record is refused,
+# so a commit cannot point a lint package at code in the repo.
+(cd "$tree" && FLUTTER_ROOT="$flutter_root" nice -n 15 "$dart" pub get --offline --enforce-lockfile) > "$work/pub" 2>&1 \
+    || fail "step 4 (dart pub get --offline --enforce-lockfile)" "$(tail -n 5 "$work/pub") - run flutter pub get, then retry"
 
 # (5) Options: the tree analyses with the commit catalog; the original becomes its include. A nested
 # options file would apply its own rules to its directory, so every one below the source roots goes.
 [ -f "$tree/analysis_options.commit.yaml" ] || fail "step 5 (options)" "the tree has no analysis_options.commit.yaml"
+# analysis_options.base.yaml is this script's own rename; a committed one would replace the rules.
+if [ "${QG_TARGET:-:index}" = ':index' ]; then tracked="$(git -C "${QG_REPO:-.}" ls-files -- analysis_options.base.yaml)"
+else tracked="$(git -C "${QG_REPO:-.}" ls-tree --name-only "$QG_TARGET" -- analysis_options.base.yaml)"; fi
+[ -z "$tracked" ] || fail "step 5 (options)" "analysis_options.base.yaml is committed; it is the name this script gives the original options"
 if [ ! -f "$tree/analysis_options.base.yaml" ]; then
     mv "$tree/analysis_options.yaml" "$tree/analysis_options.base.yaml" || fail "step 5 (rename analysis_options.yaml)"
 fi
@@ -113,15 +119,19 @@ fi
 # (6) Runner: an AOT binary per runner key, compiled beside its final name so the install is one
 # rename; installing a new one removes every other runner and byte store in the cache.
 gate="$cache/givore-gate-$runner_key"
-if [ ! -x "$gate" ]; then
+# The checksum written beside the runner at compile time; a runner that no longer matches it (code
+# a test run left in the cache) is compiled again.
+if [ ! -x "$gate" ] || ! (cd "$cache" && sha256sum --status -c "givore-gate-$runner_key.sha256" 2>/dev/null); then
     partial="$cache/.givore-gate-$runner_key.$$"
-    (cd "$pkg" && "$dart" pub get --offline) > "$work/pub" 2>&1 \
+    (cd "$pkg" && "$dart" pub get --offline --enforce-lockfile) > "$work/pub" 2>&1 \
         || fail "step 6 (dart pub get --offline in tool/givore_lints)" "$(tail -n 5 "$work/pub")"
     (cd "$pkg" && nice -n 15 "$dart" compile exe bin/gate.dart -o "$partial") > "$work/compile" 2>&1 \
         || { rm -f "$partial"; fail "step 6 (dart compile exe)" "$(tail -n 10 "$work/compile")"; }
     mv -f "$partial" "$gate" || { rm -f "$partial"; fail "step 6 (install runner)" "$gate"; }
+    (cd "$cache" && sha256sum "givore-gate-$runner_key" > "givore-gate-$runner_key.sha256") \
+        || fail "step 6 (record runner checksum)" "$gate"
     find "$cache" -mindepth 1 -maxdepth 1 \( -name 'givore-gate-*' -o -name '.givore-gate-*' -o -name 'analysis-*' \) \
-        ! -name "givore-gate-$runner_key" ! -name "analysis-$runner_key" -exec rm -rf {} + \
+        ! -name "givore-gate-$runner_key" ! -name "givore-gate-$runner_key.sha256" ! -name "analysis-$runner_key" -exec rm -rf {} + \
         || fail "step 6 (remove old runners)" "$cache"
 fi
 

@@ -50,15 +50,19 @@ case "${1:-}" in
         cd "$QG_TREE" || { qg_fail grep-count findings "cannot enter ${QG_TREE}"; exit 0; }
         hits="${QG_OUT}/hits"
         if [ -n "$awk_file" ]; then
-            [ -s "$awk_file" ] || { qg_fail grep-count findings "awk script ${awk_file} is missing or empty"; exit 0; }
+            # The script comes from the config revision (an empty one is a first commit: the index),
+            # so a commit cannot change the rule that judges it.
+            git -C "${QG_REPO:-.}" show "${QG_CONFIG_REV:-}:${awk_file}" > "${QG_OUT}/script.awk" 2>/dev/null && [ -s "${QG_OUT}/script.awk" ] \
+                || { qg_fail grep-count findings "awk script ${awk_file} is not committed at the config revision"; exit 0; }
             find "${paths[@]}" -type f ${name:+-name "$name"} -print0 > "${QG_OUT}/files.all"
             : > "${QG_OUT}/files"
             while IFS= read -r -d '' f; do
+                f="${f#./}"
                 [ -z "$exclude" ] || ! [[ "$f" =~ $exclude ]] || continue
                 printf '%s\0' "$f" >> "${QG_OUT}/files"
             done < "${QG_OUT}/files.all"
             # -r: with no file, awk would read the hook's stdin and count it.
-            xargs -0 -r awk -f "$awk_file" < "${QG_OUT}/files" > "$hits" 2> "${QG_OUT}/stderr" \
+            xargs -0 -r awk -f "${QG_OUT}/script.awk" < "${QG_OUT}/files" > "$hits" 2> "${QG_OUT}/stderr" \
                 || { cat "${QG_OUT}/stderr"; qg_fail grep-count findings "awk -f ${awk_file} failed"; exit 0; }
             unit=lines
         else
@@ -72,8 +76,9 @@ case "${1:-}" in
             grep "$flag" -E ${name:+--include="$name"} -e "$pattern" -- "${paths[@]}" > "${QG_OUT}/grep" 2> "${QG_OUT}/stderr" || rc=$?
             [ "$rc" -le 1 ] || { cat "${QG_OUT}/stderr"; qg_fail grep-count findings "grep exited ${rc}"; exit 0; }
             # -Z ends each path with NUL: lines mode prints <path>NUL<line>:<text>, files mode <path>NUL.
-            if [ "$count" = files ]; then tr '\0' '\n' < "${QG_OUT}/grep" > "${QG_OUT}/grep.n"
-            else tr '\0' '\t' < "${QG_OUT}/grep" > "${QG_OUT}/grep.n"; fi
+            # A path searched as `.` comes back as ./<path>; exclude= matches it without the prefix.
+            if [ "$count" = files ]; then tr '\0' '\n' < "${QG_OUT}/grep" | sed 's#^\./##' > "${QG_OUT}/grep.n"
+            else tr '\0' '\t' < "${QG_OUT}/grep" | sed 's#^\./##' > "${QG_OUT}/grep.n"; fi
             if [ -n "$exclude" ]; then
                 while IFS= read -r line; do
                     f="${line%%$'\t'*}"

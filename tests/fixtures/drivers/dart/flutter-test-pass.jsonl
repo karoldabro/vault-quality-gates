@@ -1,0 +1,46 @@
+{"protocolVersion":"0.1.1","runnerVersion":null,"pid":453800,"type":"start","time":0}
+{"suite":{"id":0,"platform":"vm","path":"/TREE/test/domain/mixins/user_ownable_test.dart"},"type":"suite","time":0}
+{"test":{"id":1,"name":"loading /TREE/test/domain/mixins/user_ownable_test.dart","suiteID":0,"groupIDs":[],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":1}
+{"suite":{"id":2,"platform":"vm","path":"/TREE/test/domain/models/ambassador_mapping_test.dart"},"type":"suite","time":8}
+{"test":{"id":3,"name":"loading /TREE/test/domain/models/ambassador_mapping_test.dart","suiteID":2,"groupIDs":[],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":9}
+{"count":2,"time":9,"type":"allSuites"}
+
+[{"event":"test.startedProcess","params":{"vmServiceUri":"http://127.0.0.1:44113/F7-SBVDGRAw=/"}}]
+{"testID":1,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":3780}
+{"group":{"id":4,"suiteID":0,"parentID":null,"name":"","metadata":{"skip":false,"skipReason":null},"testCount":6,"line":null,"column":null,"url":null},"type":"group","time":3784}
+{"group":{"id":5,"suiteID":0,"parentID":4,"name":"UserOwnable","metadata":{"skip":false,"skipReason":null},"testCount":6,"line":16,"column":3,"url":"file:///TREE/test/domain/mixins/user_ownable_test.dart"},"type":"group","time":3786}
+{"group":{"id":6,"suiteID":0,"parentID":5,"name":"UserOwnable isOwnedBy","metadata":{"skip":false,"skipReason":null},"testCount":6,"line":17,"column":5,"url":"file:///TREE/test/domain/mixins/user_ownable_test.dart"},"type":"group","time":3786}
+{"test":{"id":7,"name":"UserOwnable isOwnedBy returns true when user owns the entity","suiteID":0,"groupIDs":[4,5,6],"metadata":{"skip":false,"skipReason":null},"line":18,"column":7,"url":"file:///TREE/test/domain/mixins/user_ownable_test.dart"},"type":"testStart","time":3786}
+{"testID":7,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":3823}
+{"test":{"id":8,"name":"UserOwnable isOwnedBy returns false when user does not own the entity","suiteID":0,"groupIDs":[4,5,6],"metadata":{"skip":false,"skipReason":null},"line":35,"column":7,"url":"file:///TREE/test/domain/mixins/user_ownable_test.dart"},"type":"testStart","time":3824}
+{"testID":8,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":3829}
+{"test":{"id":9,"name":"UserOwnable isOwnedBy returns false when user is null","suiteID":0,"groupIDs":[4,5,6],"metadata":{"skip":false,"skipReason":null},"line":52,"column":7,"url":"file:///TREE/test/domain/mixins/user_ownable_test.dart"},"type":"testStart","time":3830}
+{"testID":9,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":3835}
+{"test":{"id":10,"name":"UserOwnable isOwnedBy returns false when user id is null","suiteID":0,"groupIDs":[4,5,6],"metadata":{"skip":false,"skipReason":null},"line":63,"column":7,"url":"file:///TREE/test/domain/mixins/user_ownable_test.dart"},"type":"testStart","time":3835}
+{"testID":10,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":3839}
+{"test":{"id":11,"name":"UserOwnable isOwnedBy returns false when entity ownerId is null","suiteID":0,"groupIDs":[4,5,6],"metadata":{"skip":false,"skipReason":null},"line":80,"column":7,"url":"file:///TREE/test/domain/mixins/user_ownable_test.dart"},"type":"testStart","time":3840}
+{"testID":11,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":3844}
+{"test":{"id":12,"name":"UserOwnable isOwnedBy returns false when both user id and ownerId are null","suiteID":0,"groupIDs":[4,5,6],"metadata":{"skip":false,"skipReason":null},"line":97,"column":7,"url":"file:///TREE/test/domain/mixins/user_ownable_test.dart"},"type":"testStart","time":3845}
+{"testID":12,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":3853}
+
+[{"event":"test.startedProcess","params":{"vmServiceUri":"http://127.0.0.1:40971/xYXJ8vEYZuk=/"}}]
+{"testID":3,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":4330}
+{"group":{"id":13,"suiteID":2,"parentID":null,"name":"","metadata":{"skip":false,"skipReason":null},"testCount":7,"line":null,"column":null,"url":null},"type":"group","time":4330}
+{"group":{"id":14,"suiteID":2,"parentID":13,"name":"User.isAmbassador mapping","metadata":{"skip":false,"skipReason":null},"testCount":2,"line":9,"column":3,"url":"file:///TREE/test/domain/models/ambassador_mapping_test.dart"},"type":"group","time":4331}
+{"test":{"id":15,"name":"User.isAmbassador mapping maps is_ambassador=true from api model","suiteID":2,"groupIDs":[13,14],"metadata":{"skip":false,"skipReason":null},"line":10,"column":5,"url":"file:///TREE/test/domain/models/ambassador_mapping_test.dart"},"type":"testStart","time":4331}
+{"testID":15,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":4360}
+{"test":{"id":16,"name":"User.isAmbassador mapping defaults isAmbassador to false when null","suiteID":2,"groupIDs":[13,14],"metadata":{"skip":false,"skipReason":null},"line":25,"column":5,"url":"file:///TREE/test/domain/models/ambassador_mapping_test.dart"},"type":"testStart","time":4360}
+{"testID":16,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":4364}
+{"group":{"id":17,"suiteID":2,"parentID":13,"name":"LeaderboardEntry.user.isAmbassador mapping","metadata":{"skip":false,"skipReason":null},"testCount":2,"line":40,"column":3,"url":"file:///TREE/test/domain/models/ambassador_mapping_test.dart"},"type":"group","time":4365}
+{"test":{"id":18,"name":"LeaderboardEntry.user.isAmbassador mapping carries is_ambassador through fromApiModel","suiteID":2,"groupIDs":[13,17],"metadata":{"skip":false,"skipReason":null},"line":41,"column":5,"url":"file:///TREE/test/domain/models/ambassador_mapping_test.dart"},"type":"testStart","time":4365}
+{"testID":18,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":4370}
+{"test":{"id":19,"name":"LeaderboardEntry.user.isAmbassador mapping defaults to false when api omits the flag","suiteID":2,"groupIDs":[13,17],"metadata":{"skip":false,"skipReason":null},"line":57,"column":5,"url":"file:///TREE/test/domain/models/ambassador_mapping_test.dart"},"type":"testStart","time":4370}
+{"testID":19,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":4375}
+{"group":{"id":20,"suiteID":2,"parentID":13,"name":"isPremium derives from premium_profiles","metadata":{"skip":false,"skipReason":null},"testCount":3,"line":70,"column":3,"url":"file:///TREE/test/domain/models/ambassador_mapping_test.dart"},"type":"group","time":4376}
+{"test":{"id":21,"name":"isPremium derives from premium_profiles User.isPremium true when premium_profiles is non-empty","suiteID":2,"groupIDs":[13,20],"metadata":{"skip":false,"skipReason":null},"line":71,"column":5,"url":"file:///TREE/test/domain/models/ambassador_mapping_test.dart"},"type":"testStart","time":4376}
+{"testID":21,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":4384}
+{"test":{"id":22,"name":"isPremium derives from premium_profiles User.isPremium false when premium_profiles is null","suiteID":2,"groupIDs":[13,20],"metadata":{"skip":false,"skipReason":null},"line":85,"column":5,"url":"file:///TREE/test/domain/models/ambassador_mapping_test.dart"},"type":"testStart","time":4384}
+{"testID":22,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":4388}
+{"test":{"id":23,"name":"isPremium derives from premium_profiles LeaderboardEntry.user.isPremium derives from premium_profiles","suiteID":2,"groupIDs":[13,20],"metadata":{"skip":false,"skipReason":null},"line":98,"column":5,"url":"file:///TREE/test/domain/models/ambassador_mapping_test.dart"},"type":"testStart","time":4388}
+{"testID":23,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":4393}
+{"success":true,"type":"done","time":5554}

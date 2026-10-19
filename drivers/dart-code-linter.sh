@@ -4,7 +4,7 @@
 # vault/architecture/qg-driver-contract.md; keys: vault/architecture/qg-dart-drivers.md.
 #
 # args:  metric=<metricsId>><N> | metric=issue:<ruleId>   [paths=<dir,dir>] [ignore=<glob>]
-#   metric   <metricsId>><N> counts functions and classes whose metric is over N, such as
+#   metric   <metricsId>><N> counts functions (classes for number-of-methods) whose metric is over N, such as
 #            cyclomatic-complexity>20 or number-of-methods>10; issue:<ruleId> counts that rule's issues
 #   paths    default lib
 #   ignore   passed as --exclude=<glob>
@@ -20,6 +20,9 @@ export LC_ALL=C
 
 REPORT=quality-reports/dcl.json
 
+# dart_code_linter <argv...> -> the metrics run, its stdout copy of the report dropped.
+dart_code_linter() { "$QG_DART" run dart_code_linter:metrics analyze "$@" > /dev/null; }
+
 produce() {
     local ignore extra=()
     qg_dart_env && qg_dart_packages || return 1
@@ -27,14 +30,14 @@ produce() {
     ignore="$(qg_kv ignore)" && extra=("--exclude=${ignore}")
     mkdir -p "${QG_TREE}/quality-reports"
     # dart_code_linter exits 1 when it reports issues; the report decides the value.
-    qg_tool "$REPORT" '0 1' bash -c '"$@" > /dev/null' dcl "$QG_DART" run dart_code_linter:metrics analyze \
-        "${QG_PATH_LIST[@]}" --reporter=json "--json-path=${REPORT}" "${extra[@]}" --no-congratulate || return 1
+    qg_tool "$REPORT" '0 1' dart_code_linter "${QG_PATH_LIST[@]}" --reporter=json "--json-path=${REPORT}" \
+        "${extra[@]}" --no-congratulate || return 1
     cp "${QG_TREE}/${REPORT}" "${QG_OUT}/dart-code-linter"
 }
 
 case "${1:-}" in
     describe)
-        printf '{"name":"dart-code-linter","summary":"dart_code_linter: functions or classes over a metric limit, or issues of one rule","requires":["jq","git","bash"],"needs_tree":true}\n' ;;
+        printf '{"name":"dart-code-linter","summary":"dart_code_linter: functions or classes over a metric limit, or issues of one rule","requires":["jq","git"],"needs_tree":true}\n' ;;
     explain)
         printf 'Counts functions or classes over a dart_code_linter metric limit, or the issues of one rule.\n'
         printf 'Split the function or class the finding names until its metric is under the limit.\n'
@@ -59,7 +62,9 @@ case "${1:-}" in
                 | {ruleId: $r, file: $p, line: (.codeSpan.start.line // null), level: "error",
                    message: (.message // $r), doc: (.documentation // null)}]' "$f" > "${QG_OUT}/findings.json"
         else
-            jq -c --arg id "$id" --argjson n "$limit" '[.records[] | .path as $p | (.functions // {}), (.classes // {})
+            # number-of-methods is a class metric; every other one is read per function.
+            jq -c --arg id "$id" --argjson n "$limit" '[.records[] | .path as $p
+                | (if $id == "number-of-methods" then (.classes // {}) else (.functions // {}) end)
                 | to_entries[] | .key as $k | .value as $e | ($e.metrics // [])[]
                 | select(.metricsId == $id and .value > $n)
                 | {ruleId: $id, file: $p, line: ($e.codeSpan.start.line // null), level: "error",

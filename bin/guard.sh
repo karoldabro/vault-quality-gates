@@ -330,6 +330,15 @@ cmd_baseline() {
             [ -n "$found" ] || { guard_err "guard: baseline --only: no baseline row \"${want}\" in quality/checks.tsv"; exit 2; }
         done
     fi
+    # A driver that measures a tree writes into it (packages, reports, mutations), so in a repo that
+    # measures commits rather than its working tree, baseline measures a detached worktree of HEAD.
+    local r
+    if guard_measure_worktree && [ -z "${GUARD_SHA:-}" ]; then
+        for r in "${GUARD_ROWS[@]}"; do
+            [ "$(guard_row_field "$r" driver)" != shell ] && guard_row_selected "$r" baseline - \
+                && guard_driver_needs_tree "$(guard_row_field "$r" driver)" && { GUARD_SHA="$(git rev-parse HEAD)"; break; }
+        done
+    fi
     guard_enter_tree
     guard_run 'baseline' "$(git rev-parse HEAD)" || true
     guard_leave_tree

@@ -24,7 +24,7 @@ case "${1:-}" in
         [ "$(qg_kv files)" = changed ] || { qg_fail dart-format files 'driver dart-format needs files=changed'; exit 0; }
         qg_files '\.dart$'
         if [ "${#QG_FILE_LIST[@]}" -eq 0 ]; then qg_result dart-format measured 0 files - -; exit 0; fi
-        qg_dart_env || { qg_fail dart-format files "$QG_ERROR"; exit 0; }
+        qg_dart_prepare dart-format files || exit 0
         read -ra argv <<<"$(qg_argv)"
         qg_tool - '0 1' "$QG_DART" format --output=none --set-exit-if-changed "${argv[@]}" -- "${QG_FILE_LIST[@]}" \
             || { qg_fail dart-format files "$QG_ERROR"; exit 0; }

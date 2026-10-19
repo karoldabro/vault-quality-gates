@@ -15,6 +15,10 @@ number it writes as `metric`. A row names a driver in its `driver` cell and its 
 Every built-in sources `lib/qg-driver-kit.sh`. Every one declares `needs_tree: true`, so the commit gate
 measures a copy of the staged tree and never the working tree.
 
+Built-in drivers are catalogued per ecosystem, one page each. The Dart and Flutter drivers are in
+`vault/architecture/qg-dart-drivers.md`. Helpers for one language live in `lib/qg-<lang>.sh`, such as
+`lib/qg-dart.sh`.
+
 ## Keys every built-in reads the same way
 
 | key | meaning |

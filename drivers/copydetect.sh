@@ -47,8 +47,10 @@ case "${1:-}" in
         req="$(qg_need copydetect pairs requirements)" || exit 0
         root="$(qg_kv venv-root)" || root=qg-tools
         [[ "$root" =~ ^[A-Za-z0-9._-]+$ && "$root" != *..* ]] || { qg_fail copydetect pairs "venv-root=${root} must be one plain folder name"; exit 0; }
-        [ -s "${QG_TREE}/${req}" ] || { qg_fail copydetect pairs "requirements file ${req} is missing or empty"; exit 0; }
-        hash="$(sha256sum "${QG_TREE}/${req}" | cut -c1-12)"
+        # The requirements come from the config revision, so a commit cannot pick another venv.
+        git -C "${QG_REPO:-.}" show "${QG_CONFIG_REV:-}:${req}" > "${QG_OUT}/requirements" 2>/dev/null && [ -s "${QG_OUT}/requirements" ] \
+            || { qg_fail copydetect pairs "requirements file ${req} is not committed at the config revision"; exit 0; }
+        hash="$(sha256sum "${QG_OUT}/requirements" | cut -c1-12)"
         py="${HOME}/.cache/${root}/copydetect-${hash}/bin/python"
         [ -x "$py" ] || { qg_fail copydetect pairs "no copydetect venv at ${py}; build it from ${req} (mobile: make quality-tools)"; exit 0; }
         ext="$(qg_kv ext)" || ext=dart

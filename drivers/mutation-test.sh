@@ -9,7 +9,7 @@
 #
 # metric = 100 minus the undetected percent the tool prints, two decimals. mutation_test exits 0 when
 # every mutation is caught and 255 when some survive; both measure. The mutated suite is code the
-# commit wrote, so it runs with every QG_* variable removed.
+# commit wrote, so it runs through qg_isolated (lib/qg-dart.sh).
 set -uo pipefail
 export LC_ALL=C
 # shellcheck source=../lib/qg-driver-kit.sh
@@ -30,8 +30,11 @@ case "${1:-}" in
         [ "$(qg_kv builtin)" = yes ] && flags+=(-b)
         qg_paths lib
         qg_dart_prepare mutation-test percent || exit 0
-        qg_tool - '0 255' qg_without_qg "$QG_DART" run mutation_test "${flags[@]}" "${QG_PATH_LIST[@]}" \
-            || { qg_fail mutation-test percent "$QG_ERROR"; exit 0; }
+        private="$(mktemp -d)" && chmod 700 "$private" || { qg_fail mutation-test percent 'cannot create a private temp folder'; exit 0; }
+        mutation_test() { qg_isolated "$private" "$QG_DART" run mutation_test "$@"; }
+        qg_tool - '0 255' mutation_test "${flags[@]}" "${QG_PATH_LIST[@]}" \
+            || { rm -rf "$private"; qg_fail mutation-test percent "$QG_ERROR"; exit 0; }
+        rm -rf "$private"
         line="$(grep -oE 'Undetected Mutations: [0-9]+ \([0-9.]+%\)' "${QG_OUT}/stdout" | tail -1)"
         total="$(grep -oE 'Total tests: [0-9]+' "${QG_OUT}/stdout" | tail -1 | grep -oE '[0-9]+')"
         [ -n "$line" ] || { tail -20 "${QG_OUT}/stdout"; qg_fail mutation-test percent 'mutation_test printed no Undetected Mutations line'; exit 0; }

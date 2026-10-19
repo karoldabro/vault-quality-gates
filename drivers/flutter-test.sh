@@ -8,8 +8,9 @@
 #                 load included. coverage: LH over LF of the lcov blocks kept, two decimals
 #   include       coverage keeps blocks whose tree-relative path matches; exclude drops them
 #
-# The suite is code the commit wrote, so it runs with every QG_* variable removed, and its stream and
-# lcov file go to a 0700 folder outside the measured tree. A run with no `done` event, no visible
+# The suite is code the commit wrote, so it runs through qg_isolated (lib/qg-dart.sh): its own session,
+# a minimal environment, every leftover process killed. Its stream and lcov file go to a 0700 folder
+# outside the measured tree. Coverage counts only the libraries some test loads, as v1 does. A run with no `done` event, no visible
 # test, an exit code other than 0 or 1, or exit 1 with no failure is an error, never a pass.
 set -uo pipefail
 export LC_ALL=C
@@ -26,7 +27,8 @@ produce() {
     inc="$(qg_kv include)" || inc=''
     exc="$(qg_kv exclude)" || exc=''
     d="$(mktemp -d)" && chmod 700 "$d" || { QG_ERROR='cannot create a private folder for the test stream'; return 1; }
-    ( cd "$QG_TREE" && qg_without_qg "$QG_FLUTTER" test --no-pub --coverage --coverage-path "${d}/lcov.info" \
+    mkdir "${d}/tmp" || { QG_ERROR='cannot create a private temp folder for the suite'; rm -rf "$d"; return 1; }
+    ( cd "$QG_TREE" && qg_isolated "${d}/tmp" "$QG_FLUTTER" test --no-pub --coverage --coverage-path "${d}/lcov.info" \
         --machine "${argv[@]}" ) > "${d}/stream" 2> "${d}/stderr" || rc=$?
     tail -20 "${d}/stderr"
     if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then

@@ -1,0 +1,487 @@
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/data/api/clients/wrapper.dart|8|8|45|Unused import: 'package:givore/domain/models/user/user.dart'.
+WARNING|STATIC_WARNING|UNUSED_FIELD|/TREE/lib/data/api/clients/wrapper.dart|33|13|5|The value of the field '_port' isn't used.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/data/repositories/user/user_repository_remote.dart|2|8|58|Unused import: 'package:givore/data/local/saved_items_cache_service.dart'.
+WARNING|STATIC_WARNING|UNNECESSARY_NON_NULL_ASSERTION|/TREE/lib/data/repositories/user/user_repository_remote.dart|50|49|1|The '!' will have no effect because the receiver can't be null.
+WARNING|STATIC_WARNING|UNNECESSARY_NON_NULL_ASSERTION|/TREE/lib/data/repositories/user/user_repository_remote.dart|52|39|1|The '!' will have no effect because the receiver can't be null.
+WARNING|STATIC_WARNING|UNNECESSARY_NON_NULL_ASSERTION|/TREE/lib/data/repositories/user/user_repository_remote.dart|61|31|1|The '!' will have no effect because the receiver can't be null.
+WARNING|STATIC_WARNING|UNNECESSARY_NON_NULL_ASSERTION|/TREE/lib/data/repositories/user/user_repository_remote.dart|70|39|1|The '!' will have no effect because the receiver can't be null.
+WARNING|STATIC_WARNING|UNUSED_ELEMENT|/TREE/lib/domain/models/location/city_change_refusal.dart|196|20|11|The declaration '_asDateTime' isn't referenced.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/chats/components/audio_playback_preview.dart|6|8|43|Unused import: 'package:givore/ui/core/themes/colors.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/chats/view_models/chats_viewmodel.dart|3|8|31|Unused import: 'package:flutter/material.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/chats/widgets/chat_location_picker_screen.dart|13|8|61|Unused import: 'package:givore/permissions/location_permission_service.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/chats/widgets/chat_location_picker_screen.dart|14|8|50|Unused import: 'package:givore/permissions/permission_error.dart'.
+WARNING|STATIC_WARNING|DEAD_NULL_AWARE_EXPRESSION|/TREE/lib/ui/entry_point/bottom_navigation.dart|52|30|7|The left operand can't be null, so the right operand is never executed.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/faq/view_models/faq_help_viewmodel.dart|1|8|31|Unused import: 'package:flutter/material.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/faq/view_models/faq_viewmodel.dart|1|8|31|Unused import: 'package:flutter/material.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/gamification/view_models/leaderboard_viewmodel.dart|1|8|33|Unused import: 'package:flutter/foundation.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/news/view_models/news_detail_viewmodel.dart|1|8|31|Unused import: 'package:flutter/material.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/notifications/view_models/notification_settings_viewmodel.dart|1|8|31|Unused import: 'package:flutter/material.dart'.
+WARNING|STATIC_WARNING|UNUSED_FIELD|/TREE/lib/ui/notifications/view_models/notifications_viewmodel.dart|49|22|13|The value of the field '_authProvider' isn't used.
+WARNING|STATIC_WARNING|UNUSED_FIELD|/TREE/lib/ui/notifications/view_models/notifications_viewmodel.dart|52|9|4|The value of the field '_log' isn't used.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/opinions/view_models/opinion_viewmodel.dart|1|8|31|Unused import: 'package:flutter/material.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/posts/view_models/post_location_viewmodel.dart|1|8|33|Unused import: 'package:flutter/foundation.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/posts/widgets/posts_locations_screen.dart|11|8|43|Unused import: 'package:givore/ui/core/themes/colors.dart'.
+WARNING|STATIC_WARNING|UNUSED_ELEMENT|/TREE/lib/ui/posts/widgets/posts_locations_screen.dart|90|8|20|The declaration '_centerMapOnLocation' isn't referenced.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/profile/components/edit_profile_form.dart|2|8|43|Unused import: 'package:givore/ui/core/themes/colors.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/profile/view_models/edit_profile_viewmodel.dart|3|8|33|Unused import: 'package:flutter/foundation.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/report/view_models/report_viewmodel.dart|1|8|33|Unused import: 'package:flutter/foundation.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/report/widgets/report_screen.dart|5|8|56|Unused import: 'package:givore/domain/models/report/report_reason.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/saved_items/components/saved_item_tile.dart|9|8|43|Unused import: 'package:givore/ui/core/themes/dimens.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/shared/animations/realtime_bubble_animation.dart|6|8|43|Unused import: 'package:givore/ui/core/themes/dimens.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/shared/components/reactions/reaction.dart|2|8|31|Unused import: 'package:givore/constants.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/shared/components/reactions/reaction.dart|5|8|34|Unused import: '../../../core/themes/colors.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/shared/view_models/comments_detail_viewmodel.dart|3|8|31|Unused import: 'package:flutter/material.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/shared/view_models/ideas_detail_viewmodel.dart|1|8|31|Unused import: 'package:flutter/material.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/lib/ui/user/view_models/user_viewmodel.dart|1|8|33|Unused import: 'package:flutter/foundation.dart'.
+WARNING|STATIC_WARNING|UNUSED_ELEMENT|/TREE/test/data/repositories/auth/auth_repository_remote_test.dart|791|24|17|The declaration 'tokenRemovalError' isn't referenced.
+WARNING|STATIC_WARNING|UNUSED_ELEMENT|/TREE/test/data/repositories/auth/auth_repository_remote_test.dart|850|15|21|The declaration 'mockFailedRemoveToken' isn't referenced.
+WARNING|STATIC_WARNING|UNUSED_ELEMENT|/TREE/test/data/repositories/auth/auth_repository_remote_test.dart|860|15|27|The declaration 'setupSuccessfulAuthProvider' isn't referenced.
+WARNING|STATIC_WARNING|INVALID_NULL_AWARE_OPERATOR|/TREE/test/data/services/analytics/location_analytics_test.dart|59|28|2|The receiver can't be null, so the null-aware operator '?[' is unnecessary.
+WARNING|STATIC_WARNING|INVALID_NULL_AWARE_OPERATOR|/TREE/test/data/services/analytics/location_analytics_test.dart|76|30|2|The receiver can't be null, so the null-aware operator '?[' is unnecessary.
+WARNING|STATIC_WARNING|INVALID_NULL_AWARE_OPERATOR|/TREE/test/data/services/analytics/location_analytics_test.dart|106|36|2|The receiver can't be null, so the null-aware operator '?.' is unnecessary.
+WARNING|STATIC_WARNING|INVALID_NULL_AWARE_OPERATOR|/TREE/test/data/services/analytics/location_analytics_test.dart|127|26|2|The receiver can't be null, so the null-aware operator '?[' is unnecessary.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/test/ui/chats/view_models/chat_dormant_test.dart|2|8|45|Unused import: 'package:givore/domain/models/chat/chat.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/test/ui/chats/view_models/chat_viewmodel_test.dart|20|8|52|Unused import: 'package:givore/domain/models/chat/participant.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/test/ui/chats/view_models/chat_viewmodel_test.dart|21|8|59|Unused import: 'package:givore/domain/models/reaction/reaction_count.dart'.
+WARNING|STATIC_WARNING|UNUSED_IMPORT|/TREE/test/ui/posts/components/form/post_media_section_test.dart|1|8|31|Unused import: 'package:flutter/material.dart'.
+INFO|LINT|AVOID_RETURNING_NULL_FOR_VOID|/TREE/lib/data/api/clients/auth_client.dart|44|14|7|Don't return 'null' from a function with a return type of 'void'.
+INFO|LINT|AVOID_RETURNING_NULL_FOR_VOID|/TREE/lib/data/api/clients/auth_client.dart|66|14|7|Don't return 'null' from a function with a return type of 'void'.
+INFO|LINT|AVOID_RETURNING_NULL_FOR_VOID|/TREE/lib/data/api/clients/auth_client.dart|74|14|7|Don't return 'null' from a function with a return type of 'void'.
+INFO|LINT|AVOID_RETURNING_NULL_FOR_VOID|/TREE/lib/data/api/clients/auth_client.dart|92|14|7|Don't return 'null' from a function with a return type of 'void'.
+INFO|LINT|AVOID_RETURNING_NULL_FOR_VOID|/TREE/lib/data/api/clients/auth_client.dart|100|14|7|Don't return 'null' from a function with a return type of 'void'.
+INFO|LINT|AVOID_RETURNING_NULL_FOR_VOID|/TREE/lib/data/api/clients/chat_client.dart|107|11|7|Don't return 'null' from a function with a return type of 'void'.
+INFO|LINT|AVOID_RETURNING_NULL_FOR_VOID|/TREE/lib/data/api/clients/chat_client.dart|134|11|7|Don't return 'null' from a function with a return type of 'void'.
+INFO|LINT|AVOID_RETURNING_NULL_FOR_VOID|/TREE/lib/data/api/clients/chat_client.dart|142|11|7|Don't return 'null' from a function with a return type of 'void'.
+INFO|LINT|AVOID_RETURNING_NULL_FOR_VOID|/TREE/lib/data/api/clients/chat_client.dart|151|11|7|Don't return 'null' from a function with a return type of 'void'.
+INFO|LINT|AVOID_RETURNING_NULL_FOR_VOID|/TREE/lib/data/api/clients/notification_client.dart|35|14|7|Don't return 'null' from a function with a return type of 'void'.
+INFO|LINT|AVOID_RETURNING_NULL_FOR_VOID|/TREE/lib/data/api/clients/notification_client.dart|43|14|7|Don't return 'null' from a function with a return type of 'void'.
+INFO|LINT|AVOID_RETURNING_NULL_FOR_VOID|/TREE/lib/data/api/clients/notification_client.dart|84|14|7|Don't return 'null' from a function with a return type of 'void'.
+INFO|LINT|AVOID_RETURNING_NULL_FOR_VOID|/TREE/lib/data/api/clients/notification_client.dart|92|14|7|Don't return 'null' from a function with a return type of 'void'.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/approval/approval_api_model.dart|11|21|15|The variable name 'approvable_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/approval/approval_api_model.dart|12|18|13|The variable name 'approvable_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/approval/approval_api_model.dart|13|10|11|The variable name 'approver_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/approval/approval_api_model.dart|14|18|12|The variable name 'submitter_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/approval/approval_api_model.dart|15|11|11|The variable name 'is_approved' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/approval/approval_api_model.dart|17|23|12|The variable name 'submitted_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/approval/approval_api_model.dart|18|15|11|The variable name 'reviewed_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/approval/approval_api_model.dart|19|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/approval/approval_api_model.dart|20|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/auth/request/apple_auth_request.dart|9|21|14|The variable name 'identity_token' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/auth/request/apple_auth_request.dart|16|13|13|The variable name 'referral_code' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/auth/request/change_password_request.dart|9|21|16|The variable name 'current_password' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/auth/request/change_password_request.dart|11|21|21|The variable name 'password_confirmation' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/auth/request/password_reset_request.dart|12|21|21|The variable name 'password_confirmation' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/auth/request/register_request.dart|43|56|13|The variable name 'last_latitude' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/auth/request/register_request.dart|44|56|14|The variable name 'last_longitude' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/auth/request/register_request.dart|45|13|13|The variable name 'referral_code' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/auth/request/social_auth_request.dart|9|21|12|The variable name 'access_token' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/auth/request/social_auth_request.dart|10|13|8|The variable name 'id_token' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/auth/request/social_auth_request.dart|13|13|9|The variable name 'photo_url' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/auth/request/social_auth_request.dart|17|13|13|The variable name 'referral_code' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/business/business_api_model.dart|21|13|12|The variable name 'address_line' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/business/business_api_model.dart|22|27|13|The variable name 'opening_hours' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/business/business_api_model.dart|25|18|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/business/business_api_model.dart|26|10|11|The variable name 'location_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/business/business_api_model.dart|27|10|7|The variable name 'logo_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/business/business_api_model.dart|33|34|15|The variable name 'reactions_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/business/business_api_model.dart|34|10|14|The variable name 'comments_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/business/business_api_model.dart|35|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/business/business_api_model.dart|36|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/business/contact_api_model.dart|15|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/business/contact_api_model.dart|16|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/chat_api_model.dart|13|21|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/chat_api_model.dart|14|21|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/chat_api_model.dart|18|10|15|The variable name 'last_message_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/chat_api_model.dart|19|13|15|The variable name 'last_message_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/chat_api_model.dart|20|26|12|The variable name 'last_message' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/chat_api_model.dart|21|10|12|The variable name 'unread_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/chat_api_model.dart|22|11|7|The variable name 'is_read' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/chat_api_model.dart|24|10|12|The variable name 'reference_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/chat_api_model.dart|25|13|14|The variable name 'reference_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/chat_api_model.dart|26|31|17|The variable name 'post_conversation' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|13|21|7|The variable name 'chat_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|14|10|9|The variable name 'parent_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|16|21|16|The variable name 'participant_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|17|18|14|The variable name 'participant_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|21|13|10|The variable name 'media_path' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|22|13|10|The variable name 'media_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|23|10|10|The variable name 'media_size' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|24|10|14|The variable name 'media_duration' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|25|10|13|The variable name 'replies_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|26|61|15|The variable name 'reactions_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|27|11|11|The variable name 'is_location' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|28|13|13|The variable name 'system_action' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|30|19|8|The variable name 'is_reply' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|31|19|7|The variable name 'is_text' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|32|19|8|The variable name 'is_media' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|33|19|8|The variable name 'is_audio' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|34|21|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|35|21|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_api_model.dart|36|13|10|The variable name 'deleted_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/message_moderation_api_model.dart|17|26|10|The variable name 'can_reveal' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/participant_api_model.dart|11|21|7|The variable name 'chat_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/participant_api_model.dart|12|21|16|The variable name 'participant_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/participant_api_model.dart|13|18|14|The variable name 'participant_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/participant_api_model.dart|16|10|20|The variable name 'last_seen_message_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/participant_api_model.dart|17|11|9|The variable name 'is_active' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/participant_api_model.dart|18|10|12|The variable name 'unread_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/participant_api_model.dart|19|21|9|The variable name 'joined_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/participant_api_model.dart|20|13|7|The variable name 'left_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/participant_api_model.dart|21|21|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/participant_api_model.dart|22|21|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/post_conversation_api_model.dart|11|13|16|The variable name 'last_activity_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/post_conversation_api_model.dart|12|13|12|The variable name 'responded_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/post_conversation_api_model.dart|13|13|11|The variable name 'finished_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/post_conversation_api_model.dart|14|13|13|The variable name 'finish_reason' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/chat/post_conversation_api_model.dart|15|21|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/comment/comment_api_model.dart|12|18|14|The variable name 'commentable_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/comment/comment_api_model.dart|13|21|16|The variable name 'commentable_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/comment/comment_api_model.dart|15|10|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/comment/comment_api_model.dart|20|34|15|The variable name 'reactions_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/comment/comment_api_model.dart|21|11|11|The variable name 'has_replies' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/comment/comment_api_model.dart|22|33|15|The variable name 'mentioned_users' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/comment/comment_api_model.dart|23|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/comment/comment_api_model.dart|24|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/comment/comment_api_model.dart|25|15|9|The variable name 'pinned_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/customization/profile_customization_api_model.dart|17|40|10|The variable name 'badge_ring' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/features/feature_state_api_model.dart|19|11|10|The variable name 'has_access' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/features/feature_state_api_model.dart|20|27|15|The variable name 'effective_value' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/features/feature_state_api_model.dart|21|27|10|The variable name 'free_value' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/features/feature_state_api_model.dart|23|15|10|The variable name 'expires_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/badge_api_model.dart|13|13|9|The variable name 'image_url' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/badge_api_model.dart|15|18|14|The variable name 'required_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/badge_api_model.dart|17|18|10|The variable name 'sort_order' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/badge_api_model.dart|18|15|10|The variable name 'awarded_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/gamification_profile_api_model.dart|12|18|12|The variable name 'total_points' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/gamification_profile_api_model.dart|13|20|13|The variable name 'current_level' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/gamification_profile_api_model.dart|14|20|10|The variable name 'next_level' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/gamification_profile_api_model.dart|15|10|20|The variable name 'points_to_next_level' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/gamification_profile_api_model.dart|16|36|17|The variable name 'level_permissions' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/gamification_profile_api_model.dart|17|19|17|The variable name 'unlocked_features' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/leaderboard_entry_api_model.dart|15|11|13|The variable name 'is_ambassador' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/leaderboard_entry_api_model.dart|16|35|16|The variable name 'premium_profiles' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/leaderboard_entry_api_model.dart|28|18|12|The variable name 'total_points' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/leaderboard_entry_api_model.dart|29|20|13|The variable name 'current_level' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/leaderboard_entry_api_model.dart|30|10|12|The variable name 'badges_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/level_api_model.dart|13|18|15|The variable name 'points_required' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/referral_api_model.dart|19|35|13|The variable name 'referred_user' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/referral_api_model.dart|21|21|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/referral_code_api_model.dart|9|21|13|The variable name 'referral_code' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/gamification/referral_code_api_model.dart|10|21|13|The variable name 'referral_link' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/idea/idea_api_model.dart|15|10|10|The variable name 'ideable_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/idea/idea_api_model.dart|16|13|12|The variable name 'ideable_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/idea/idea_api_model.dart|20|10|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/idea/idea_api_model.dart|25|34|15|The variable name 'reactions_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/idea/idea_api_model.dart|26|10|14|The variable name 'comments_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/idea/idea_api_model.dart|27|19|5|The variable name 'is_ai' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/idea/idea_api_model.dart|28|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/idea/idea_api_model.dart|29|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/image/image_api_model.dart|23|10|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/image/image_api_model.dart|24|34|15|The variable name 'reactions_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/image/image_api_model.dart|25|10|14|The variable name 'comments_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/image/image_api_model.dart|26|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/image/image_api_model.dart|27|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/image/image_api_model.dart|29|13|12|The variable name 'aspect_ratio' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/image/image_api_model.dart|36|13|10|The variable name 'poster_url' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/image/image_api_model.dart|37|10|16|The variable name 'duration_seconds' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/image/image_api_model.dart|38|13|9|The variable name 'mime_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/image/image_api_model.dart|39|10|9|The variable name 'file_size' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/item/item_api_model.dart|11|18|7|The variable name 'post_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/item/item_api_model.dart|12|10|8|The variable name 'image_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/item/item_api_model.dart|15|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/item/item_api_model.dart|16|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/location/location_api_model.dart|33|13|13|The variable name 'city_identity' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/location/location_api_model.dart|34|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/location/location_api_model.dart|35|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/notification/notification_api_model.dart|13|15|7|The variable name 'read_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/notification/notification_api_model.dart|14|23|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/notification/notification_api_model.dart|15|23|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/post/post_api_model.dart|22|18|11|The variable name 'location_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/post/post_api_model.dart|31|13|20|The variable name 'location_description' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/post/post_api_model.dart|32|19|19|The variable name 'location_is_private' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/post/post_api_model.dart|33|18|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/post/post_api_model.dart|39|34|15|The variable name 'reactions_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/post/post_api_model.dart|40|10|14|The variable name 'comments_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/post/post_api_model.dart|41|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/post/post_api_model.dart|42|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/post/post_api_model.dart|44|13|13|The variable name 'delivery_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/post/post_api_model.dart|45|28|14|The variable name 'exchange_offer' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/reaction/reaction_api_model.dart|12|18|15|The variable name 'reactionable_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/reaction/reaction_api_model.dart|13|21|17|The variable name 'reactionable_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/reaction/reaction_api_model.dart|15|18|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/reaction/reaction_api_model.dart|17|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/reaction/reaction_api_model.dart|18|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/reaction/reaction_count_api_model.dart|14|10|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/saved_item/saved_item_api_model.dart|12|18|11|The variable name 'saveable_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/saved_item/saved_item_api_model.dart|13|21|13|The variable name 'saveable_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/saved_item/saved_item_api_model.dart|14|18|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/saved_item/saved_item_api_model.dart|16|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/saved_item/saved_item_api_model.dart|17|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/support/support_ticket_api_model.dart|12|18|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/support/support_ticket_api_model.dart|13|21|7|The variable name 'chat_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/support/support_ticket_api_model.dart|16|10|18|The variable name 'active_operator_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/support/support_ticket_api_model.dart|17|19|15|The variable name 'active_operator' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/support/support_ticket_api_model.dart|18|13|11|The variable name 'assigned_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/support/support_ticket_api_model.dart|19|13|9|The variable name 'closed_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/support/support_ticket_api_model.dart|20|10|12|The variable name 'closed_by_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/support/support_ticket_api_model.dart|21|13|13|The variable name 'closed_reason' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/support/support_ticket_api_model.dart|22|13|16|The variable name 'last_activity_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/support/support_ticket_api_model.dart|24|21|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/support/support_ticket_api_model.dart|25|21|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/tag/tag_api_model.dart|12|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/tag/tag_api_model.dart|13|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/user/blocked_user_api_model.dart|10|27|12|The variable name 'blocked_user' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/user/blocked_user_api_model.dart|12|21|10|The variable name 'blocked_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/value_bid/value_bid_api_model.dart|12|18|11|The variable name 'biddable_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/value_bid/value_bid_api_model.dart|13|21|13|The variable name 'biddable_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/value_bid/value_bid_api_model.dart|15|26|11|The variable name 'is_official' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/value_bid/value_bid_api_model.dart|16|10|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/value_bid/value_bid_api_model.dart|18|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/value_bid/value_bid_api_model.dart|19|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/value_bid/value_bid_stats_api_model.dart|14|13|17|The variable name 'official_estimate' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/value_bid/value_bid_stats_api_model.dart|15|13|8|The variable name 'user_bid' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/value_bid/value_bid_stats_api_model.dart|16|10|11|The variable name 'user_bid_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/data/api/model/value_bid/value_bid_stats_api_model.dart|17|51|14|The variable name 'recent_bidders' isn't a lowerCamelCase identifier.
+INFO|LINT|USE_SUPER_PARAMETERS|/TREE/lib/data/repositories/business/business_repository_remote.dart|16|3|24|Parameter 'apiClient' could be a super parameter.
+INFO|LINT|USE_SUPER_PARAMETERS|/TREE/lib/data/repositories/idea/idea_repository_remote.dart|19|3|20|Parameter 'apiClient' could be a super parameter.
+INFO|LINT|PREFER_INITIALIZING_FORMALS|/TREE/lib/data/repositories/image/image_repository_remote.dart|15|7|21|Use an initializing formal to assign a parameter to a field.
+INFO|LINT|USE_SUPER_PARAMETERS|/TREE/lib/data/repositories/item/item_repository_remote.dart|14|3|20|Parameter 'apiClient' could be a super parameter.
+INFO|LINT|USE_SUPER_PARAMETERS|/TREE/lib/data/repositories/post/post_repository_remote.dart|20|3|20|Parameter 'apiClient' could be a super parameter.
+INFO|LINT|USE_SUPER_PARAMETERS|/TREE/lib/data/repositories/reaction/reaction_repository_remote.dart|12|3|24|Parameter 'apiClient' could be a super parameter.
+INFO|LINT|USE_SUPER_PARAMETERS|/TREE/lib/data/repositories/tag/tag_repository_remote.dart|15|3|19|Parameter 'apiClient' could be a super parameter.
+INFO|LINT|PREFER_FINAL_FIELDS|/TREE/lib/data/services/initialization/app_initialization_provider.dart|20|16|22|The private field _completedActions could be 'final'.
+INFO|LINT|PREFER_FINAL_FIELDS|/TREE/lib/data/services/initialization/app_initialization_provider.dart|21|16|19|The private field _failedActions could be 'final'.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/data/services/ws/websocket_service.dart|335|12|10|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/data/state/announcement_provider.dart|85|10|10|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|FILE_NAMES|/TREE/lib/domain/contracts/Is_tiled.dart|1|1|0|The file name 'Is_tiled.dart' isn't a lower_case_with_underscores identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/business/business.dart|27|13|12|The variable name 'address_line' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/business/business.dart|28|27|13|The variable name 'opening_hours' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/business/business.dart|31|18|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/business/business.dart|32|10|11|The variable name 'location_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/business/business.dart|38|26|15|The variable name 'reactions_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/business/business.dart|39|10|14|The variable name 'comments_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/business/business.dart|40|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/business/business.dart|41|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/chat.dart|29|23|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/chat.dart|30|23|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/chat.dart|34|10|15|The variable name 'last_message_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/chat.dart|35|15|15|The variable name 'last_message_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/chat.dart|36|18|12|The variable name 'last_message' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/chat.dart|37|10|12|The variable name 'unread_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/chat.dart|38|11|7|The variable name 'is_read' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/chat.dart|40|10|12|The variable name 'reference_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/chat.dart|41|13|14|The variable name 'reference_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/chat.dart|42|23|17|The variable name 'post_conversation' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/location_content.dart|15|21|13|The variable name 'location_name' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/message.dart|91|21|7|The variable name 'chat_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/message.dart|92|10|9|The variable name 'parent_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/message.dart|94|21|16|The variable name 'participant_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/message.dart|95|18|14|The variable name 'participant_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/message.dart|100|13|10|The variable name 'media_path' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/message.dart|101|13|10|The variable name 'media_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/message.dart|102|10|10|The variable name 'media_size' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/message.dart|103|10|14|The variable name 'media_duration' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/message.dart|104|10|13|The variable name 'replies_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/message.dart|105|53|15|The variable name 'reactions_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/message.dart|106|11|11|The variable name 'is_location' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/message.dart|107|13|13|The variable name 'system_action' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/message.dart|109|23|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/message.dart|110|23|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/message.dart|111|15|10|The variable name 'deleted_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/message_moderation.dart|47|26|10|The variable name 'can_reveal' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/participant.dart|28|21|7|The variable name 'chat_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/participant.dart|29|21|16|The variable name 'participant_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/participant.dart|30|18|14|The variable name 'participant_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/participant.dart|33|10|20|The variable name 'last_seen_message_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/participant.dart|34|11|9|The variable name 'is_active' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/participant.dart|35|10|12|The variable name 'unread_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/participant.dart|36|23|9|The variable name 'joined_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/participant.dart|37|15|7|The variable name 'left_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/participant.dart|38|23|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/participant.dart|39|23|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/post_conversation.dart|47|15|16|The variable name 'last_activity_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/post_conversation.dart|48|15|12|The variable name 'responded_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/post_conversation.dart|49|15|11|The variable name 'finished_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/post_conversation.dart|50|13|13|The variable name 'finish_reason' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/chat/post_conversation.dart|51|23|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/comment/comment.dart|36|18|14|The variable name 'commentable_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/comment/comment.dart|37|21|16|The variable name 'commentable_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/comment/comment.dart|39|10|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/comment/comment.dart|44|26|15|The variable name 'reactions_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/comment/comment.dart|45|11|11|The variable name 'has_replies' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/comment/comment.dart|47|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/comment/comment.dart|48|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/comment/comment.dart|49|15|9|The variable name 'pinned_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/gamification/badge.dart|16|13|9|The variable name 'image_url' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/gamification/badge.dart|18|18|14|The variable name 'required_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/gamification/badge.dart|20|18|10|The variable name 'sort_order' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/gamification/badge.dart|21|15|10|The variable name 'awarded_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/gamification/gamification_profile.dart|15|18|12|The variable name 'total_points' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/gamification/gamification_profile.dart|16|12|13|The variable name 'current_level' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/gamification/gamification_profile.dart|17|12|10|The variable name 'next_level' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/gamification/gamification_profile.dart|18|10|20|The variable name 'points_to_next_level' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/gamification/gamification_profile.dart|19|40|17|The variable name 'level_permissions' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/gamification/gamification_profile.dart|20|31|17|The variable name 'unlocked_features' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/gamification/leaderboard_entry.dart|18|11|13|The variable name 'is_ambassador' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/gamification/leaderboard_entry.dart|19|27|16|The variable name 'premium_profiles' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/gamification/leaderboard_entry.dart|37|18|12|The variable name 'total_points' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/gamification/leaderboard_entry.dart|38|12|13|The variable name 'current_level' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/gamification/leaderboard_entry.dart|39|21|12|The variable name 'badges_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/gamification/level.dart|16|18|15|The variable name 'points_required' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/idea/idea.dart|22|10|10|The variable name 'ideable_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/idea/idea.dart|23|13|12|The variable name 'ideable_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/idea/idea.dart|27|10|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/idea/idea.dart|32|26|15|The variable name 'reactions_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/idea/idea.dart|33|10|14|The variable name 'comments_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/idea/idea.dart|34|19|5|The variable name 'is_ai' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/idea/idea.dart|35|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/idea/idea.dart|36|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/image/image.dart|24|10|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/image/image.dart|26|26|15|The variable name 'reactions_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/image/image.dart|27|10|14|The variable name 'comments_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/image/image.dart|28|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/image/image.dart|29|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/image/image.dart|31|13|12|The variable name 'aspect_ratio' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/image/image.dart|40|13|10|The variable name 'poster_url' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/image/image.dart|41|10|16|The variable name 'duration_seconds' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/image/image.dart|42|13|9|The variable name 'mime_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/item/item.dart|11|18|7|The variable name 'post_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/item/item.dart|12|10|8|The variable name 'image_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/item/item.dart|15|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/item/item.dart|16|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/post/post.dart|35|18|11|The variable name 'location_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/post/post.dart|39|21|20|The variable name 'location_description' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/post/post.dart|40|19|19|The variable name 'location_is_private' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/post/post.dart|41|18|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/post/post.dart|47|26|15|The variable name 'reactions_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/post/post.dart|48|10|14|The variable name 'comments_count' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/post/post.dart|49|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/post/post.dart|50|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/post/post.dart|52|13|13|The variable name 'delivery_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/post/post.dart|53|20|14|The variable name 'exchange_offer' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/reaction/reaction.dart|14|18|15|The variable name 'reactionable_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/reaction/reaction.dart|15|21|17|The variable name 'reactionable_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/reaction/reaction.dart|17|18|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/reaction/reaction.dart|19|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/reaction/reaction.dart|20|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/reaction/reaction_count.dart|17|10|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/realtime/chat_event.dart|27|18|10|The variable name 'message_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/realtime/chat_event.dart|28|21|7|The variable name 'chat_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/realtime/chat_event.dart|29|23|10|The variable name 'deleted_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/realtime/chat_event.dart|56|19|9|The variable name 'is_typing' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/realtime/notification_event.dart|15|34|11|The variable name 'affected_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/realtime/notification_event.dart|16|34|9|The variable name 'causer_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/realtime/notification_event.dart|17|34|10|The variable name 'element_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/realtime/notification_event.dart|18|23|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/saved_item/saved_item.dart|14|18|11|The variable name 'saveable_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/saved_item/saved_item.dart|15|21|13|The variable name 'saveable_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/saved_item/saved_item.dart|16|18|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/saved_item/saved_item.dart|18|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/saved_item/saved_item.dart|19|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/support/support_ticket.dart|15|18|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/support/support_ticket.dart|16|21|7|The variable name 'chat_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/support/support_ticket.dart|19|10|18|The variable name 'active_operator_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/support/support_ticket.dart|20|11|15|The variable name 'active_operator' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/support/support_ticket.dart|21|15|11|The variable name 'assigned_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/support/support_ticket.dart|22|15|9|The variable name 'closed_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/support/support_ticket.dart|23|10|12|The variable name 'closed_by_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/support/support_ticket.dart|24|25|13|The variable name 'closed_reason' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/support/support_ticket.dart|25|15|16|The variable name 'last_activity_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/support/support_ticket.dart|27|23|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/support/support_ticket.dart|28|23|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/tag/tag.dart|11|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/tag/tag.dart|12|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/user/blocked_user.dart|12|19|12|The variable name 'blocked_user' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/user/blocked_user.dart|14|23|10|The variable name 'blocked_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/value_bid/value_bid.dart|14|18|11|The variable name 'biddable_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/value_bid/value_bid.dart|15|21|13|The variable name 'biddable_type' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/value_bid/value_bid.dart|17|26|11|The variable name 'is_official' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/value_bid/value_bid.dart|18|10|7|The variable name 'user_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/value_bid/value_bid.dart|20|15|10|The variable name 'created_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/value_bid/value_bid.dart|21|15|10|The variable name 'updated_at' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/value_bid/value_bid_stats.dart|26|13|17|The variable name 'official_estimate' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/value_bid/value_bid_stats.dart|27|13|8|The variable name 'user_bid' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/value_bid/value_bid_stats.dart|28|10|11|The variable name 'user_bid_id' isn't a lowerCamelCase identifier.
+INFO|LINT|NON_CONSTANT_IDENTIFIER_NAMES|/TREE/lib/domain/models/value_bid/value_bid_stats.dart|29|35|14|The variable name 'recent_bidders' isn't a lowerCamelCase identifier.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/routing/redirects/initialization_redirect.dart|90|7|23|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/routing/redirects/initialization_redirect.dart|148|32|10|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|SORT_CHILD_PROPERTIES_LAST|/TREE/lib/routing/router.dart|359|13|12|The 'child' argument should be last in widget constructor invocations.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/chats/components/audio_message_player.dart|103|13|4|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/chats/helpers/chat_navigation_helper.dart|29|5|10|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/chats/helpers/chat_navigation_helper.dart|50|21|4|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/chats/helpers/chat_navigation_helper.dart|72|25|4|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/chats/helpers/chat_navigation_helper.dart|114|5|10|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/chats/helpers/chat_navigation_helper.dart|133|21|4|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/chats/view_models/chat_media_mixin.dart|155|30|6|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/chats/view_models/chat_media_mixin.dart|183|28|6|Missing an 'await' for the 'Future' computed by this expression.
+INFO|HINT|UNNECESSARY_IMPORT|/TREE/lib/ui/chats/widgets/chat_screen.dart|2|8|31|The import of 'package:flutter/services.dart' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/material.dart'.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/chats/widgets/chat_screen.dart|427|24|19|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/chats/widgets/chats_screen.dart|182|52|7|Missing an 'await' for the 'Future' computed by this expression.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/faq/components/faq_markdown_content.dart|137|7|12|'imageBuilder' is deprecated and shouldn't be used. Use sizedImageBuilder instead.
+INFO|LINT|PREFER_FUNCTION_DECLARATIONS_OVER_VARIABLES|/TREE/lib/ui/feed/view_models/first_steps_card_viewmodel.dart|42|27|146|Use a function declaration rather than a variable assignment to bind a function to a name.
+INFO|LINT|PREFER_FUNCTION_DECLARATIONS_OVER_VARIABLES|/TREE/lib/ui/feed/view_models/first_steps_card_viewmodel.dart|50|27|63|Use a function declaration rather than a variable assignment to bind a function to a name.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/feed/widgets/feed_screen.dart|93|31|4|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/ideas/components/add_idea_form.dart|264|18|14|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|PREFER_INITIALIZING_FORMALS|/TREE/lib/ui/ideas/view_models/ideas_viewmodel.dart|38|8|43|Use an initializing formal to assign a parameter to a field.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/notifications/components/notification_tile.dart|29|39|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/notifications/components/notification_tile.dart|42|57|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/pending/pending_posts_screen.dart|237|54|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/pending/pending_posts_screen.dart|304|22|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/posts/components/add_post_form.dart|444|18|14|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/posts/components/post_location_selector.dart|106|21|20|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|PREFER_FINAL_FIELDS|/TREE/lib/ui/posts/view_models/post_location_viewmodel.dart|18|8|28|The private field _isGeocodingLocation could be 'final'.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/posts/view_models/single_post_viewmodel.dart|183|9|12|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/posts/widgets/posts_screen.dart|84|31|4|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/premium/widgets/premium_profiles_screen.dart|95|21|7|Missing an 'await' for the 'Future' computed by this expression.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/profile/helpers/avatar_selection_flow.dart|96|13|14|'statusBarColor' is deprecated and shouldn't be used. This property is deprecated and no longer in use. Please use 'statusBarLight' instead.
+INFO|LINT|USE_BUILD_CONTEXT_SYNCHRONOUSLY|/TREE/lib/ui/profile/helpers/avatar_selection_flow.dart|149|40|7|Don't use 'BuildContext's across async gaps.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/referral/view_models/referral_viewmodel.dart|86|22|7|Missing an 'await' for the 'Future' computed by this expression.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/report/components/report_reason_selector.dart|74|15|10|'groupValue' is deprecated and shouldn't be used. Use a RadioGroup ancestor to manage group value instead. This feature was deprecated after v3.32.0-0.0.pre.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/report/components/report_reason_selector.dart|75|15|9|'onChanged' is deprecated and shouldn't be used. Use RadioGroup to handle value change instead. This feature was deprecated after v3.32.0-0.0.pre.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/settings/widgets/appearance_screen.dart|61|15|4|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/shared/components/content/buttons/post_location_button.dart|306|28|22|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/shared/components/content/buttons/post_location_button.dart|313|28|29|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/shared/components/media/camera_guide_screen.dart|114|20|7|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/shared/components/media/camera_guide_screen.dart|124|18|7|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|USE_BUILD_CONTEXT_SYNCHRONOUSLY|/TREE/lib/ui/shared/components/reactions/reactions_popup.dart|191|40|7|Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check.
+INFO|LINT|USE_BUILD_CONTEXT_SYNCHRONOUSLY|/TREE/lib/ui/shared/components/reactions/reactions_popup.dart|214|26|14|Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/shared/components/skelton.dart|22|53|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/shared/components/skelton.dart|39|51|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/shared/list_tile/divider_list_tile.dart|36|58|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/shared/list_tile/divider_list_tile.dart|90|58|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/shared/view_models/location_search_input_viewmodel.dart|395|38|11|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/shared/view_models/location_search_input_viewmodel.dart|483|40|11|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/shared/view_models/location_search_input_viewmodel.dart|526|36|11|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/shared/view_models/location_search_input_viewmodel.dart|540|36|11|Missing an 'await' for the 'Future' computed by this expression.
+INFO|LINT|UNAWAITED_FUTURES|/TREE/lib/ui/support/widgets/support_help_screen.dart|32|14|4|Missing an 'await' for the 'Future' computed by this expression.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/badge_detail_bottom_sheet.dart|52|62|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/badge_detail_bottom_sheet.dart|53|63|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/badge_detail_bottom_sheet.dart|87|65|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/badge_detail_bottom_sheet.dart|116|66|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/badge_detail_bottom_sheet.dart|125|70|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/badge_detail_bottom_sheet.dart|131|72|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/badge_detail_bottom_sheet.dart|144|64|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/badge_detail_bottom_sheet.dart|169|44|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/user_avatar.dart|44|34|14|'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/user_avatar.dart|48|50|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/user_avatar.dart|126|32|14|'surfaceVariant' is deprecated and shouldn't be used. Use surfaceContainerHighest instead. This feature was deprecated after v3.18.0-0.1.pre.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/user_avatar.dart|131|53|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/user_badges_section.dart|94|66|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/user_badges_section.dart|113|26|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/user_badges_section.dart|173|66|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/user_badges_section.dart|174|67|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/user_badges_section.dart|193|72|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/user_badges_section.dart|206|61|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/user_badges_section.dart|233|44|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/user_tile.dart|295|52|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/lib/ui/user/views/components/user_tile.dart|346|57|11|'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss.
+INFO|LINT|USE_KEY_IN_WIDGET_CONSTRUCTORS|/TREE/lib/ui/utils/custom_divider.dart|8|3|13|Constructors for public widgets should have a named 'key' parameter.
+INFO|LINT|PREFER_CONST_CONSTRUCTORS_IN_IMMUTABLES|/TREE/lib/ui/utils/custom_divider.dart|8|3|13|Constructors in '@immutable' classes should be declared as 'const'.
+INFO|LINT|ANNOTATE_OVERRIDES|/TREE/lib/utils/result.dart|36|11|5|The member 'value' overrides an inherited member but isn't annotated with '@override'.
+INFO|LINT|ANNOTATE_OVERRIDES|/TREE/lib/utils/result.dart|47|19|5|The member 'error' overrides an inherited member but isn't annotated with '@override'.
+INFO|LINT|CURLY_BRACES_IN_FLOW_CONTROL_STRUCTURES|/TREE/test/data/local/outbox_media_store_test.dart|24|13|20|Statements in an if should be enclosed in a block.
+INFO|LINT|NO_LEADING_UNDERSCORES_FOR_LOCAL_IDENTIFIERS|/TREE/test/domain/models/image/image_variant_helper_test.dart|16|9|11|The local variable '_buildImage' starts with an underscore.
+INFO|LINT|NO_LEADING_UNDERSCORES_FOR_LOCAL_IDENTIFIERS|/TREE/test/domain/models/image/image_variant_helper_test.dart|25|16|8|The local variable '_variant' starts with an underscore.
+INFO|HINT|DEPRECATED_MEMBER_USE|/TREE/test/ui/posts/components/value_bid_tile_button_test.dart|164|20|13|'pipelineOwner' is deprecated and shouldn't be used. Interact with the pipelineOwner tree rooted at RendererBinding.rootPipelineOwner instead. Or instead of accessing the SemanticsOwner of any PipelineOwner interact with the SemanticsBinding directly. This feature was deprecated after v3.10.0-12.0.pre.
+INFO|LINT|NO_LEADING_UNDERSCORES_FOR_LOCAL_IDENTIFIERS|/TREE/test/ui/shared/controllers/mention_controller_test.dart|20|19|5|The local variable '_user' starts with an underscore.
+INFO|LINT|NO_LEADING_UNDERSCORES_FOR_LOCAL_IDENTIFIERS|/TREE/test/ui/shared/controllers/mention_controller_test.dart|23|8|8|The local variable '_setText' starts with an underscore.

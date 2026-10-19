@@ -4,7 +4,7 @@
 # configuration is a human's, made with `qg override`, because the gate refuses it otherwise.
 
 # The keys quality/config carries. guard_release_pattern is not one: a v2 row names its own globs.
-QG_CONFIG_KEYS='guard_commit_paths guard_protected_paths guard_accept_limit guard_measure_worktree'
+QG_CONFIG_KEYS='guard_commit_paths guard_protected_paths guard_accept_limit guard_measure_worktree guard_flutter_root'
 QG_WHY_TODO='TODO: state in one sentence why this gate exists'
 
 qg_migrate() {
@@ -84,8 +84,16 @@ qg_init() {
     cp "$tpl" quality/checks.tsv
     [ -e quality/rules.tsv ] || printf 'id\ttool\tenforced_by\temits\n' > quality/rules.tsv
     [ -e quality/baseline.tsv ] || printf 'id\tvalue\tcommit\treason\n' > quality/baseline.tsv
-    [ -e quality/config ] || printf '%s\n' '# Gate keys for vault-quality-gates (lib/qg-config.sh).' \
-        'guard_protected_paths: quality' 'guard_accept_limit: 3' > quality/config
+    if [ ! -e quality/config ]; then
+        printf '%s\n' '# Gate keys for vault-quality-gates (lib/qg-config.sh).' \
+            'guard_protected_paths: quality' 'guard_accept_limit: 3' > quality/config
+        # The Dart drivers run only the SDK this key names; the human running init picks it.
+        if [ "$profile" = flutter ]; then
+            local flutter
+            flutter="$(command -v flutter)" || qg_die 'init: --profile flutter needs flutter on PATH, to record guard_flutter_root'
+            printf 'guard_flutter_root: %s\n' "$(dirname "$(dirname "$(readlink -f "$flutter")")")" >> quality/config
+        fi
+    fi
     printf 'qg init: wrote quality/checks.tsv (profile %s), rules.tsv, baseline.tsv and config.\n' "$profile"
     printf 'Next:\n  1. qg hooks install --claude\n  2. qg doctor\n  3. git add quality .claude/settings.json and commit.\n'
 }
