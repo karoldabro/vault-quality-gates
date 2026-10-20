@@ -4,8 +4,8 @@
 load guard-helpers
 
 # Each row counts the checkstyle errors of a staged report that sit on added lines.
-WARN_ROW=$'lint-warn-new\tcommit\tdiff\t"{{guard}}/guard-added-lines.sh" --checkstyle "{{tree}}/reports/warn.xml" --bases "{{bases}}" --target "{{target}}"\t-\t{{tree}}/reports/warn.xml\tdown\t0\twarn'
-REFUSE_ROW=$'lint-refuse-new\tcommit\tdiff\t"{{guard}}/guard-added-lines.sh" --checkstyle "{{tree}}/reports/refuse.xml" --bases "{{bases}}" --target "{{target}}"\t-\t{{tree}}/reports/refuse.xml\tdown\t0\trefuse'
+WARN_ROW=$'lint-warn-new\tcommit\tdiff\tshell\tartifact={{tree}}/reports/warn.xml -- "{{guard}}/guard-added-lines.sh" --checkstyle "{{tree}}/reports/warn.xml" --bases "{{bases}}" --target "{{target}}"\tdown\t0\twarn\ta test row'
+REFUSE_ROW=$'lint-refuse-new\tcommit\tdiff\tshell\tartifact={{tree}}/reports/refuse.xml -- "{{guard}}/guard-added-lines.sh" --checkstyle "{{tree}}/reports/refuse.xml" --bases "{{bases}}" --target "{{target}}"\tdown\t0\trefuse\ta test row'
 WARN_HEADING='vault-guard: warnings (the commit goes through)'
 WARN_LINE='lint-warn-new lib/a.dart:2 avoid_print Avoid print. → quality/RULES.md "### debug-print"'
 REFUSE_LINE='lint-refuse-new lib/a.dart:3 compile_error Expected ";". → quality/RULES.md "### compile-error"'

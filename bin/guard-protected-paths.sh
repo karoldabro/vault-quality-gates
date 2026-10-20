@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Counts the paths under `guard_protected_paths` (committed VAULT.md) that the target
+# Counts the paths under `guard_protected_paths` (committed quality/config) that the target
 # changes against every base. Prints one integer.
 #
 #   guard-protected-paths.sh [--bases "<sha>..."] [--target <commit>|:index]

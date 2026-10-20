@@ -1,7 +1,7 @@
 # Shared by the commit-gate bats files. Loaded with `load guard-helpers`; bats runs only
 # *.bats, so this file is never run on its own. Every repo lives under mktemp -d.
 
-CHECKS_HEADER=$'id\tscope\tkind\tcommand\tparser\tartifact\tdirection\tthreshold\tgate'
+CHECKS_HEADER=$'id\ton\tkind\tdriver\targs\tdirection\tthreshold\tgate\twhy'
 RULES_HEADER=$'id\ttool\tenforced_by\temits'
 
 # new_repo <dir> — an empty repository with an identity, cwd set to it.
@@ -32,18 +32,18 @@ commit_all() {
 }
 
 # A row that counts staged-tree files under app/ containing the word BAD. Ceiling 0.
-BAD_ROW=$'bad-in-tree\tcommit\tdiff\tgrep -rl BAD {{tree}}/app 2>/dev/null | wc -l\t-\t-\tdown\t0\trefuse'
-SUPPRESS_ROW=$'suppressions-added\tcommit\tdiff\t{{guard}}/guard-added-lines.sh --grep \'@phpstan-ignore\' --bases "{{bases}}" --target {{target}}\t-\t-\tdown\t0\trefuse'
-PROTECT_ROW=$'gate-config-touched\tcommit\tdiff\t{{guard}}/guard-protected-paths.sh --bases "{{bases}}" --target {{target}}\t-\t-\tdown\t0\trefuse'
-GROWTH_ROW=$'baseline-growth\tcommit\tdiff\t{{guard}}/guard-baseline-growth.sh --bases "{{bases}}" --target {{target}}\t-\t-\tdown\t0\trefuse'
+BAD_ROW=$'bad-in-tree\tcommit\tdiff\tshell\t-- grep -rl BAD {{tree}}/app 2>/dev/null | wc -l\tdown\t0\trefuse\tno file under app/ holds BAD'
+SUPPRESS_ROW=$'suppressions-added\tcommit\tdiff\tshell\t-- {{guard}}/guard-added-lines.sh --grep \'@phpstan-ignore\' --bases "{{bases}}" --target {{target}}\tdown\t0\trefuse\ta commit adds no suppression'
+PROTECT_ROW=$'gate-config-touched\tcommit\tdiff\tshell\t-- {{guard}}/guard-protected-paths.sh --bases "{{bases}}" --target {{target}}\tdown\t0\trefuse\tthe gate is changed by a human only'
+GROWTH_ROW=$'baseline-growth\tcommit\tdiff\tshell\t-- {{guard}}/guard-baseline-growth.sh --bases "{{bases}}" --target {{target}}\tdown\t0\trefuse\tthe baseline only gets tighter'
 
 # gate_repo <dir> — a repo whose HEAD carries the four rows above, an empty rules map, and
-# VAULT.md gating app/ and protecting quality/ and phpstan.neon.
+# quality/config gating app/ and protecting quality/ and phpstan.neon.
 gate_repo() {
     new_repo "$1"
     write_checks "$BAD_ROW" "$SUPPRESS_ROW" "$PROTECT_ROW" "$GROWTH_ROW"
     write_rules
-    printf 'guard_commit_paths: app\nguard_protected_paths: quality phpstan.neon VAULT.md\n' > VAULT.md
+    printf 'guard_commit_paths: app\nguard_protected_paths: quality phpstan.neon\n' > quality/config
     mkdir -p app docs
     printf 'clean\n' > app/a.php
     commit_all init

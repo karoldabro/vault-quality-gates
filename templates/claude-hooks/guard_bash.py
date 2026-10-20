@@ -492,16 +492,15 @@ def read_script(path, ctx):
 
 
 def protected_prefixes(repo):
-    # The gate's own rule (lib/qg-config.sh): quality/config when committed, else VAULT.md; never both.
-    for src in ('quality/config', 'VAULT.md'):
-        try:
-            r = subprocess.run(['git', '-C', repo, 'show', f'HEAD:{src}'], capture_output=True, text=True, timeout=5)
-        except (OSError, subprocess.SubprocessError):
-            return []
-        if r.returncode == 0:
-            m = re.search(r'^guard_protected_paths:[ \t]*(.*)$', r.stdout, re.M)
-            return m.group(1).split() if m else []
-    return []
+    # The gate's own rule (lib/qg-config.sh): the key as committed in quality/config, else none.
+    try:
+        r = subprocess.run(['git', '-C', repo, 'show', 'HEAD:quality/config'], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if r.returncode != 0:
+        return []
+    m = re.search(r'^guard_protected_paths:[ \t]*(.*)$', r.stdout, re.M)
+    return m.group(1).split() if m else []
 
 
 def trusted_script(path, ctx):

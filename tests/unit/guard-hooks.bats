@@ -39,7 +39,6 @@ setup() {
     done
     HOOK="$WORK/hooks/pre-push"
     new_repo "$WORK/repo"
-    printf 'guard_release_pattern: refs/heads/release/*\n' > VAULT.md
     printf 'one\n' > file.txt
     commit_all one
     SHA="$(git rev-parse HEAD)"
@@ -112,14 +111,6 @@ new_commit() { printf '%s\n' "$1" >> file.txt; commit_all "$1"; git rev-parse HE
     stub_guard 1
     run push_through_hook 1 refs/heads/release/1.17.0 "$SHA"
     [[ "$output" == *'hook=1'* ]]
-}
-
-# commit_vault <content> — commits VAULT.md with the content and records the new commit.
-commit_vault() {
-    printf '%s\n' "$1" > VAULT.md
-    commit_all vault
-    SHA="$(git rev-parse HEAD)"
-    record "$SHA"
 }
 
 @test "each pushed ref is measured on its own commit; one refusal refuses the push" {

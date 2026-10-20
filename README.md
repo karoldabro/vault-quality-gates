@@ -102,16 +102,16 @@ people bypass it. Slow rows carry `on: push:<glob>` or `on: baseline`.
 
 | path | holds |
 |---|---|
-| `bin/qg` | the command for people and agents: `list run explain last drivers doctor config override init migrate hooks` |
+| `bin/qg` | the command for people and agents: `list run explain last drivers doctor config override init hooks` |
 | `bin/guard.sh` | the engine: `commit verify release baseline report accept hooks` |
 | `bin/guard-added-lines.sh`, `bin/guard-baseline-growth.sh`, `bin/guard-protected-paths.sh` | the counts commit rows compare: findings on added lines, baseline growth, protected paths touched |
 | `bin/guard-report-errors.sh` | the finding lines a refusal and a `warn` row print |
 | `drivers/phpstan.sh`, `drivers/shell.sh` | the built-in drivers; `phpstan.sh` is the worked example of the driver contract |
-| `lib/guard-metrics.sh` | `guard_load_checks` (v1 and v2), `guard_run_driver`, `guard_run_shell`, `guard_compare`, `guard_baseline_diff` |
+| `lib/guard-metrics.sh` | `guard_load_checks`, `guard_run_driver`, `guard_run_shell`, `guard_compare`, `guard_baseline_diff` |
 | `lib/qg-events.sh` | the `on` grammar and which rows an event runs |
-| `lib/qg-config.sh` | the one reader of gate keys: `quality/config`, else `VAULT.md` |
+| `lib/qg-config.sh` | the one reader of gate keys, from `quality/config` |
 | `lib/qg-refusal.sh` | the refusal text and `qg-last/REFUSAL.txt` |
-| `lib/qg-explain.sh`, `lib/qg-doctor.sh`, `lib/qg-migrate.sh` | `qg explain`; `qg doctor`; `qg migrate` and `qg init` |
+| `lib/qg-explain.sh`, `lib/qg-doctor.sh`, `lib/qg-init.sh` | `qg explain`; `qg doctor`; `qg init` |
 | `lib/guard-commit.sh`, `lib/guard-tree.sh`, `lib/guard-diff.sh`, `lib/guard-pass.sh` | the commit gate and its built-in checks, the measured tree copy, added-line diffs, parents and pass records |
 | `lib/guard-baseline-neon.awk`, `lib/guard-baseline-phpmd.awk` | baseline entry keys, and the generator-shape check that makes a hand-edited baseline unmeasurable |
 | `lib/guard-hook.sh`, `lib/guard-override.sh` | the hook bodies; the human-only override, its token and its log |
@@ -166,7 +166,7 @@ git hooks are copies, and `qg doctor` fails until they match the templates.
 - **A repo whose toolchain is bound to its checkout path cannot be measured from a detached
   worktree.** The push gate checks the pushed commit out under `/tmp`, which has no `vendor/`, no
   `node_modules` and no container bind-mount. Set `guard_measure_worktree: false` in that repo's
-  `quality/config` (or `VAULT.md`) to measure the working tree instead. A push is then refused while
+  `quality/config` to measure the working tree instead. A push is then refused while
   tracked files are dirty or HEAD is not the pushed commit, so the tree measured is the tree pushed.
   A row with `runner=` runs its tool inside the toolchain instead (`vault/architecture/qg-driver-contract.md`).
 

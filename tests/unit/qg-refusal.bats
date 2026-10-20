@@ -7,7 +7,7 @@
 load guard-helpers
 
 V2_HEADER=$'id\ton\tkind\tdriver\targs\tdirection\tthreshold\tgate\twhy'
-ENV_ROW() { printf '%s\tcommit\tdiff\techo "in-tree.sh: vendor/ does not match HEAD:composer.lock" >&2; exit 2\texitcode\t-\tdown\t0\trefuse' "$1"; }
+ENV_ROW() { printf '%s\tcommit\tdiff\tshell\tparser=exitcode -- echo "in-tree.sh: vendor/ does not match HEAD:composer.lock" >&2; exit 2\tdown\t0\trefuse\tthe vendor tree matches the lock file' "$1"; }
 
 setup() {
     export LC_ALL=C
@@ -28,7 +28,7 @@ teardown() {
 stage_change() { printf '%s\n' "$RANDOM" >> app/b.php; git add app/b.php; }
 refusal_file() { cat "$(git rev-parse --path-format=absolute --git-common-dir)/qg-last/REFUSAL.txt"; }
 
-@test "eight rows failing on one environment error: nothing-measured note, fallback why, one tail, under the cap" {
+@test "eight rows failing on one environment error: nothing-measured note, each why, one tail, under the cap" {
     local rows=() i
     for i in 1 2 3 4 5 6 7 8; do rows+=("$(ENV_ROW "row-$i")"); done
     write_checks "${rows[@]}"
@@ -37,7 +37,7 @@ refusal_file() { cat "$(git rev-parse --path-format=absolute --git-common-dir)/q
     run bash /code/bin/guard.sh commit
     [ "$status" -eq 2 ]
     [[ "$output" == *'Nothing in your code was measured'* ]]
-    [ "$(grep -c 'why:       (no reason recorded; run qg migrate)' <<<"$output")" -eq 8 ]
+    [ "$(grep -c 'why:       the vendor tree matches the lock file' <<<"$output")" -eq 8 ]
     [ "$(grep -c '  | in-tree.sh: vendor/ does not match' <<<"$output")" -eq 1 ]
     [[ "$output" == *'Output of row-'*', row-'* ]]
     [[ "$output" == *'Fix what the output above names'* ]]
@@ -72,7 +72,7 @@ refusal_file() { cat "$(git rev-parse --path-format=absolute --git-common-dir)/q
 
 @test "a long refusal is cut in the middle at 3500 characters; the footer survives; qg last keeps all of it" {
     local rows=() i
-    for i in $(seq 1 40); do rows+=("$(printf 'long-row-%02d\tcommit\tdiff\techo %s >&2; exit 2\texitcode\t-\tdown\t0\trefuse' "$i" "unique-text-$i-$(printf 'x%.0s' $(seq 1 60))")"); done
+    for i in $(seq 1 40); do rows+=("$(printf 'long-row-%02d\tcommit\tdiff\tshell\tparser=exitcode -- echo %s >&2; exit 2\tdown\t0\trefuse\ta test row' "$i" "unique-text-$i-$(printf 'x%.0s' $(seq 1 60))")"); done
     write_checks "${rows[@]}"
     commit_all init
     stage_change

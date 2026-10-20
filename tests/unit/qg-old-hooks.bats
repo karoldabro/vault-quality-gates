@@ -5,7 +5,7 @@
 
 load guard-helpers
 
-ALWAYS_BAD_RELEASE=$'always-bad\trelease\tdiff\techo 1\t-\t-\tdown\t0\trefuse'
+ALWAYS_BAD_RELEASE=$'always-bad\tpush:refs/heads/release/*\tdiff\tshell\t-- echo 1\tdown\t0\trefuse\ta test row'
 
 setup() {
     export LC_ALL=C
@@ -23,7 +23,7 @@ teardown() {
 repo_with() {
     gate_repo "$WORK/$2"
     write_checks "$BAD_ROW" "$ALWAYS_BAD_RELEASE"
-    printf 'guard_commit_paths: app\nguard_protected_paths: quality\nguard_release_pattern: refs/heads/release/*\n' > VAULT.md
+    printf 'guard_commit_paths: app\nguard_protected_paths: quality\n' > quality/config
     commit_all gate
     local h
     for h in pre-commit pre-push pre-merge-commit pre-applypatch post-rewrite; do

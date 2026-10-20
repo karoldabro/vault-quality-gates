@@ -3,7 +3,7 @@
 # and the args grammar. Sourced by lib/guard-metrics.sh, lib/qg-driver.sh and
 # lib/qg-driver-kit.sh; defines functions only and sources nothing.
 
-# guard_load_checks reads either header into one row shape: these fields, tab-separated, in this
+# guard_load_checks reads each checks.tsv row into one shape: these fields, tab-separated, in this
 # order. Every reader takes a field by name through guard_row_field, never by position.
 GUARD_FIELDS=(id on kind driver args direction threshold gate why command parser artifact)
 # -g: a caller may source this file inside a function, and a plain declare would be local there.

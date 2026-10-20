@@ -7,7 +7,7 @@ set -uo pipefail
 exec < /dev/null
 . "$(dirname "${BASH_SOURCE[0]}")/_qg-cases.sh"
 qg_cases \
-    qg-migrate.bats \
+    qg-init.bats \
     "init protects exactly the gate files and leaves other quality files unprotected" \
     "init --profile docs protects .doc-lint and every tracked .doc-lint and writes an absolute guard_doc_lint" \
     "init --profile docs warns when the doc-lint it names is not executable" \

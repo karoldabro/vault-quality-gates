@@ -26,7 +26,7 @@ checks a bare `qg`, or a path whose real path is the plugin's `bin/qg`. It allow
 help -h --help list explain last drivers doctor run report verify config   + hooks status
 ```
 
-`bin/qg` refuses `override`, `init`, `migrate`, `baseline`, `accept`, `hooks install` and
+`bin/qg` refuses `override`, `init`, `baseline`, `accept`, `hooks install` and
 `hooks remove` with exit 2 when `CLAUDECODE` or `AI_AGENT` is set. The two checks are independent:
 an agent outside a guarded Claude Code session still meets the second.
 
@@ -52,10 +52,9 @@ an agent outside a guarded Claude Code session still meets the second.
 | `qg last` | the last refusal, in full, from `<git-common-dir>/qg-last/REFUSAL.txt` | 0, also when none is recorded | yes |
 | `qg drivers [<name>]` | the drivers this repo can use, or one driver's `describe` and `explain` | 0; 2 for an unknown name | yes |
 | `qg doctor` | checks the setup | 0 healthy (warnings allowed), 1 something is broken | yes |
-| `qg config get <key>` | a gate key as committed: `quality/config`, else `VAULT.md` | 0 and the value; 1 when unset; 2 on bad usage | yes |
+| `qg config get <key>` | a gate key as committed in `quality/config`; a key only in `VAULT.md` is unset | 0 and the value; 1 when unset; 2 on bad usage | yes |
 | `qg override --reason "<why>" [--push <sha>]` | lets the next commit of what is staged now, or the push of `<sha>`, through once within 10 minutes | 0 token written; 1 no terminal or a bad `--push` sha; 2 no reason or an agent | no |
 | `qg init --profile docs\|php\|nuxt\|flutter\|hugo [--force]` | writes `quality/checks.tsv`, `rules.tsv`, `baseline.tsv` and `config` from `templates/init/<profile>.tsv`. `config` protects the five gate files by exact path, plus every tracked `.doc-lint` for docs, which also gets `guard_doc_lint`. An existing `config` is kept, with a warning naming what it lacks. Next: `qg hooks install`, commit, `qg doctor` | 0; 2 on a bad profile or an existing `checks.tsv` without `--force` | no |
-| `qg migrate [--draft]` | rewrites a v1 `checks.tsv` as v2 and writes `quality/config` from the `VAULT.md` keys | 1 without `--draft`, listing rows with no why; 0 with `--draft`; 2 when there is nothing to migrate | no |
 | `qg hooks`, `qg hooks status [--user [--config-dir <dir>]...]` | what is installed (`vault/architecture/guard-agent-hooks.md`) | 0 | yes |
 | `qg hooks install [--claude [--user [--config-dir <dir>]...]]`, `qg hooks remove [--claude [--user ...]]` | installs or removes the git hooks or the guard entries (`vault/architecture/guard-agent-hooks.md`) | 0; 2 from a linked worktree (`--user`) or on invalid settings JSON | no |
 | `qg report`, `qg verify <range>` | pass through to `guard.sh report` and `guard.sh verify` | from `guard.sh` | yes |
@@ -68,9 +67,8 @@ commit` writes no pass record, so a later `git commit` runs the gate again.
 **`qg override` details** (token binding, lifetime, the `QG_SKIP_REASON` alternative) are in
 `vault/architecture/guard-commit-gate.md`.
 
-**`qg migrate --draft`** copies the v1 file to `quality/checks.v1.tsv.bak` and writes each `why` as a
-`TODO` sentence. The gate refuses to commit a `TODO` why. `qg init` and `qg migrate` never commit:
-the commit that changes the gate configuration is a human's, made after `qg override`.
+**`qg init` never commits.** The commit that changes the gate configuration is a human's, made after
+`qg override`.
 
 ## `--json` shapes
 

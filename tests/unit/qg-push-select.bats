@@ -1,12 +1,11 @@
 #!/usr/bin/env bats
-# bin/guard.sh release <ref> — which rows a push runs. The engine picks rows by their `on` cell;
-# a v1 row's `on` comes from guard_release_pattern in the measured commit. A ref no row runs on
-# exits 0 before the config-presence and tree checks.
+# bin/guard.sh release <ref> — which rows a push runs. The engine picks rows by their `on` cell
+# in the measured commit. A ref no row runs on exits 0 before the config-presence and tree checks.
 
 load guard-helpers
 
 # A push row that always measures 1 against a ceiling of 0: refused whenever it runs.
-V1_PUSH=$'always-bad\trelease\tdiff\techo 1\t-\t-\tdown\t0\trefuse'
+RELEASE_PUSH=$'always-bad\tpush:refs/heads/release/*\tdiff\tshell\t-- echo 1\tdown\t0\trefuse\trelease pushes are checked'
 V2_HEADER=$'id\ton\tkind\tdriver\targs\tdirection\tthreshold\tgate\twhy'
 
 setup() {
@@ -25,56 +24,19 @@ teardown() {
 
 release() { GUARD_SHA="$(git rev-parse HEAD)" run bash /code/bin/guard.sh release "$1"; }
 
-v1_repo() {  # v1_repo <VAULT.md line or empty>
-    write_checks "$V1_PUSH"
-    [ -n "$1" ] && printf '%s\n' "$1" > VAULT.md
-    commit_all v1
+push_repo() {  # push_repo [<quality/config line>]
+    write_checks "$RELEASE_PUSH"
+    [ -z "${1:-}" ] || printf '%s\n' "$1" > quality/config
+    commit_all push
 }
 
-@test "v1: a ref inside guard_release_pattern runs the row; one outside runs nothing" {
-    v1_repo 'guard_release_pattern: refs/heads/release/*'
+@test "a ref inside a push:<glob> runs the row; one outside runs nothing" {
+    push_repo
     release refs/heads/release/1.0.0
     [ "$status" -eq 1 ]
     release refs/heads/feature/x
     [ "$status" -eq 0 ]
     [[ "$output" == *'no gate row runs on refs/heads/feature/x'* ]]
-}
-
-@test "v1: a Prettier-escaped pattern and each alternative of a|b gate their refs" {
-    v1_repo 'guard_release_pattern: refs/heads/release/\*|refs/heads/realse/*'
-    release refs/heads/release/2.0.0
-    [ "$status" -eq 1 ]
-    release refs/heads/realse/2.0.1
-    [ "$status" -eq 1 ]
-    release refs/heads/feature/x
-    [ "$status" -eq 0 ]
-}
-
-@test "v1: no guard_release_pattern gates refs/heads/release/*" {
-    v1_repo ''
-    release refs/heads/release/9.9.9
-    [ "$status" -eq 1 ]
-    release refs/heads/main
-    [ "$status" -eq 0 ]
-}
-
-@test "v1: the pattern comes from the measured commit, not the working tree" {
-    v1_repo 'guard_release_pattern: refs/heads/rel/*'
-    printf 'guard_release_pattern: refs/heads/release/*\n' > VAULT.md
-    release refs/heads/release/3.0.0
-    [ "$status" -eq 0 ]
-    release refs/heads/rel/3.0.0
-    [ "$status" -eq 1 ]
-}
-
-@test "v1: quality/config replaces VAULT.md when present" {
-    v1_repo 'guard_release_pattern: refs/heads/release/*'
-    printf 'guard_release_pattern: refs/heads/ship/*\n' > quality/config
-    commit_all config
-    release refs/heads/release/1.0.0
-    [ "$status" -eq 0 ]
-    release refs/heads/ship/1.0.0
-    [ "$status" -eq 1 ]
 }
 
 @test "v2: push runs on every ref; push:<glob> only on matching refs" {
@@ -100,7 +62,7 @@ v1_repo() {  # v1_repo <VAULT.md line or empty>
 }
 
 @test "guard_measure_worktree false: no tree check when no row runs; refused when one does" {
-    v1_repo $'guard_release_pattern: refs/heads/release/*\nguard_measure_worktree: false'
+    push_repo 'guard_measure_worktree: false'
     first="$(git rev-parse HEAD)"
     printf 'two\n' >> file.txt
     commit_all two
@@ -115,7 +77,7 @@ v1_repo() {  # v1_repo <VAULT.md line or empty>
 }
 
 @test "the 43d7082 call form still works: GUARD_SHA and GUARD_BASE with a ref" {
-    v1_repo 'guard_release_pattern: refs/heads/release/*'
+    push_repo
     GUARD_SHA="$(git rev-parse HEAD)" GUARD_BASE="$(git rev-parse HEAD)" run bash /code/bin/guard.sh release refs/heads/release/1.0.0
     [ "$status" -eq 1 ]
     [[ "$output" == *'always-bad'* ]]

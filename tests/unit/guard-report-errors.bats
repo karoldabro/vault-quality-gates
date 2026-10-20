@@ -13,12 +13,12 @@ setup() {
                 $'commented-out-code\tphpcs\tSquiz.PHP.CommentedOutCode\tSquiz.PHP.CommentedOutCode' \
                 $'too-long-method\tphpmd\tExcessiveMethodLength\tExcessiveMethodLength'
     write_checks \
-        $'phpstan-new\tcommit\tdiff\ttrue\tphpstan-all\t{{tree}}/phpstan.json\tdown\t0\trefuse' \
-        $'phpmd-new\tcommit\tdiff\ttrue\tphpmd\t{{tree}}/phpmd.json\tdown\t0\trefuse' \
-        $'phpcs-new\tcommit\tdiff\t{{guard}}/guard-added-lines.sh --checkstyle {{tree}}/phpcs.xml\t-\t{{tree}}/phpcs.xml\tdown\t0\trefuse' \
-        $'format-staged\tcommit\tdiff\ttrue\texitcode\t{{tree}}/pint.xml\tdown\t0\trefuse' \
+        $'phpstan-new\tcommit\tdiff\tshell\tparser=phpstan-all artifact={{tree}}/phpstan.json -- true\tdown\t0\trefuse\ta test row' \
+        $'phpmd-new\tcommit\tdiff\tshell\tparser=phpmd artifact={{tree}}/phpmd.json -- true\tdown\t0\trefuse\ta test row' \
+        $'phpcs-new\tcommit\tdiff\tshell\tartifact={{tree}}/phpcs.xml -- {{guard}}/guard-added-lines.sh --checkstyle {{tree}}/phpcs.xml\tdown\t0\trefuse\ta test row' \
+        $'format-staged\tcommit\tdiff\tshell\tparser=exitcode artifact={{tree}}/pint.xml -- true\tdown\t0\trefuse\ta test row' \
         "$SUPPRESS_ROW" "$GROWTH_ROW" "$PROTECT_ROW"
-    printf 'guard_protected_paths: quality\n' > VAULT.md
+    printf 'guard_protected_paths: quality\n' > quality/config
     commit_all init
     TREE="$WORK/tree"
     mkdir -p "$TREE"
@@ -170,7 +170,7 @@ XML
 }
 
 @test "a Dart suppression row prints each hit with its fixed action; a generated file prints nothing" {
-    write_checks $'dart-suppressions\tcommit\tdiff\t"{{guard}}/guard-added-lines.sh" --ext dart --exclude \'\\.(g|freezed|mocks|config)\\.dart$\' --grep \'//[[:space:]]*ignore(_for_file)?:\' --bases "{{bases}}" --target "{{target}}"\t-\t-\tdown\t0\trefuse'
+    write_checks $'dart-suppressions\tcommit\tdiff\tshell\t-- "{{guard}}/guard-added-lines.sh" --ext dart --exclude \'\\.(g|freezed|mocks|config)\\.dart$\' --grep \'//[[:space:]]*ignore(_for_file)?:\' --bases "{{bases}}" --target "{{target}}"\tdown\t0\trefuse\ta test row'
     commit_all 'dart row'
     mkdir -p lib
     printf 'x // ignore: foo\n' > lib/a.dart

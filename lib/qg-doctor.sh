@@ -3,7 +3,7 @@
 # functions only. Exit 0 when nothing is broken (warnings allowed), 1 when something is.
 
 qg_doctor() {
-    local fails=0 warns=0 out='' plugin hooks name f r driver path tmp req glob refs src
+    local fails=0 warns=0 out='' plugin hooks name f r driver path tmp req glob refs
     plugin="$(readlink -f "${GUARD_LIB_DIR}/..")"
     note() {  # note <ok|warn|fail> <text>
         case "$1" in warn) warns=$((warns + 1)) ;; fail) fails=$((fails + 1)) ;; esac
@@ -24,9 +24,8 @@ qg_doctor() {
         note fail 'HEAD has no quality/checks.tsv: nothing is gated (qg init --profile <p>)'
     fi
     guard_config_show quality/rules.tsv >/dev/null || note warn 'HEAD has no quality/rules.tsv: the commit gate treats this branch as predating the gate'
-    src="$(qg_config_source)" && note ok "gate keys come from ${src}" || note warn 'neither quality/config nor VAULT.md is committed: every key takes its default'
-    head -1 <(guard_config_show quality/checks.tsv 2>/dev/null) | grep -qF "$GUARD_CHECKS_HEADER" \
-        && note warn 'quality/checks.tsv is v1: rows have no why (a human runs qg migrate)'
+    guard_cfg_show quality/config >/dev/null && note ok 'gate keys come from quality/config' \
+        || note warn 'HEAD has no quality/config: every key takes its default'
 
     # Git hooks: installed, and identical to the templates of this plugin. An installed hook is a
     # copy, so an outdated one keeps running the old body.
@@ -146,8 +145,7 @@ qg_glob_hits() {
     return 1
 }
 
-# The v1 checks.tsv header. The loader no longer needs it once v1 is gone; this mode still has to
-# recognise it on an old branch.
+# The v1 checks.tsv header. The loader refuses it; this mode still recognises it on an old branch.
 QG_DOCTOR_V1_HEADER=$'id\tscope\tkind\tcommand\tparser\tartifact\tdirection\tthreshold\tgate'
 
 # qg_doctor_branches -> `qg doctor --all-branches`: every local branch and remote-tracking ref whose

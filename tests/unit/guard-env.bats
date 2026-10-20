@@ -7,7 +7,7 @@
 
 load guard-helpers
 
-COV_ROW=$'cov\trelease\trepo\techo 80\t-\t-\tup\t0\trefuse'
+COV_ROW=$'cov\tpush:refs/heads/release/*\trepo\tshell\t-- echo 80\tup\t0\trefuse\ta test row'
 HOOKS=/code/templates/claude-hooks
 
 setup() {
@@ -44,7 +44,7 @@ hook() {
 }
 
 @test "release: an inherited GUARD_SKIP skips no row" {
-    write_checks "$BAD_ROW" $'cov\trelease\trepo\techo 70\t-\t-\tup\t0\trefuse'
+    write_checks "$BAD_ROW" $'cov\tpush:refs/heads/release/*\trepo\tshell\t-- echo 70\tup\t0\trefuse\ta test row'
     commit_all 'coverage drops to 70'
     for skip in . cov '.*'; do
         GUARD_SKIP="$skip" GUARD_SHA="$(git rev-parse HEAD)" GUARD_BASE="$BASE" run bash /code/bin/guard.sh release refs/heads/release/x
@@ -54,7 +54,7 @@ hook() {
 }
 
 @test "baseline --skip still keeps the skipped row's existing value" {
-    write_checks $'cov\trelease\trepo\techo 80\t-\t-\tup\t0\trefuse' $'dup\trelease\trepo\techo 5\t-\t-\tdown\t0\trefuse'
+    write_checks $'cov\tpush:refs/heads/release/*\trepo\tshell\t-- echo 80\tup\t0\trefuse\ta test row' $'dup\tpush:refs/heads/release/*\trepo\tshell\t-- echo 5\tdown\t0\trefuse\ta test row'
     printf 'id\tvalue\tcommit\treason\ncov\t60\told\t-\ndup\t9\told\t-\n' > quality/baseline.tsv
     commit_all two-rows
     run bash /code/bin/guard.sh baseline --skip '^cov$'
@@ -105,7 +105,7 @@ hook() {
 # A commit row the tree refuses (BAD in app/), unless NODE_OPTIONS or LEAK_PROBE reaches it, or a
 # BASH_ENV file or exported function replaces wc. It also starts python3, which a leaked
 # PYTHONPATH would make import $WORK/py/sitecustomize.py.
-LEAK_ROW=$'bad-in-tree\tcommit\tdiff\tpython3 -c 1 >/dev/null 2>&1; { [ -n "${NODE_OPTIONS:-}${LEAK_PROBE:-}" ] && echo 0; } || grep -rl BAD {{tree}}/app 2>/dev/null | wc -l\t-\t-\tdown\t0\trefuse'
+LEAK_ROW=$'bad-in-tree\tcommit\tdiff\tshell\t-- python3 -c 1 >/dev/null 2>&1; { [ -n "${NODE_OPTIONS:-}${LEAK_PROBE:-}" ] && echo 0; } || grep -rl BAD {{tree}}/app 2>/dev/null | wc -l\tdown\t0\trefuse\ta test row'
 PROBE='{ [ -n "${NODE_OPTIONS:-}${LEAK_PROBE:-}" ] && echo 0; } || printf "BAD\n" | wc -l'
 SYSTEM_PATH=/usr/local/bin:/usr/bin:/bin
 V2_HEADER=$'id\ton\tkind\tdriver\targs\tdirection\tthreshold\tgate\twhy'
@@ -148,7 +148,7 @@ plugin_copy() {
 child_path() {
     [ -d "$WORK/plugin" ] || plugin_copy "$WORK/plugin"
     printf '%s' "$1" > "$WORK/plugin/.git/qg-tool-path"
-    write_checks "path-probe"$'\tcommit\tdiff\t'"printf '%s' \"\$PATH\" > $WORK/child-path; echo 0"$'\t-\t-\tdown\t0\trefuse'
+    write_checks "path-probe"$'\tcommit\tdiff\tshell\t-- '"printf '%s' \"\$PATH\" > $WORK/child-path; echo 0"$'\tdown\t0\trefuse\ta test row'
     commit_all probe
     printf 'x\n' >> app/b.php; git add app/b.php
     rm -f "$WORK/child-path"

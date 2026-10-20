@@ -109,13 +109,3 @@ ok_json() { printf '{"schema":"qg.result/1","status":"measured","metric":%s,"fin
     [ "$status" -eq 0 ]
     [ -d "$(git rev-parse --path-format=absolute --git-common-dir)/guard-tree/app" ]
 }
-
-@test "a v1 row id with a slash or .. writes nothing outside qg-last" {
-    write_checks $'../escape\tcommit\tdiff\techo 0\t-\t-\tdown\t0\trefuse'
-    commit_all v1
-    printf 'z\n' > app/d.php; git add app/d.php
-    run guard_commit
-    common="$(git rev-parse --path-format=absolute --git-common-dir)"
-    [ ! -e "$common/escape" ]
-    [ ! -e "$common/qg-last/../escape" ]
-}

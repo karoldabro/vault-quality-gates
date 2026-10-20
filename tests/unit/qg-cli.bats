@@ -232,7 +232,7 @@ teardown() {
 
 @test "the commands that change the gate refuse an agent; read commands do not" {
     local c
-    for c in 'override --reason x' 'hooks install' 'hooks remove' 'baseline' 'accept todo-count --reason x' 'migrate' 'init --profile docs'; do
+    for c in 'override --reason x' 'hooks install' 'hooks remove' 'baseline' 'accept todo-count --reason x' 'init --profile docs'; do
         # shellcheck disable=SC2086
         CLAUDECODE=1 run "$QG" $c
         [ "$status" -eq 2 ] && [[ "$output" == *'refused for an agent'* ]] || { echo "not refused: qg $c"; return 1; }
@@ -251,4 +251,63 @@ teardown() {
     GUARD_SKIP=. GUARD_ONLY=nothing GUARD_CONFIG_REV=HEAD QG_X=1 run "$QG" run commit --json
     b="$(sed -n '/^{/,$p' <<<"$output" | jq -c '[.verdict, (.rows | map([.id, .status, .value]))]')"
     [ "$a" = "$b" ]
+}
+
+# v1_head — HEAD's quality/checks.tsv in the v1 format.
+v1_head() {
+    { printf 'id\tscope\tkind\tcommand\tparser\tartifact\tdirection\tthreshold\tgate\n'
+      printf 'todo-count\tcommit\tdiff\techo 0\t-\t-\tdown\t0\trefuse\n'; } > quality/checks.tsv
+    commit_all v1
+}
+
+@test "qg doctor on a v1 HEAD fails naming qg doctor --all-branches, never qg migrate" {
+    healthy_setup
+    v1_head
+    run "$QG" doctor
+    [ "$status" -eq 1 ]
+    [[ "$output" == *'fail  quality/checks.tsv does not load: '*'qg doctor --all-branches'* ]]
+    [[ "$output" != *'migrate'* ]]
+}
+
+@test "qg migrate is an unknown subcommand" {
+    run "$QG" migrate
+    [ "$status" -eq 2 ] && [[ "$output" == *'unknown command "migrate"'*'Commands:'* ]]
+    CLAUDECODE=1 run "$QG" migrate --draft
+    [ "$status" -eq 2 ] && [[ "$output" == *'unknown command "migrate"'* ]]
+    [[ "$output" != *'refused for an agent'* ]]
+}
+
+@test "qg help no longer lists migrate or a VAULT.md fallback" {
+    local t
+    for t in '' config migrate init doctor; do
+        run "$QG" help $t
+        [ "$status" -eq 0 ] || { echo "help $t: $status"; return 1; }
+        [[ "$output" != *'migrate'* ]] && [[ "$output" != *'VAULT.md'* ]] || { echo "help $t: $output"; return 1; }
+    done
+    run "$QG" help config
+    [[ "$output" == *'quality/config'* ]]
+}
+
+@test "a gate key only in VAULT.md reads as unset" {
+    printf 'guard_commit_paths: app\nguard_accept_limit: 0\n' > VAULT.md
+    commit_all vault
+    local out rc=0
+    out="$("$QG" config get guard_commit_paths 2>/dev/null)" || rc=$?
+    [ "$rc" -eq 1 ] && [ -z "$out" ]
+    rc=0; out="$("$QG" config get guard_accept_limit 2>/dev/null)" || rc=$?
+    [ "$rc" -eq 1 ] && [ -z "$out" ]
+    printf 'guard_commit_paths: app\n' > quality/config
+    commit_all config
+    run "$QG" config get guard_commit_paths
+    [ "$status" -eq 0 ] && [ "$output" = app ]
+}
+
+@test "qg run commit on a v1 checks.tsv exits 2 with the same message" {
+    v1_head
+    printf 'TODO\n' > app/b.php; git add app/b.php
+    run "$QG" run commit
+    [ "$status" -eq 2 ]
+    [[ "$output" == *'quality/checks.tsv is in the v1 format'*'qg doctor --all-branches'* ]]
+    run "$QG" list
+    [ "$status" -eq 2 ] && [[ "$output" == *'qg doctor --all-branches'* ]]
 }

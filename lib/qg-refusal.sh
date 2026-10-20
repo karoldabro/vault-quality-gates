@@ -40,7 +40,7 @@ qg_refusal_why() {
     for r in "${GUARD_ROWS[@]:-}"; do
         [ "$(guard_row_field "$r" id)" = "$1" ] && { guard_row_field "$r" why; return; }
     done
-    printf '%s' "$GUARD_WHY_FALLBACK"
+    printf '(row not in checks.tsv)'
 }
 
 qg_refusal_driver() {

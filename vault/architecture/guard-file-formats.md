@@ -16,7 +16,8 @@ as passing. Drivers follow `vault/architecture/qg-driver-contract.md`.
 ## Parsing rules for every `.tsv` file
 
 1. **Line 1 is the literal header**, uncommented and tab-separated. `guard_load_checks` refuses a
-   `checks.tsv` whose line 1 is neither header below.
+   `checks.tsv` whose line 1 is not the header below with exit 2. A v1 header, which starts
+   `id	scope`, names `qg doctor --all-branches`; that command lists every ref still on v1.
 2. A row whose field count differs from the header is **exit 2**, naming file and line.
 3. A line whose first character is `#` is a comment. A blank line is skipped.
 4. No cell holds a tab or a newline. An empty cell is written `-`, never left blank, because an
@@ -91,24 +92,6 @@ printf 'comment-density\tcommit,push:refs/heads/release/*\trepo\tshell\tparser=c
 printf 'mutation\t-\tabsent\t-\t-\t-\t-\t-\tDart has no diff-scoped mutation tool\n'
 ```
 
-### The v1 header, which the loader still reads
-
-```
-id	scope	kind	command	parser	artifact	direction	threshold	gate
-```
-
-`guard_load_checks` turns each v1 row into a v2 row:
-
-| v2 field | from v1 |
-|---|---|
-| `on` | `scope` `commit` → `commit`; `release` → `push:<glob>` per `\|`-separated glob of `guard_release_pattern`; `both` → both; `baseline` → `baseline`; `-` → `-` |
-| `driver` | `shell` |
-| `args` | `parser=<parser> artifact=<artifact> -- <command>` |
-| `why` | `(no reason recorded; run qg migrate)`; for `kind: absent`, the `artifact` cell |
-
-An empty `guard_release_pattern` means `refs/heads/release/*`. The key is read at the config
-revision. `qg migrate` rewrites a v1 file as v2; a human makes that commit.
-
 ## `quality/rules.tsv`: identifier to catalog rule
 
 Required by `bin/guard.sh commit` and `verify`. Header: `id	tool	enforced_by	emits`.
@@ -142,8 +125,8 @@ reason (default 3). `guard.sh baseline` clears every reason it rewrites.
 
 Flat `key: value` lines; `#` starts a comment. `lib/qg-config.sh` is the only reader.
 
-**Constraint: one key file per repo.** When `quality/config` exists at the config revision, the
-engine reads every key from it and never reads `VAULT.md`. Otherwise every key comes from `VAULT.md`.
+**Constraint: `quality/config` is the only key file.** A key it does not hold at the config
+revision is unset and takes its default; `VAULT.md` is never read for a key.
 The config revision is the commit whose configuration judges the run, so a staged edit changes no key.
 
 | key | effect |
@@ -152,7 +135,6 @@ The config revision is the commit whose configuration judges the run, so a stage
 | `guard_protected_paths` | path prefixes `bin/guard-protected-paths.sh` counts |
 | `guard_accept_limit` | the most baseline rows that may carry a reason; default 3 |
 | `guard_measure_worktree` | `false` measures the working tree at push instead of a detached worktree |
-| `guard_release_pattern` | v1 rows only: the push refs a `release` scope means |
 
 `qg config get <key>` prints a key as committed. A commit that changes `quality/config` fails the
 built-in check `gate-config-changed`.
@@ -177,10 +159,10 @@ characters; the `How to pass:` footer is never cut. The whole text is written to
 
 | path | written by | read by | tracked |
 |---|---|---|---|
-| `quality/checks.tsv` | `qg init`, `qg migrate`, or a human | `guard_load_checks` | yes |
+| `quality/checks.tsv` | `qg init` or a human | `guard_load_checks` | yes |
 | `quality/baseline.tsv` | `guard.sh baseline` and `guard.sh accept` | `guard_compare`, `guard_baseline_diff` | yes |
 | `quality/rules.tsv` | a human | `bin/guard-report-errors.sh` | yes |
-| `quality/config` | `qg init`, `qg migrate`, or a human | `lib/qg-config.sh` | yes |
+| `quality/config` | `qg init` or a human | `lib/qg-config.sh` | yes |
 | `quality-reports/status.json`, `REPORT.md` | `guard_render_report` | the operator | no |
 | `<git-common-dir>/qg-last/RESULTS.txt` | `guard_render_report`: one `id\|value\|reference\|status\|detail` line per row | `qg run --json`, `qg explain` | no |
 | `<git-common-dir>/qg-last/REFUSAL.txt` | `qg_print_refusal` | `qg last` | no |

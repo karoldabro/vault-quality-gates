@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Behaviour that must not drift from 43d7082 or from the format contract: v1 shell rows run
+# Behaviour that must not drift from 43d7082 or from the format contract: shell rows run
 # isolated, every v2 cell is required, an option without its value never hangs, plain metrics keep
 # their precision, verify refusals name the commit, and a push no row measures still keeps the
 # baseline lock.
@@ -24,9 +24,9 @@ teardown() {
     return 0
 }
 
-@test "v1 rows run isolated: a cd does not move the artifact, an exit does not skip the parser" {
-    write_checks $'cloc-sub\tcommit\tdiff\tcd sub && printf \'{"SUM":{"code":10,"comment":1}}\' > cloc.json\tcloc\tsub/cloc.json\tdown\t1\trefuse' \
-                 $'grep-exit\tcommit\tdiff\tgrep -q BAD app/a && exit 1; exit 0\texitcode\t-\tdown\t0\trefuse'
+@test "shell rows run isolated: a cd does not move the artifact, an exit does not skip the parser" {
+    write_checks $'cloc-sub\tcommit\tdiff\tshell\tparser=cloc artifact=sub/cloc.json -- cd sub && printf \'{"SUM":{"code":10,"comment":1}}\' > cloc.json\tdown\t1\trefuse\ta test row' \
+                 $'grep-exit\tcommit\tdiff\tshell\tparser=exitcode -- grep -q BAD app/a && exit 1; exit 0\tdown\t0\trefuse\ta test row'
     commit_all init
     printf 'x\n' > app/b; git add app/b
     run bash /code/bin/guard.sh commit

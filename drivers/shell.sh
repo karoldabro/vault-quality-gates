@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shell driver: a command and, optionally, a parser that turns its artifact into one number.
-# Every v1 row runs as this driver. The engine runs `shell` rows itself, inside guard.sh, so a
+# The engine runs `shell` rows itself, inside guard.sh, so a
 # command keeps the `set -uo pipefail` and LC_ALL=C it has always run under; this file answers
 # describe and explain. Contract: vault/architecture/qg-driver-contract.md.
 #

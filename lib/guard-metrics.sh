@@ -24,11 +24,9 @@ export LC_ALL=C
 # shellcheck source=qg-refusal.sh
 . "$(dirname "${BASH_SOURCE[0]}")/qg-refusal.sh"
 
-GUARD_CHECKS_HEADER=$'id\tscope\tkind\tcommand\tparser\tartifact\tdirection\tthreshold\tgate'
 GUARD_CHECKS_HEADER_V2=$'id\ton\tkind\tdriver\targs\tdirection\tthreshold\tgate\twhy'
 GUARD_BASELINE_HEADER=$'id\tvalue\tcommit\treason'
 GUARD_ACCEPT_LIMIT_DEFAULT=3
-GUARD_WHY_FALLBACK='(no reason recorded; run qg migrate)'
 
 # Rows loaded by guard_load_checks, one normalised row per element.
 GUARD_ROWS=()
@@ -45,14 +43,13 @@ guard_is_number() { awk -v v="$1" 'BEGIN { exit !(v ~ /^-?[0-9]+(\.[0-9]+)?$/) }
 
 # guard_load_checks <path>
 #
-# Fills GUARD_ROWS with normalised rows. Line 1 is the v1 header or the v2 header
-# (vault/architecture/guard-file-formats.md). A v1 row runs as driver `shell`, its `on` comes
-# from `scope` and guard_release_pattern, and its `why` is GUARD_WHY_FALLBACK. Exit 2, naming file
-# and line, on any other header, a wrong field count, or a v2 row with a bad `on`, an unknown
-# driver, or `why` set to `-`.
+# Fills GUARD_ROWS with normalised rows. Line 1 is the v2 header
+# (vault/architecture/guard-file-formats.md). Exit 2, naming file and line, on any other header, a
+# wrong field count, or a row with a bad `on`, an unknown driver, or `why` set to `-`. A v1 header
+# (`id<TAB>scope<TAB>...`) names `qg doctor --all-branches`, which lists the refs still on v1.
 guard_load_checks() {
-    local path="$1" line n=0 version='' count pattern=''
-    local id scope kind command parser artifact direction threshold gate on driver args why reason
+    local path="$1" line n=0 count
+    local id kind command parser artifact direction threshold gate on driver args why reason
 
     if [ ! -r "$path" ]; then
         guard_err "guard: cannot read ${path}"
@@ -65,10 +62,11 @@ guard_load_checks() {
         line="${line%$'\r'}"
         if [ "$n" -eq 1 ]; then
             case "$line" in
-                "$GUARD_CHECKS_HEADER")    version=1
-                    declare -F qg_config_key >/dev/null && pattern="$(qg_config_key guard_release_pattern)" ;;
-                "$GUARD_CHECKS_HEADER_V2") version=2 ;;
-                *) guard_err "guard: ${path} line 1 is neither the v1 nor the v2 checks header"; return 2 ;;
+                "$GUARD_CHECKS_HEADER_V2") ;;
+                id$'\t'scope$'\t'*)
+                    guard_err "guard: quality/checks.tsv is in the v1 format, which this gate no longer reads; run qg doctor --all-branches and copy quality/ from the v2 source it names"
+                    return 2 ;;
+                *) guard_err "guard: ${path} line 1 is not the checks header"; return 2 ;;
             esac
             continue
         fi
@@ -79,16 +77,6 @@ guard_load_checks() {
             guard_err "guard: ${path} line ${n} has ${count} fields, the header has 9"
             return 2
         fi
-        if [ "$version" = 1 ]; then
-            IFS=$'\t' read -r id scope kind command parser artifact direction threshold gate <<<"$line"
-            on="$(qg_on_from_v1 "$scope" "$pattern")"
-            why="$GUARD_WHY_FALLBACK"
-            [ "$kind" = absent ] && why="$artifact"
-            GUARD_ROWS+=("$(printf '%s\t' "$id" "$on" "$kind" shell "parser=${parser} artifact=${artifact} -- ${command}" \
-                "$direction" "$threshold" "$gate" "$why" "$command" "$parser")${artifact}")
-            continue
-        fi
-
         # `read` collapses an empty tab-separated cell and shifts every later field, so a blank cell
         # is refused before the split; an unknown kind, direction or gate is refused after it.
         if [[ $'\t'"$line"$'\t' == *$'\t\t'* ]]; then

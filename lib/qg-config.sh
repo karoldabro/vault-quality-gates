@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # The one reader of a repo's gate keys. Sourced by lib/guard-pass.sh; defines functions only.
 #
-# Keys are flat `key: value` lines. They live in quality/config; a repo without that file keeps
-# them in VAULT.md. The two files never mix: when quality/config exists at the config revision,
-# VAULT.md is not read. Key list: extend/dod-keys.tsv.
+# Keys are flat `key: value` lines in quality/config. A key that file does not hold is unset, and
+# takes its default. Key list: extend/dod-keys.tsv.
 #
 # The config revision is the commit whose configuration judges this run, so an uncommitted or
 # staged edit cannot change a key: GUARD_CONFIG_REV under `guard.sh release`, else what
@@ -15,20 +14,10 @@ guard_cfg_show() {
     else guard_config_show "$1"; fi
 }
 
-# qg_config_source -> prints `quality/config` or `VAULT.md`, whichever holds the keys; exit 1
-# when neither exists at the config revision.
-qg_config_source() {
-    if guard_cfg_show quality/config >/dev/null; then printf 'quality/config'
-    elif guard_cfg_show VAULT.md >/dev/null; then printf 'VAULT.md'
-    else return 1; fi
-}
-
-# qg_config_key <key> -> the value, trimmed. Exit 1 when the key is absent. Prettier escapes `*`
-# as `\*` in VAULT.md; the backslashes are removed.
+# qg_config_key <key> -> the value, trimmed, backslashes removed. Exit 1 when the key is absent.
 qg_config_key() {
-    local src line
-    src="$(qg_config_source)" || return 1
-    line="$(guard_cfg_show "$src" | grep -m1 "^${1}:")" || return 1
+    local line
+    line="$(guard_cfg_show quality/config | grep -m1 "^${1}:")" || return 1
     line="${line#*:}"
     printf '%s' "${line//\\/}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
 }

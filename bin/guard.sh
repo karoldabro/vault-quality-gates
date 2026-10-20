@@ -11,16 +11,16 @@ export GIT_NO_REPLACE_OBJECTS=1
 # Per-repo code-quality runner. Reads quality/checks.tsv, runs the rows a subcommand
 # selects, compares each number against quality/baseline.tsv, writes the report.
 #
-#   guard.sh commit              rows scoped commit|both, on the index git is about to
+#   guard.sh commit              rows whose `on` holds commit, on the index git is about to
 #                                commit, against every parent; config read from HEAD
 #   guard.sh verify <range>      the same for each commit `git rev-list <range>` lists,
 #                                against its own parents; writes its pass record
-#   guard.sh release [<ref>]     rows scoped release|both, against the merge-base; checks.tsv,
-#                                baseline.tsv and VAULT.md read from GUARD_SHA (else HEAD);
+#   guard.sh release [<ref>]     rows whose `on` matches push:<ref>, against the merge-base; checks.tsv,
+#                                baseline.tsv and config read from GUARD_SHA (else HEAD);
 #                                --record-pass writes a push pass record after a full pass,
 #                                --use-pass accepts a valid one instead of measuring
 #   guard.sh baseline [--skip <regex> | --only <id,id>]
-#                                rows scoped baseline plus every kind: repo row,
+#                                rows whose `on` holds baseline plus every kind: repo row,
 #                                then rewrites quality/baseline.tsv. --skip omits
 #                                matching ids and KEEPS their existing rows, so a
 #                                57-minute suite row can be refreshed on its own
@@ -40,7 +40,7 @@ export GIT_NO_REPLACE_OBJECTS=1
 # A repo whose toolchain is bound to the checkout path cannot be measured that way:
 # a detached worktree under /tmp has no vendor/, no node_modules, and no container
 # bind-mount, so every row reports unmeasurable and the push is refused for the wrong
-# reason. Such a repo sets `guard_measure_worktree: false` in VAULT.md and accepts
+# reason. Such a repo sets `guard_measure_worktree: false` in quality/config and accepts
 # that uncommitted edits can move a metric.
 
 set -uo pipefail
@@ -77,7 +77,7 @@ guard_default_branch() {
         && printf '%s' "${b#origin/}" || printf 'master'
 }
 
-# GUARD_CONFIG_REV, set by `release`, is the commit whose VAULT.md, checks.tsv and baseline.tsv
+# GUARD_CONFIG_REV, set by `release`, is the commit whose quality/config, checks.tsv and baseline.tsv
 # the release gate reads, so an uncommitted edit cannot loosen the gate that judges a push.
 # GUARD_CONFIG_PIN is the caller's GUARD_CONFIG_REV, read before this file reuses the name: the
 # agent factory pins every run to its build's base commit, so a build cannot loosen the
@@ -113,7 +113,7 @@ guard_release_config() {
 GUARD_WORKTREE=''
 guard_enter_tree() {
     if [ -n "${GUARD_SHA:-}" ] && ! guard_measure_worktree; then
-        printf 'vault-guard: measuring the working tree; VAULT.md sets guard_measure_worktree: false\n' >&2
+        printf 'vault-guard: measuring the working tree; quality/config sets guard_measure_worktree: false\n' >&2
         cd "$REPO_ROOT" || exit 2
     elif [ -n "${GUARD_SHA:-}" ]; then
         GUARD_WORKTREE="$(mktemp -d)"

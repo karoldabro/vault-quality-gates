@@ -25,8 +25,8 @@ write_baseline() {  # write_baseline <path> <id> <value> <reason>
     printf 'id\tvalue\tcommit\treason\n%s\t%s\tabc1234\t%s\n' "$2" "$3" "$4" > "$1"
 }
 
-norm_row() {  # norm_row <v1 row> -> the row as guard_load_checks hands it to guard_run_row
-    { printf '%s\n' "$GUARD_CHECKS_HEADER"; printf '%s\n' "$1"; } > "$WORK/norm.tsv"
+norm_row() {  # norm_row <row> -> the row as guard_load_checks hands it to guard_run_row
+    { printf '%s\n' "$GUARD_CHECKS_HEADER_V2"; printf '%s\n' "$1"; } > "$WORK/norm.tsv"
     guard_load_checks "$WORK/norm.tsv" && printf '%s' "${GUARD_ROWS[0]}"
 }
 
@@ -124,19 +124,29 @@ init_repo() {  # init_repo <dir>
 }
 
 @test "wrong field count exits 2" {
-    { printf '%s\n' "$GUARD_CHECKS_HEADER"; printf 'a\tb\tc\td\te\tf\tg\th\n'; } > "$WORK/checks.tsv"
+    { printf '%s\n' "$GUARD_CHECKS_HEADER_V2"; printf 'a\tb\tc\td\te\tf\tg\th\n'; } > "$WORK/checks.tsv"
     run guard_load_checks "$WORK/checks.tsv"
     [ "$status" -eq 2 ]
 }
 
 @test "line 1 not the header exits 2" {
-    { printf '# id\tscope\tkind\n'; printf '%s\n' "$GUARD_CHECKS_HEADER"; } > "$WORK/checks.tsv"
+    { printf '# id\tscope\tkind\n'; printf '%s\n' "$GUARD_CHECKS_HEADER_V2"; } > "$WORK/checks.tsv"
     run guard_load_checks "$WORK/checks.tsv"
     [ "$status" -eq 2 ]
 }
 
+@test "a v1 checks.tsv header exits 2 naming the file and qg doctor --all-branches" {
+    { printf 'id\tscope\tkind\tcommand\tparser\tartifact\tdirection\tthreshold\tgate\n'
+      printf 'lines\tcommit\tdiff\techo 0\t-\t-\tdown\t0\trefuse\n'; } > "$WORK/checks.tsv"
+    run guard_load_checks "$WORK/checks.tsv"
+    [ "$status" -eq 2 ]
+    [[ "$output" == *'quality/checks.tsv is in the v1 format'* ]]
+    [[ "$output" == *'qg doctor --all-branches'* ]]
+    [[ "$output" != *'qg migrate'* ]]
+}
+
 @test "a file of comments alone yields no rows" {
-    { printf '%s\n' "$GUARD_CHECKS_HEADER"; printf '# nothing configured yet\n'; } > "$WORK/checks.tsv"
+    { printf '%s\n' "$GUARD_CHECKS_HEADER_V2"; printf '# nothing configured yet\n'; } > "$WORK/checks.tsv"
     guard_load_checks "$WORK/checks.tsv"
     [ "${#GUARD_ROWS[@]}" -eq 0 ]
 }
@@ -144,7 +154,7 @@ init_repo() {  # init_repo <dir>
 @test "an absent row is rendered and never executed" {
     write_baseline "$WORK/baseline.tsv" mutation 50 -
     : > "$WORK/files"
-    row="$(norm_row $'mutation\t-\tabsent\tfalse\t-\t-\t-\t-\t-')"
+    row="$(norm_row $'mutation\t-\tabsent\t-\t-\t-\t-\t-\tno mutation tool here')"
     run guard_run_row "$row" "$WORK/baseline.tsv" HEAD "$WORK/files"
     [ "$status" -eq 0 ]
     guard_run_row "$row" "$WORK/baseline.tsv" HEAD "$WORK/files"
@@ -154,10 +164,10 @@ init_repo() {  # init_repo <dir>
 # --- SC-4: a loosened baseline is a refusal, whatever its reason column says --
 
 baseline_checks() {  # baseline_checks <dir>: coverage up/repo, phpstan down/repo, format down/diff
-    printf '%s\n' "$GUARD_CHECKS_HEADER" > "$1/checks.tsv"
-    printf 'coverage\trelease\trepo\ttrue\tclover\ta\tup\t0.5\trefuse\n' >> "$1/checks.tsv"
-    printf 'phpstan\trelease\trepo\ttrue\t-\t-\tdown\t0\trefuse\n' >> "$1/checks.tsv"
-    printf 'format\trelease\tdiff\ttrue\t-\t-\tdown\t0\trefuse\n' >> "$1/checks.tsv"
+    printf '%s\n' "$GUARD_CHECKS_HEADER_V2" > "$1/checks.tsv"
+    printf 'coverage\tpush:refs/heads/release/*\trepo\tshell\tparser=clover artifact=a -- true\tup\t0.5\trefuse\tcoverage\n' >> "$1/checks.tsv"
+    printf 'phpstan\tpush:refs/heads/release/*\trepo\tshell\t-- true\tdown\t0\trefuse\tphpstan\n' >> "$1/checks.tsv"
+    printf 'format\tpush:refs/heads/release/*\tdiff\tshell\t-- true\tdown\t0\trefuse\tformat\n' >> "$1/checks.tsv"
 }
 
 baseline_rows() {  # baseline_rows <path> <coverage> <phpstan> [<coverage reason>]
@@ -221,7 +231,7 @@ baseline_rows() {  # baseline_rows <path> <coverage> <phpstan> [<coverage reason
 
 @test "accept refuses an agent" {
     init_repo "$WORK/repo"
-    printf '%s\n' "$GUARD_CHECKS_HEADER" > quality/checks.tsv
+    printf '%s\n' "$GUARD_CHECKS_HEADER_V2" > quality/checks.tsv
     write_baseline quality/baseline.tsv coverage 80 -
     before="$(cat quality/baseline.tsv)"
     CLAUDECODE=1 run bash /code/bin/guard.sh accept coverage --reason 'it is fine'
@@ -232,7 +242,7 @@ baseline_rows() {  # baseline_rows <path> <coverage> <phpstan> [<coverage reason
 
 @test "accept writes a reason and bare accept refuses without one" {
     init_repo "$WORK/repo"
-    printf '%s\n' "$GUARD_CHECKS_HEADER" > quality/checks.tsv
+    printf '%s\n' "$GUARD_CHECKS_HEADER_V2" > quality/checks.tsv
     write_baseline quality/baseline.tsv coverage 80 -
     before="$(cat quality/baseline.tsv)"
     run bash /code/bin/guard.sh accept coverage
@@ -249,8 +259,8 @@ baseline_rows() {  # baseline_rows <path> <coverage> <phpstan> [<coverage reason
 @test "uncommitted edit does not change the measured value" {
     init_repo "$WORK/repo"
     printf 'one\ntwo\nthree\n' > data.txt
-    printf '%s\n' "$GUARD_CHECKS_HEADER" > quality/checks.tsv
-    printf 'lines\tboth\tdiff\twc -l < data.txt\t-\t-\tdown\t1000\trefuse\n' >> quality/checks.tsv
+    printf '%s\n' "$GUARD_CHECKS_HEADER_V2" > quality/checks.tsv
+    printf 'lines\tcommit,push\tdiff\tshell\t-- wc -l < data.txt\tdown\t1000\trefuse\tlines\n' >> quality/checks.tsv
     git add -A && git commit -qm base
     printf 'four\nfive\nsix\nseven\neight\n' >> data.txt
     [ "$(wc -l < data.txt)" -eq 8 ]
@@ -261,21 +271,21 @@ baseline_rows() {  # baseline_rows <path> <coverage> <phpstan> [<coverage reason
     grep -qE '^\| lines \| 3 \|' quality-reports/REPORT.md
 }
 
-@test "release reads checks.tsv, baseline.tsv and VAULT.md from the pushed commit" {
+@test "release reads checks.tsv, baseline.tsv and quality/config from the pushed commit" {
     init_repo "$WORK/repo"
     printf 'one\ntwo\nthree\n' > data.txt
-    printf '%s\n' "$GUARD_CHECKS_HEADER" > quality/checks.tsv
-    printf 'lines\trelease\trepo\twc -l < data.txt\t-\t-\tdown\t0\trefuse\n' >> quality/checks.tsv
+    printf '%s\n' "$GUARD_CHECKS_HEADER_V2" > quality/checks.tsv
+    printf 'lines\tpush:refs/heads/release/*\trepo\tshell\t-- wc -l < data.txt\tdown\t0\trefuse\tlines\n' >> quality/checks.tsv
     write_baseline quality/baseline.tsv lines 2 -
-    printf 'guard_accept_limit: 0\n' > VAULT.md
+    printf 'guard_accept_limit: 0\n' > quality/config
     git add -A && git commit -qm base
     export GUARD_SHA="$(git rev-parse HEAD)"
     run bash /code/bin/guard.sh release refs/heads/release/1
     [ "$status" -eq 1 ]
-    printf '%s\n' "$GUARD_CHECKS_HEADER" > quality/checks.tsv
-    printf 'lines\trelease\trepo\twc -l < data.txt\t-\t-\tdown\t100\trefuse\n' >> quality/checks.tsv
+    printf '%s\n' "$GUARD_CHECKS_HEADER_V2" > quality/checks.tsv
+    printf 'lines\tpush:refs/heads/release/*\trepo\tshell\t-- wc -l < data.txt\tdown\t100\trefuse\tlines\n' >> quality/checks.tsv
     write_baseline quality/baseline.tsv lines 3 'loosened in the working tree'
-    printf 'guard_accept_limit: 5\n' > VAULT.md
+    printf 'guard_accept_limit: 5\n' > quality/config
     run bash /code/bin/guard.sh release refs/heads/release/1
     [ "$status" -eq 1 ]
     [[ "$output" == *'lines'* ]]
@@ -325,7 +335,7 @@ baseline_rows() {  # baseline_rows <path> <coverage> <phpstan> [<coverage reason
     mkdir -p "$WORK/t"
     printf '{"totals":{"errors":0,"file_errors":2}}' > "$WORK/t/phpstan.json"
     : > "$WORK/files"
-    row="$(norm_row $'phpstan-new\tcommit\tdiff\ttrue\tphpstan-all\t{{tree}}/phpstan.json\tdown\t0\trefuse')"
+    row="$(norm_row $'phpstan-new\tcommit\tdiff\tshell\tparser=phpstan-all artifact={{tree}}/phpstan.json -- true\tdown\t0\trefuse\tphpstan')"
     GUARD_TREE_DIR="$WORK/t" guard_run_row "$row" "$WORK/none.tsv" HEAD "$WORK/files" || true
     [[ "${GUARD_RESULTS[0]}" == 'phpstan-new|2|0|worse|'* ]]
 }

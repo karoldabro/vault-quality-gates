@@ -50,7 +50,7 @@ no_bad() { [ -z "$BAD" ] || { printf '%s\n' "$BAD" >&2; return 1; }; }
         bash_case allow "$c"
     done
     for c in 'qg override --reason x' 'qg --json override --reason x' 'qg hooks install --claude' 'qg hooks remove' \
-             'qg baseline' 'qg accept cov --reason x' 'qg migrate --draft' 'qg init --profile docs' \
+             'qg baseline' 'qg accept cov --reason x' 'qg init --profile docs' \
              '/code/bin/qg override --reason x' 'nice -n 5 qg hooks remove' 'bash -c "qg baseline"' 'cd /tmp && qg accept x'; do
         bash_case deny "$c"
     done

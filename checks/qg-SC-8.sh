@@ -34,7 +34,7 @@ worst=0
 for repo in "${repos[@]}"; do
     name="$(basename "$repo")"
     cd "$repo" || { echo "$name: cannot enter"; worst=2; continue; }
-    prefix="$(git show HEAD:quality/config 2>/dev/null || git show HEAD:VAULT.md 2>/dev/null)"
+    prefix="$(git show HEAD:quality/config 2>/dev/null)"
     prefix="$(sed -n 's/^guard_commit_paths:[[:space:]]*//p' <<<"$prefix" | awk '{ print $1 }')"
     file="$(git ls-files -- "${prefix:-.}" | grep -E '\.(php|dart|ts|vue)$' | head -1)"
     [ -n "$file" ] || { echo "$name: no source file under ${prefix:-the repo} to change"; worst=2; continue; }

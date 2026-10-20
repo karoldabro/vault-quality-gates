@@ -69,15 +69,15 @@ assert_tree_is() {
     [[ "$output" == *'bad-in-tree'* ]]
 }
 
-@test "unstaged or staged loosening of checks.tsv and VAULT.md changes nothing" {
+@test "unstaged or staged loosening of checks.tsv and quality/config changes nothing" {
     gate_repo "$WORK/repo"
     printf 'BAD\n' > app/a.php
     git add app/a.php
-    write_checks $'bad-in-tree\tcommit\tdiff\ttrue\t-\t-\tdown\t0\trefuse'
-    printf 'guard_commit_paths: nothing\n' > VAULT.md
+    write_checks $'bad-in-tree\tcommit\tdiff\tshell\t-- true\tdown\t0\trefuse\ta test row'
+    printf 'guard_commit_paths: nothing\n' > quality/config
     run bash /code/bin/guard.sh commit
     [ "$status" -eq 1 ]
-    git add quality/checks.tsv VAULT.md
+    git add quality/checks.tsv quality/config
     run bash /code/bin/guard.sh commit
     [ "$status" -eq 1 ]
     [[ "$output" == *'bad-in-tree'* ]]
@@ -88,7 +88,7 @@ assert_tree_is() {
     new_repo "$WORK/repo"
     mkdir -p quality/bin app
     printf '#!/usr/bin/env bash\ngrep -rl BAD "$1/app" | wc -l\n' > quality/bin/in-tree.sh
-    write_checks $'bad-in-tree\tcommit\tdiff\tbash {{tree}}/quality/bin/in-tree.sh {{tree}}\t-\t-\tdown\t0\trefuse'
+    write_checks $'bad-in-tree\tcommit\tdiff\tshell\t-- bash {{tree}}/quality/bin/in-tree.sh {{tree}}\tdown\t0\trefuse\ta test row'
     write_rules
     printf 'ok\n' > app/a.php
     commit_all init
@@ -119,7 +119,7 @@ assert_tree_is() {
 
 @test "a docs-only commit skips every tree row" {
     gate_repo "$WORK/repo"
-    write_checks $'tree-row\tcommit\tdiff\tfalse {{tree}}\texitcode\t-\tdown\t0\trefuse'
+    write_checks $'tree-row\tcommit\tdiff\tshell\tparser=exitcode -- false {{tree}}\tdown\t0\trefuse\ta test row'
     commit_all 'a tree row that always fails'
     printf 'text\n' > docs/readme.md
     git add docs/readme.md

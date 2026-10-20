@@ -45,22 +45,3 @@ qg_row_runs_on() {
     done
     return 1
 }
-
-# qg_on_from_v1 <scope> <release pattern> -> the `on` cell a v1 scope means. The pattern is
-# guard_release_pattern: `a|b` is two globs, and an empty pattern is the hook's default.
-qg_on_from_v1() {
-    local scope="$1" pattern="${2//\\/}" glob push=''
-    [ -n "$pattern" ] || pattern='refs/heads/release/*'
-    local -a globs
-    IFS='|' read -ra globs <<<"$pattern"
-    for glob in "${globs[@]}"; do
-        [ -n "$glob" ] && push+="${push:+,}push:${glob}"
-    done
-    case "$scope" in
-        commit)   printf 'commit' ;;
-        release)  printf '%s' "$push" ;;
-        both)     printf 'commit,%s' "$push" ;;
-        baseline) printf 'baseline' ;;
-        *)        printf -- '-' ;;
-    esac
-}

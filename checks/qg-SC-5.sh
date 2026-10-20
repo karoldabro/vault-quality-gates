@@ -4,7 +4,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/_qg-cases.sh"
 qg_cases \
     qg-push-select.bats \
-    v1:\ a\ ref\ inside\ guard_release_pattern\ runs\ the\ row \
+    a\ ref\ inside\ a\ push:\<glob\>\ runs\ the\ row \
     v2:\ push\ runs\ on\ every\ ref \
     has\ no\ quality/checks.tsv\ is\ accepted \
     guard_measure_worktree\ false:\ no\ tree\ check\ when\ no\ row\ runs \

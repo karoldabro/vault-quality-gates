@@ -42,8 +42,7 @@ lock or a failed sync makes every tree row unmeasurable. The lock is held until 
 the reports inside the tree, so a second commit cannot overwrite them first. Every path resolves through the git common
 dir, so a linked worktree measures its own index into the shared directory, one commit at a time.
 
-**Gate keys** come from `quality/config`, else from `VAULT.md`, never both
-(`vault/architecture/guard-file-formats.md`). Two keys hold space-separated path prefixes. A prefix
+**Gate keys** come from `quality/config` only (`vault/architecture/guard-file-formats.md`). Two keys hold space-separated path prefixes. A prefix
 matches a whole path or a directory boundary: `quality` matches `quality/x`, never `quality-reports/x`.
 
 | key | effect |

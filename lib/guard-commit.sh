@@ -3,7 +3,7 @@
 # guard-metrics.sh; defines functions only.
 #
 # The gate reads quality/checks.tsv, quality/rules.tsv, quality/baseline.tsv and the
-# VAULT.md keys from HEAD, never from the working tree, so an edit cannot loosen the gate
+# quality/config keys from HEAD, never from the working tree, so an edit cannot loosen the gate
 # that judges it. A row whose command or artifact names {{tree}} or {{cache}} measures a
 # copy of the target tree at <git-common-dir>/guard-tree, held under a lock for the run.
 

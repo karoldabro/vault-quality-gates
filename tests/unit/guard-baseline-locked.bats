@@ -6,7 +6,7 @@
 
 load guard-helpers
 
-COV_ROW=$'cov\trelease\trepo\techo 80\t-\t-\tup\t0\trefuse'
+COV_ROW=$'cov\tpush:refs/heads/release/*\trepo\tshell\t-- echo 80\tup\t0\trefuse\ta test row'
 
 setup() {
     export LC_ALL=C
@@ -93,7 +93,7 @@ set_cov() { printf 'id\tvalue\tcommit\treason\ncov\t%s\tabc\t%s\n' "$1" "${2:--}
 }
 
 @test "release: with guard_measure_worktree false a dirty tree is refused" {
-    printf 'guard_commit_paths: app\nguard_protected_paths: quality\nguard_measure_worktree: false\n' > VAULT.md
+    printf 'guard_commit_paths: app\nguard_protected_paths: quality\nguard_measure_worktree: false\n' > quality/config
     commit_all measure-worktree
     printf 'edit\n' >> app/a.php
     GUARD_SHA="$(git rev-parse HEAD)" run bash /code/bin/guard.sh release refs/heads/release/x
@@ -102,7 +102,7 @@ set_cov() { printf 'id\tvalue\tcommit\treason\ncov\t%s\tabc\t%s\n' "$1" "${2:--}
 }
 
 @test "release: with guard_measure_worktree false a dirty protected file outside guard_commit_paths is refused" {
-    printf 'guard_commit_paths: app\nguard_protected_paths: quality pint.json\nguard_measure_worktree: false\n' > VAULT.md
+    printf 'guard_commit_paths: app\nguard_protected_paths: quality pint.json\nguard_measure_worktree: false\n' > quality/config
     printf '{}\n' > pint.json
     commit_all measure-worktree
     printf '{"exclude": ["app"]}\n' > pint.json
@@ -112,7 +112,7 @@ set_cov() { printf 'id\tvalue\tcommit\treason\ncov\t%s\tabc\t%s\n' "$1" "${2:--}
 }
 
 @test "release: with guard_measure_worktree false a dirty file outside guard_commit_paths does not block" {
-    printf 'guard_commit_paths: app\nguard_protected_paths: quality\nguard_measure_worktree: false\n' > VAULT.md
+    printf 'guard_commit_paths: app\nguard_protected_paths: quality\nguard_measure_worktree: false\n' > quality/config
     mkdir -p docs; printf 'x\n' > docs/graph.json
     commit_all measure-worktree
     printf 'rewritten\n' > docs/graph.json

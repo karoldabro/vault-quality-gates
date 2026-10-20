@@ -68,10 +68,9 @@ qg_help() {
         last)     printf 'qg last\n  Prints the last refusal in full, as the commit or push printed it.\n' ;;
         drivers)  printf 'qg drivers [<name>] [--json]\n  The drivers this repo can use (built-in and quality/drivers/), or one driver'"'"'s description.\n' ;;
         doctor)   printf 'qg doctor [--json]\n  Checks the setup: git hooks installed and current, the user-level Claude Code guards in\n  ~/.claude (and ~/.claude-factory when it exists), the machine tool-path file, config loads,\n  every driver and the tools it needs exist, every push:<glob> matches a branch, qg on PATH.\n  Exit 0 healthy (warnings allowed), 1 something is broken.\nqg doctor --all-branches [--json]\n  Lists every local branch and remote-tracking ref whose quality/checks.tsv is v1, or v2\n  without quality/config, as worktree, upstream or stale, and prints the newest v2 ref as the\n  source to copy quality/ from. Never fetches or writes.\n  Exit 0 when every listed ref is stale, 1 when one is checked out, remote or has an upstream.\n' ;;
-        config)   printf 'qg config get <key>\n  A gate key as committed: quality/config, else VAULT.md.\n' ;;
+        config)   printf 'qg config get <key>\n  A gate key as committed in quality/config; exit 1 when it is not set.\n' ;;
         override) printf 'qg override --reason "<why>" [--push <sha>]\n  Human only, at a terminal. Lets the next commit of exactly what is staged now (or the push\n  of exactly <sha>, for commits that never passed the commit gate) through once, within 10\n  minutes, and logs it. A worse push metric is fixed in code, never overridden.\n' ;;
         init)     printf 'qg init --profile docs|php|nuxt|flutter|hugo [--force]\n  Human only. Writes quality/checks.tsv, rules.tsv, baseline.tsv and config for a new repo,\n  from templates/init/<profile>.tsv, protecting the gate files by exact path. Then:\n  qg hooks install [--claude], git add quality and commit, then qg doctor.\n' ;;
-        migrate)  printf 'qg migrate [--draft]\n  Human only. Rewrites a v1 quality/checks.tsv in the v2 format and writes quality/config\n  from the VAULT.md gate keys. Every row needs a why: without --draft it lists the rows\n  that lack one and writes nothing; with --draft it writes TODO whys, which the gate\n  refuses to commit until each is replaced.\n' ;;
         hooks)    printf '%s\n' \
                       'qg hooks install [--claude] | remove [--claude] | status' \
                       '  The git hooks of this repo; --claude also the three guard entries of its Claude settings.' \
@@ -104,7 +103,7 @@ qg_help() {
                 '  explain   one row in full                         last      the last refusal' \
                 '  drivers   the drivers available                   doctor    check the setup' \
                 '  config    read a gate key                         override  human only: pass once' \
-                '  init      human only: gate a new repo             migrate   human only: v1 to v2' \
+                '  init      human only: gate a new repo' \
                 '  hooks / baseline / accept / report / verify       the engine commands' \
                 '' \
                 'qg help <command> for its options. Every command takes --json.' ;;
@@ -238,7 +237,7 @@ cmd_drivers() {
 
 cmd_config() {
     [ "${1:-}" = get ] && [ -n "${2:-}" ] || qg_die 'usage: qg config get <key>'
-    qg_config_key "$2" || { printf 'qg: %s is not set (source: %s)\n' "$2" "$(qg_config_source || echo none)" >&2; exit 1; }
+    qg_config_key "$2" || { printf 'qg: %s is not set in quality/config\n' "$2" >&2; exit 1; }
     printf '\n'
 }
 
@@ -289,8 +288,7 @@ case "$cmd" in
         esac ;;
     config)   cmd_config "$@" ;;
     override) cmd_override "$@" ;;
-    init)     qg_refuse_agent init; . "${GUARD_LIB_DIR}/qg-migrate.sh"; qg_init "$@" ;;
-    migrate)  qg_refuse_agent migrate; . "${GUARD_LIB_DIR}/qg-migrate.sh"; qg_migrate "$@" ;;
+    init)     qg_refuse_agent init; . "${GUARD_LIB_DIR}/qg-init.sh"; qg_init "$@" ;;
     baseline|accept) qg_refuse_agent "$cmd"; exec "$GUARD" "$cmd" "$@" ;;
     report|verify)   exec "$GUARD" "$cmd" "$@" ;;
     *) printf 'qg: unknown command "%s"\n\n' "$cmd" >&2; qg_help >&2; exit 2 ;;

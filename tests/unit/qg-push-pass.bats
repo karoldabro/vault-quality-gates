@@ -39,7 +39,7 @@ teardown() {
 
 # counter_row <value> — a release row that counts its runs and measures <value> against a ceiling of 0.
 counter_row() {
-    write_checks "counter"$'\t'"release"$'\t'"diff"$'\t'"echo x >> ${COUNT}; echo $1"$'\t-\t-\tdown\t0\trefuse'
+    write_checks "counter"$'\tpush:refs/heads/release/*\tdiff\tshell\t-- '"echo x >> ${COUNT}; echo $1"$'\tdown\t0\trefuse\ta test row'
     write_rules
 }
 
@@ -155,7 +155,7 @@ push() { run git push -q origin "HEAD:${1:-$REF}"; }
 }
 
 @test "qg run push --ref refuses a baseline loosened against the remote tip and records nothing" {
-    write_checks "level"$'\t'"release"$'\t'"repo"$'\t'"echo 3"$'\t-\t-\tdown\t0\trefuse'
+    write_checks $'level\tpush:refs/heads/release/*\trepo\tshell\t-- echo 3\tdown\t0\trefuse\ta test row'
     printf 'id\tvalue\tcommit\treason\nlevel\t3\t-\t-\n' > quality/baseline.tsv
     new_commit tight
     git -c core.hooksPath=/dev/null push -q origin "HEAD:$REF"

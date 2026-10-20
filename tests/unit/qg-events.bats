@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# lib/qg-events.sh — the `on` grammar, row selection per event, and the v1 scope mapping.
+# lib/qg-events.sh — the `on` grammar and row selection per event.
 
 setup() {
     export LC_ALL=C
@@ -52,14 +52,4 @@ setup() {
     qg_row_runs_on 'push:refs/heads/release/*' push -
     qg_row_runs_on push push -
     ! qg_row_runs_on commit push -
-}
-
-@test "v1 scopes map to on cells; an empty pattern is refs/heads/release/*" {
-    [ "$(qg_on_from_v1 commit 'refs/x/*')" = commit ]
-    [ "$(qg_on_from_v1 release 'refs/heads/release/*')" = 'push:refs/heads/release/*' ]
-    [ "$(qg_on_from_v1 both 'refs/heads/release/*|refs/heads/realse/*')" = 'commit,push:refs/heads/release/*,push:refs/heads/realse/*' ]
-    [ "$(qg_on_from_v1 release '')" = 'push:refs/heads/release/*' ]
-    [ "$(qg_on_from_v1 release 'refs/heads/release/\*')" = 'push:refs/heads/release/*' ]
-    [ "$(qg_on_from_v1 baseline '')" = baseline ]
-    [ "$(qg_on_from_v1 - '')" = - ]
 }
