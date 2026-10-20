@@ -2,8 +2,8 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "vault-quality-gates",
   "displayName": "Vault quality gates",
-  "version": "0.1.0",
-  "description": "Refuses a push to a release branch when a measured code-quality metric is worse than its committed baseline. A plugin for the vault knowledge framework.",
+  "version": "0.2.0",
+  "description": "Refuses a commit that adds a violation and a push whose measured metric is worse than its limit or committed baseline; the qg CLI, per-tool drivers and Claude Code agent guards. A plugin for the vault knowledge framework.",
   "author": {
     "name": "Karol Dabrowski",
     "email": "karol.dabrowski@kdabrow.com"
