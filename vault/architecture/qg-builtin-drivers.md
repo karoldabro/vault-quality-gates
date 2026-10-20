@@ -105,7 +105,7 @@ Any other exit code, a missing report, or a report without the field the metric 
 | `knip` | `config=` | — | `config=knip.json`, `bin=node_modules/.bin/knip` |
 | `depcruise` | `config=` | — | `config=.dependency-cruiser.cjs`, `paths=.`, `bin=node_modules/.bin/depcruise` |
 | `fallow` | `metric=dupes\|boundaries\|complexity-excess`, `max-cyclomatic=`, `max-cognitive=`, `config=` | `metric`; both limits with `complexity-excess` | `config=.fallowrc.json`, `bin=node_modules/.bin/fallow` |
-| `vitest` | `metric=failed\|coverage`, `junit=`, `clover=`, `config=`, `run=no` | `metric` | `junit=quality-reports/junit.xml`, `clover=coverage/clover.xml`, `config=vitest.config.ts`, `bin=node_modules/.bin/vitest` |
+| `vitest` | `metric=failed\|coverage`, `junit=`, `clover=`, `config=`, `run=no` | `metric` | `junit=quality-reports/junit.xml`, `clover=coverage/clover.xml`, `config=vitest.config.ts` (passed with `--configLoader runner`, so vitest writes no `.timestamp-*.mjs` beside it; vitest 3 or later), `bin=node_modules/.bin/vitest` |
 | `stryker` | `report=`, `config=`, `run=no` | — | `report=reports/mutation/mutation.json`, `config=stryker.config.json`, `bin=node_modules/.bin/stryker` |
 | `jscpd` | `metric=percentage\|clones`, `version=`, `bin=`, `config=`, `min-lines=`, `min-tokens=`, `format=`, `ignore=` | — | `metric=percentage`, `version=5.3.2`, `paths=.` |
 

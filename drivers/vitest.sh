@@ -6,7 +6,9 @@
 #        [runner=<repo path>] [bin=<vitest path>] [-- <vitest argv>]
 #   junit        default quality-reports/junit.xml; read for metric=failed
 #   clover       default coverage/clover.xml; read for metric=coverage
-#   config       default vitest.config.ts, passed as --config so no sibling config shadows it
+#   config       default vitest.config.ts, passed as --config so no sibling config shadows it, with
+#                --configLoader runner: the default loader writes <config>.timestamp-*.mjs beside the
+#                config, which the sandbox refuses (needs vitest 3 or later)
 #   run=no       read the report a previous run left; run nothing
 #   bin          default node_modules/.bin/vitest
 #
@@ -44,7 +46,7 @@ case "${1:-}" in
             config="$(qg_kv config)" || config=vitest.config.ts
             read -ra argv <<<"$(qg_argv)"
             # Vitest exits 1 on a failing test and on a missed coverage threshold; the report decides.
-            qg_tool "$report" '0 1' "$bin" --config "$config" "${argv[@]}" || { qg_fail vitest "$unit" "$QG_ERROR"; exit 0; }
+            qg_tool "$report" '0 1' "$bin" --config "$config" --configLoader runner "${argv[@]}" || { qg_fail vitest "$unit" "$QG_ERROR"; exit 0; }
             ran="$QG_RC"
         fi
         f="${QG_TREE}/${report}"

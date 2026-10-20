@@ -166,18 +166,18 @@ EOF
     [ "$(result .status)" = error ] && [ "$(result .metric)" = null ]
 }
 
-@test "vitest runs as <bin> --config vitest.config.ts <argv>, after the junit is deleted" {
+@test "vitest runs as <bin> --config vitest.config.ts --configLoader runner <argv>, after the junit is deleted" {
     junit "$TREE/$JUNIT" 5 4 0
     junit "$WORK/fresh.xml" 5 0 0
     export FAKE_REPORT="$WORK/fresh.xml" FAKE_DEST="$TREE/$JUNIT" PROBE="$TREE/$JUNIT"
     QG_ARGS='metric=failed -- run --coverage --reporter=junit --outputFile.junit=quality-reports/junit.xml' "$DRIVER" run > /dev/null
-    [ "$(cat "$FAKE_ARGV")" = '--config vitest.config.ts run --coverage --reporter=junit --outputFile.junit=quality-reports/junit.xml' ]
+    [ "$(cat "$FAKE_ARGV")" = '--config vitest.config.ts --configLoader runner run --coverage --reporter=junit --outputFile.junit=quality-reports/junit.xml' ]
     [ "$(cat "$FAKE_SEEN")" = "$TREE/$JUNIT=absent" ]
     [ "$(result .status)" = measured ] && [ "$(result .metric)" = 0 ]
     rm -f "$FAKE_ARGV"
     mkdir -p "$TREE/tools"; fake_bin "$TREE/tools/vt"
     QG_ARGS='metric=failed bin=tools/vt config=quality/vitest.ci.ts' "$DRIVER" run > /dev/null
-    [ "$(cat "$FAKE_ARGV")" = '--config quality/vitest.ci.ts' ]
+    [ "$(cat "$FAKE_ARGV")" = '--config quality/vitest.ci.ts --configLoader runner' ]
 }
 
 @test "a run that exits 1 with no failure in the root reads 1; with failures it reads their count" {
