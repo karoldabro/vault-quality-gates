@@ -21,6 +21,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 touch "${tmp}/mark"
 bad=0
+failed=()   # one short name per failure, repeated on the last line so a one-line evidence cell names them
 
 # clone <src> <ref> <dest>, plus node setup for nuxt repos
 clone() {
@@ -62,19 +63,24 @@ compare() {   # <name> <src> <ref> <baseline rows>
     [ -n "$new" ] || { printf '%s: this engine printed no rows\n' "$name"; tail -20 "${tmp}/${name}-new.push.err"; exit 2; }
     if [ "$new" = "$old" ]; then printf '  ok       %s: same rows on both engines\n' "$name"
     else printf '  FAILING  %s: rows differ (< this branch, > main):\n' "$name"; diff <(printf '%s\n' "$new") <(printf '%s\n' "$old"); bad=1; fi
-    if grep -v '|measured$' <<<"$new" | grep -q .; then
-        printf '  FAILING  %s: rows not measured:\n' "$name"; grep -v '|measured$' <<<"$new"; bad=1
+    [ "$new" = "$old" ] || failed+=("${name}: rows differ between engines")
+    # A measured row has status ok, worse, warn or recorded; these three mean nothing was measured.
+    if grep -qE '\|(unmeasurable|skipped|absent)$' <<<"$new"; then
+        printf '  FAILING  %s: rows not measured:\n' "$name"; grep -E '\|(unmeasurable|skipped|absent)$' <<<"$new"; bad=1
+        failed+=("${name}: rows not measured")
     fi
     if grep -rqs '^sandbox: armed' "${tmp}/${name}-new/.git/qg-last"; then printf '  ok       %s: rows ran inside qg-sandbox\n' "$name"
-    else printf '  FAILING  %s: no row log records sandbox: armed\n' "$name"; bad=1; fi
+    else printf '  FAILING  %s: no row log records sandbox: armed\n' "$name"; bad=1; failed+=("${name}: no sandbox: armed record"); fi
     [ "$name" = app ] || return 0
     new="$(cat "${tmp}/${name}-new.commit.rows")"
     old="$(measure_commit "${MAIN}/bin/qg" "${tmp}/${name}-old" "${tmp}/${name}-old")"
     [ -n "$new" ] || { printf '%s: this engine printed no commit rows\n' "$name"; tail -20 "${tmp}/${name}-new.commit.err"; exit 2; }
     if [ "$new" = "$old" ]; then printf '  ok       %s: same commit rows on both engines\n' "$name"
     else printf '  FAILING  %s: commit rows differ (< this branch, > main):\n' "$name"; diff <(printf '%s\n' "$new") <(printf '%s\n' "$old"); bad=1; fi
-    if grep -q '^typecheck-new|.*|measured$' <<<"$new"; then printf '  ok       %s: typecheck-new measured on a staged commit\n' "$name"
-    else printf '  FAILING  %s: typecheck-new is not measured on a staged commit\n' "$name"; grep '^typecheck-new|' <<<"$new"; bad=1; fi
+    [ "$new" = "$old" ] || failed+=("${name}: commit rows differ between engines")
+    if grep -qE '^typecheck-new\|.*\|(ok|worse|warn|recorded)$' <<<"$new"; then printf '  ok       %s: typecheck-new measured on a staged commit\n' "$name"
+    else printf '  FAILING  %s: typecheck-new is not measured on a staged commit\n' "$name"; grep '^typecheck-new|' <<<"$new"; bad=1
+        failed+=("${name}: typecheck-new not measured on a commit"); fi
 }
 
 MOBILE="${HOME}/workspace/recycling_mobile_app"
@@ -88,8 +94,10 @@ run_new app "$APP" release/1.19.0 tests-suite-failed,mutation
 
 changed="$(find "${HOME}/.pub-cache" "$sdk" -type f -newer "${tmp}/mark" ! -path "${sdk}/bin/cache/*.stamp" ! -path "${sdk}/bin/cache/lockfile" -print)"
 if [ -z "$changed" ]; then printf '  ok       ~/.pub-cache and the SDK are unchanged by the sandboxed runs\n'
-else printf '  FAILING  files changed under ~/.pub-cache or the SDK:\n%s\n' "$changed"; bad=1; fi
+else printf '  FAILING  files changed under ~/.pub-cache or the SDK:\n%s\n' "$changed"; bad=1; failed+=("pub cache or SDK changed"); fi
 
 compare mobile "$MOBILE" release/1.17.0 mutation
 compare app "$APP" release/1.19.0 tests-suite-failed,mutation
+if [ "$bad" -eq 0 ]; then printf 'both repos: same rows on both engines, all measured, sandboxed, caches unchanged\n'
+else printf 'failed: %s\n' "$(IFS=';'; printf '%s' "${failed[*]}")"; fi
 exit "$bad"
