@@ -868,3 +868,51 @@ plugin_copy() {
     bash_case deny  "python3 -c \"open('$HOME/.bashrc', 'a').write('x')\""
     no_bad
 }
+
+# write_grant <plugin> <actions> [<issued offset s>] [<life s>] — the grant file lib/qg-grant.sh writes.
+write_grant() {
+    local now; now="$(date +%s)"
+    printf 'v1\t%s\t%s\t%s\tt\n' "$((now + ${3:-0}))" "$((now + ${3:-0} + ${4:-3600}))" "$2" > "$1/.git/qg-grant"
+    chmod 600 "$1/.git/qg-grant"
+}
+
+@test "qg baseline and qg override pass only while a live grant names them; qg grant itself never passes" {
+    plugin_copy "$WORK/plugin"
+    HOOKS="$WORK/plugin/templates/claude-hooks"
+    local g="$WORK/plugin/.git/qg-grant"
+    bash_case deny  'qg baseline'
+    bash_case deny  'qg override --reason "v2 gate config"'
+    bash_case allow 'qg grant --status'
+    bash_case allow 'qg grant --status --json'
+    bash_case deny  'qg grant --agent 1h baseline'
+    bash_case deny  'qg grant --revoke'
+    bash_case deny  "touch $g"
+    bash_case deny  "printf 'v1' > $g"
+    bash_case deny  "rm -f $g"
+    edit_case deny  "$g" Write
+    no_bad
+    write_grant "$WORK/plugin" baseline,override
+    bash_case allow 'qg baseline'
+    bash_case allow 'qg baseline && git add quality && qg override --reason "v2 gate config" && git commit -m x'
+    bash_case deny  'qg override --reason x --push HEAD'
+    bash_case deny  'qg grant --agent 8h baseline,override,push'
+    bash_case deny  'qg grant --revoke'
+    bash_case deny  'qg accept x --reason y'
+    bash_case deny  'qg hooks install --claude --user'
+    bash_case deny  'git push --force origin master'
+    bash_case deny  'git push origin +master'
+    bash_case deny  '/code/bin/guard.sh baseline'
+    no_bad
+    write_grant "$WORK/plugin" push
+    bash_case allow 'qg override --reason x --push HEAD'
+    bash_case deny  'qg override --reason x'
+    write_grant "$WORK/plugin" baseline -7200 3600
+    bash_case deny  'qg baseline'
+    write_grant "$WORK/plugin" baseline 0 30000
+    bash_case deny  'qg baseline'
+    write_grant "$WORK/plugin" baseline,accept
+    bash_case deny  'qg baseline'
+    write_grant "$WORK/plugin" baseline; chmod 620 "$g"
+    bash_case deny  'qg baseline'
+    no_bad
+}

@@ -10,6 +10,12 @@
 # $(git rev-parse --git-common-dir)/guard-bypass.log:
 #   <UTC date> <user> <HEAD sha or (none)> <staged files, space-separated> <reason> <message>
 # Tabs and newlines inside a field become spaces, so one override is always one line.
+#
+# The token below is also written and consumed by an agent while the operator's grant names the
+# action (lib/qg-grant.sh): override for a commit token, push for a push token.
+
+# shellcheck source=qg-grant.sh
+. "${BASH_SOURCE[0]%/*}/qg-grant.sh"
 
 guard_override_allowed() {
     local reason="${1-${QG_SKIP_REASON-}}"
@@ -60,9 +66,18 @@ _guard_override_field() {
 #   <reason> <user> <epoch> <commit|push> <binding>
 # binding is `git write-tree` of the index for a commit token, or the full pushed sha for a push
 # token. The hook consumes it only when guard_override_allowed passes in the hook's own process,
-# so a token an agent writes, or one consumed by an agent's commit, never passes. It is valid
+# so a token an agent writes, or one consumed by an agent's commit, never passes unless a live
+# grant names the action (qg_override_granted). It is valid
 # for QG_OVERRIDE_TTL seconds and is deleted on use.
 QG_OVERRIDE_TTL=600
+
+# qg_override_granted <reason> <commit|push> -> 0 when a human at a terminal runs this, or a live
+# grant names the action; the grant's use is logged.
+qg_override_granted() {
+    guard_override_allowed "$1" && return 0
+    [[ "$1" =~ [^[:space:]] ]] || return 1
+    if [ "$2" = push ]; then qg_grant_use push 'the push override token'; else qg_grant_use override 'the commit override token'; fi
+}
 
 qg_override_file() { printf '%s/qg-override' "$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"; }
 
@@ -77,13 +92,13 @@ qg_override_write() {
         # The commit hook takes the tree after the repo's own pre-commit step (lint-staged, say),
         # which may reformat and re-stage files; run it here first, so the token names that tree.
         local user_step; user_step="$(git rev-parse --git-path hooks)/pre-commit.user"
-        if [ -x "$user_step" ] && guard_override_allowed "$reason"; then
+        if [ -x "$user_step" ] && { guard_override_allowed "$reason" || qg_grant_live override; }; then
             "$user_step" || { printf 'qg override: %s failed; fix that first\n' "$user_step" >&2; return 1; }
         fi
         binding="$(git write-tree 2>/dev/null)" || { printf 'qg override: cannot read the index\n' >&2; return 1; }
     fi
-    if ! guard_override_allowed "$reason"; then
-        printf 'qg override: refused. It needs a reason, a terminal (/dev/tty), and no CLAUDECODE or AI_AGENT in the environment.\n' >&2
+    if ! qg_override_granted "$reason" "$kind"; then
+        printf 'qg override: refused. It needs a reason, and a terminal (/dev/tty) with no CLAUDECODE or AI_AGENT in the environment, or an operator grant naming %s (qg grant --status).\n' "${kind/commit/override}" >&2
         return 1
     fi
     printf '%s\t%s\t%s\t%s\t%s\n' "$(_guard_override_field "$reason")" "$(_guard_override_field "${USER:-$(id -un 2>/dev/null)}")" \
@@ -104,7 +119,7 @@ qg_override_take() {
     elif [ "$epoch" -gt "$now" ]; then why='its time is in the future'
     elif [ $((now - epoch)) -gt "$QG_OVERRIDE_TTL" ]; then why="it is older than $((QG_OVERRIDE_TTL / 60)) minutes"
     elif [ "$tkind" != "$kind" ]; then why="it was written for a ${tkind}, not a ${kind}"
-    elif ! guard_override_allowed "$reason"; then why='this run is not a human at a terminal (CLAUDECODE, AI_AGENT, or no /dev/tty)'
+    elif ! qg_override_granted "$reason" "$tkind"; then why='this run is not a human at a terminal (CLAUDECODE, AI_AGENT, or no /dev/tty), and no grant names it'
     else
         why="it names ${tbind:0:12}, which is not what is being ${kind/commit/committ}ed"
         for b in "$@"; do

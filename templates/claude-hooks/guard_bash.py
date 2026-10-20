@@ -1,5 +1,5 @@
 """Rules for guard-bash.sh: raises Deny for every form that skips, disables or forges the commit gate."""
-import glob, json, os, re, subprocess, sys
+import glob, json, os, re, stat, subprocess, sys, time
 
 # python3 -I leaves the script's folder off sys.path, so a planted module in the cwd never loads;
 # the tokeniser beside this file is put back explicitly, after the standard library is imported.
@@ -41,10 +41,13 @@ NEEDLES = ('.git/hooks', '.git/config', 'guard-pass', 'guard_pass', 'guard-bypas
            'fsmonitor', 'sshcommand', 'git_exec_path', 'git_config', 'qg_skip_reason', 'claudecode', 'ai_agent', '--no-veri',
            '.claude/settings', '.gitconfig', '.husky', '.huskyrc', 'config/husky', 'guard-stop', '.config/git/config', 'includeif', 'include.path',
            'guard_skip', 'guard_config_rev', 'guard_config_pin', 'guard_config_at', 'guard_only',
-           'qg-override', 'qg_override', 'qg-last', 'qg_last')
+           'qg-override', 'qg_override', 'qg-last', 'qg_last', 'qg-grant', 'qg_grant')
 QG_SH = os.path.join(PLUGIN, 'bin', 'qg')
 # What an agent may run through qg: reads, and the gate itself. Everything else changes the gate.
 QG_READS = {'help', '-h', '--help', 'list', 'explain', 'last', 'drivers', 'doctor', 'run', 'report', 'verify', 'config'}
+# What the operator's grant may name, and its longest life: QG_GRANT_ACTIONS and QG_GRANT_MAX in lib/qg-grant.sh.
+GRANT_ACTIONS = {'baseline', 'override', 'push'}
+GRANT_MAX = 28800
 # Repo paths that judge the next commit: a write to them is the human's, through the override.
 GATE_FILES = ('quality/drivers', 'quality/config')
 # The gate reads these from its environment; a value an agent sets would steer which rows run or which config judges.
@@ -832,12 +835,42 @@ def scan_guard(args):
         raise Deny('guard.sh ' + ' '.join(args) + ' changes the gate; an agent may run only verify <range>, report and hooks status')
 
 
+def granted():
+    """The actions of the operator's live grant (lib/qg-grant.sh holds the rules), or an empty set."""
+    try:
+        common = subprocess.run(['git', '-C', PLUGIN, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+                                capture_output=True, text=True, timeout=5).stdout.strip()
+        path = os.path.join(common, 'qg-grant')
+        st = os.lstat(path)
+        with open(path) as f:
+            line = f.read()
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid() or st.st_mode & 0o022:
+        return set()
+    fields = line.rstrip('\n').split('\t')
+    if '\n' in line.rstrip('\n') or len(fields) != 5 or fields[0] != 'v1' or not fields[4] \
+            or not fields[1].isdigit() or not fields[2].isdigit() or not re.fullmatch(r'[a-z]+(,[a-z]+)*', fields[3]):
+        return set()
+    issued, expires, now = int(fields[1]), int(fields[2]), int(time.time())
+    actions = set(fields[3].split(','))
+    if not (issued <= now < expires and expires - issued <= GRANT_MAX) or not actions <= GRANT_ACTIONS:
+        return set()
+    return actions
+
+
 def scan_qg(args):
     words = [a for a in args if a != '--json']
     sub = words[0] if words else 'help'
-    if sub in QG_READS or words[:2] == ['hooks', 'status'] or words == ['hooks']:
+    if sub in QG_READS or words[:2] == ['hooks', 'status'] or words == ['hooks'] or words == ['grant', '--status']:
         return
-    raise Deny(f'qg {sub} changes the gate; an agent may run only {", ".join(sorted(QG_READS))} and hooks status')
+    if sub == 'grant':
+        raise Deny('qg grant issues or ends the operator grant; only a human at a separate terminal runs it')
+    action = {'baseline': 'baseline', 'override': 'push' if '--push' in words else 'override'}.get(sub)
+    if action and action in granted():
+        return
+    raise Deny(f'qg {sub} changes the gate; an agent may run only {", ".join(sorted(QG_READS))}, hooks status and grant --status'
+               + (f', or qg {sub} while the operator grants {action}' if action else ''))
 
 
 def scan_shell(args, w, ctx, depth, remote):

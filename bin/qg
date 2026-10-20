@@ -45,9 +45,17 @@ set -- "${args[@]:-}"
 
 qg_die() { printf 'qg: %s\n' "$*" >&2; exit 2; }
 qg_repo() { REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || qg_die 'not inside a git repository'; cd "$REPO_ROOT" || exit 2; }
+# qg_refuse_agent <command> [<grant action>] -> returns for a human, or for an agent while a live
+# grant names the action (lib/qg-grant.sh); exit 2 for any other agent.
 qg_refuse_agent() {
     qg_agent || return 0
-    printf 'qg %s: refused for an agent (CLAUDECODE or AI_AGENT is set). It changes the gate; a human at a terminal runs it.\n' "$1" >&2
+    if [ -n "${2:-}" ]; then
+        # shellcheck source=../lib/guard-override.sh
+        . "${GUARD_LIB_DIR}/guard-override.sh"
+        qg_grant_live "$2" && return 0
+    fi
+    printf 'qg %s: refused for an agent (CLAUDECODE or AI_AGENT is set). It changes the gate; a human at a terminal runs it%s.\n' \
+        "$1" "${2:+, or the agent while the operator grants ${2} (qg grant --status)}" >&2
     exit 2
 }
 
@@ -70,6 +78,7 @@ qg_help() {
         doctor)   printf 'qg doctor [--json]\n  Checks the setup: git hooks installed and current, the user-level Claude Code guards in\n  ~/.claude (and ~/.claude-factory when it exists), the machine tool-path file, config loads,\n  every driver and the tools it needs exist, every push:<glob> matches a branch, qg on PATH.\n  Exit 0 healthy (warnings allowed), 1 something is broken.\nqg doctor --all-branches [--json]\n  Lists every local branch and remote-tracking ref whose quality/checks.tsv is v1, or v2\n  without quality/config, as worktree, upstream or stale, and prints the newest v2 ref as the\n  source to copy quality/ from. Never fetches or writes.\n  Exit 0 when every listed ref is stale, 1 when one is checked out, remote or has an upstream.\n' ;;
         config)   printf 'qg config get <key>\n  A gate key as committed: quality/config, else VAULT.md.\n' ;;
         override) printf 'qg override --reason "<why>" [--push <sha>]\n  Human only, at a terminal. Lets the next commit of exactly what is staged now (or the push\n  of exactly <sha>, for commits that never passed the commit gate) through once, within 10\n  minutes, and logs it. A worse push metric is fixed in code, never overridden.\n' ;;
+        grant)    printf 'qg grant --agent [<duration>] <action,action>\n  Human only, at a separate terminal. Lets agents on this machine run the named actions until\n  the grant expires: baseline (qg baseline), override (qg override --reason, and the commit\n  that consumes it), push (qg override --push). Duration 30m, 2h or minutes; default 1 hour,\n  at most 8 hours. A new grant replaces the old one. Every use is logged.\nqg grant --status\n  The live grant, or "no grant". For anyone.\nqg grant --revoke\n  Human only. Ends the grant now.\n' ;;
         init)     printf 'qg init --profile docs|php|nuxt|flutter|hugo [--force]\n  Human only. Writes quality/checks.tsv, rules.tsv, baseline.tsv and config for a new repo,\n  from templates/init/<profile>.tsv, protecting the gate files by exact path. Then:\n  qg hooks install [--claude], git add quality and commit, then qg doctor.\n' ;;
         migrate)  printf 'qg migrate [--draft]\n  Human only. Rewrites a v1 quality/checks.tsv in the v2 format and writes quality/config\n  from the VAULT.md gate keys. Every row needs a why: without --draft it lists the rows\n  that lack one and writes nothing; with --draft it writes TODO whys, which the gate\n  refuses to commit until each is replaced.\n' ;;
         hooks)    printf '%s\n' \
@@ -105,6 +114,7 @@ qg_help() {
                 '  drivers   the drivers available                   doctor    check the setup' \
                 '  config    read a gate key                         override  human only: pass once' \
                 '  init      human only: gate a new repo             migrate   human only: v1 to v2' \
+                '  grant     human only: let agents baseline or override until a time' \
                 '  hooks / baseline / accept / report / verify       the engine commands' \
                 '' \
                 'qg help <command> for its options. Every command takes --json.' ;;
@@ -254,8 +264,8 @@ cmd_override() {
             *) qg_die "override: unknown option $1 (qg help override)" ;;
         esac
     done
-    qg_refuse_agent override
     [ -n "${reason// /}" ] || qg_die 'override: --reason "<why>" is required; it is logged'
+    if [ -n "$push" ]; then qg_refuse_agent override push; else qg_refuse_agent override override; fi
     # shellcheck source=../lib/guard-override.sh
     . "${GUARD_LIB_DIR}/guard-override.sh"
     if [ -n "$push" ]; then qg_override_write "$reason" --push "$push"; else qg_override_write "$reason"; fi
@@ -272,6 +282,16 @@ case "$cmd" in
         [[ " $* " == *' --user '* ]] || qg_repo
         # shellcheck source=../lib/guard-install.sh
         . "${GUARD_LIB_DIR}/guard-install.sh"; guard_hooks "$@"; exit $? ;;
+    # grant is machine-wide, so it needs no repository. No grant lets an agent issue or revoke one.
+    grant)
+        # shellcheck source=../lib/guard-override.sh
+        . "${GUARD_LIB_DIR}/guard-override.sh"
+        case "${1:-}" in
+            --status) [ $# -eq 1 ] || qg_die "grant: --status takes no argument"; qg_grant_status; exit 0 ;;
+            --revoke) [ $# -eq 1 ] || qg_die "grant: --revoke takes no argument"; qg_refuse_agent 'grant --revoke'; qg_grant_revoke || exit 2; exit 0 ;;
+            --agent)  shift; qg_refuse_agent 'grant --agent'; qg_grant_issue "$@" || exit 2; exit 0 ;;
+            *) qg_die 'grant: use --agent [<duration>] <action,action>, --status or --revoke (qg help grant)' ;;
+        esac ;;
 esac
 qg_repo
 case "$cmd" in
@@ -291,7 +311,8 @@ case "$cmd" in
     override) cmd_override "$@" ;;
     init)     qg_refuse_agent init; . "${GUARD_LIB_DIR}/qg-migrate.sh"; qg_init "$@" ;;
     migrate)  qg_refuse_agent migrate; . "${GUARD_LIB_DIR}/qg-migrate.sh"; qg_migrate "$@" ;;
-    baseline|accept) qg_refuse_agent "$cmd"; exec "$GUARD" "$cmd" "$@" ;;
+    baseline) qg_refuse_agent baseline baseline; ! qg_agent || qg_grant_use baseline 'qg baseline'; exec "$GUARD" baseline "$@" ;;
+    accept)   qg_refuse_agent accept; exec "$GUARD" accept "$@" ;;
     report|verify)   exec "$GUARD" "$cmd" "$@" ;;
     *) printf 'qg: unknown command "%s"\n\n' "$cmd" >&2; qg_help >&2; exit 2 ;;
 esac

@@ -155,7 +155,9 @@ measuring again: `vault/architecture/guard-push-pass.md`.
 
 ## The override
 
-**Only a human at a terminal overrides a refusal, and only once.** Two forms pass a commit hook:
+**Only a human at a terminal overrides a refusal, and only once.** The one exception is an agent
+under the operator's grant, which writes and consumes the token below
+(`vault/architecture/qg-cli.md`, `## The agent grant`). Two forms pass a commit hook:
 
 | form | how a human uses it |
 |---|---|
@@ -179,7 +181,8 @@ The file holds the reason, the user, the time, `commit` or `push`, and a binding
   check for commits with no pass record. The push gate rows still run.
 
 `qg_override_take` re-checks the human conditions in the hook's own process. A token is therefore
-never consumed by a commit an agent runs. The hook deletes the token when it uses it. It also
+never consumed by a commit or push an agent runs, unless a live grant names `override` (commit) or
+`push` (push) at that moment. The hook deletes the token when it uses it. It also
 deletes a token that is malformed, older than 10 minutes, or dated in the future. A token for the
 other event or another binding is ignored and kept.
 

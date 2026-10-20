@@ -18,17 +18,50 @@ call; `qg` reads the same committed configuration and explains it. File formats 
   `ln -s <plugin>/bin/qg ~/.local/bin/qg`.
 - Otherwise call `<plugin>/bin/qg` by absolute path. Every refusal ends with `(qg is <path>)`.
 
-**Constraint: an agent may run only the read subcommands.** `templates/claude-hooks/guard_bash.py`
-checks a bare `qg`, or a path whose real path is the plugin's `bin/qg`. It allows the subcommands in
-`QG_READS` and `hooks status`, `--user` included, and denies every other one before it runs:
+**Constraint: an agent may run only the read subcommands, plus what a live grant names.**
+`templates/claude-hooks/guard_bash.py` checks a bare `qg`, or a path whose real path is the plugin's
+`bin/qg`. It allows the subcommands in `QG_READS`, `hooks status` (`--user` included) and
+`grant --status`, and denies every other one before it runs:
 
 ```
-help -h --help list explain last drivers doctor run report verify config   + hooks status
+help -h --help list explain last drivers doctor run report verify config   + hooks status, grant --status
 ```
 
-`bin/qg` refuses `override`, `init`, `migrate`, `baseline`, `accept`, `hooks install` and
-`hooks remove` with exit 2 when `CLAUDECODE` or `AI_AGENT` is set. The two checks are independent:
-an agent outside a guarded Claude Code session still meets the second.
+`bin/qg` refuses `override`, `init`, `migrate`, `baseline`, `accept`, `grant --agent`,
+`grant --revoke`, `hooks install` and `hooks remove` with exit 2 when `CLAUDECODE` or `AI_AGENT` is
+set. The two checks are independent: an agent outside a guarded Claude Code session still meets the
+second. Both lift `baseline` and `override` while the operator's grant names them (`## The agent grant`).
+
+## The agent grant
+
+**An operator lets agents run named gate-changing actions until a time:**
+`qg grant --agent [<duration>] <action,action>`, from a separate terminal. `lib/qg-grant.sh` holds
+the rules; `bin/qg`, `lib/guard-override.sh` and `templates/claude-hooks/guard_bash.py` read them.
+
+| action | what an agent may then run |
+|---|---|
+| `baseline` | `qg baseline` |
+| `override` | `qg override --reason "<why>"`, and the agent's `git commit` consumes that token |
+| `push` | `qg override --reason "<why>" --push <sha>`, and the agent's `git push` consumes that token |
+
+- **Duration:** `30m`, `2h`, or a plain number of minutes. The default is 1 hour, the maximum 8
+  hours. A new grant replaces the old one. `qg grant --revoke` ends it now.
+- **Issuing and revoking are human only.** `qg grant --agent` and `--revoke` pass only the check
+  `QG_SKIP_REASON` passes (`vault/architecture/guard-commit-gate.md`, `## The override`). A `!`
+  command in Claude Code inherits `CLAUDECODE` and is refused, so the operator issues the grant in a
+  separate terminal. While the grant is live, a `!` command is treated as an agent and is covered by it.
+- **The file:** `<git-common-dir of the plugin checkout>/qg-grant`, beside `qg-tool-path`, which the
+  agent guards deny writing. One line: `v1`, issued epoch, expiry epoch, actions, user, tab-separated.
+- **No grant:** the file is absent, not a regular file, not owned by this user, writable by group or
+  others, malformed, issued in the future, expired, longer than 8 hours, or names an unknown action.
+  Every one of these refuses the agent exactly as without a grant.
+- **Logging:** each granted use appends `agent grant (<action>, until <time>): <what>` to the repo's
+  `<git-common-dir>/guard-bypass.log`, and the next `pre-push` prints it.
+- **Never granted:** `qg grant` itself, `accept`, `init`, `migrate`, `hooks install` and
+  `hooks remove` (`--user` included), force or mirror pushes, and writes to the plugin main worktree.
+  The push gate rows and the baseline-loosening check still run on every push.
+- **`qg grant --status`** prints `grant: <actions> until <time> (<N> minutes left)` or `no grant`,
+  exit 0. Anyone may run it.
 
 ## Rules every subcommand follows
 
@@ -53,13 +86,14 @@ an agent outside a guarded Claude Code session still meets the second.
 | `qg drivers [<name>]` | the drivers this repo can use, or one driver's `describe` and `explain` | 0; 2 for an unknown name | yes |
 | `qg doctor` | checks the setup | 0 healthy (warnings allowed), 1 something is broken | yes |
 | `qg config get <key>` | a gate key as committed: `quality/config`, else `VAULT.md` | 0 and the value; 1 when unset; 2 on bad usage | yes |
-| `qg override --reason "<why>" [--push <sha>]` | lets the next commit of what is staged now, or the push of `<sha>`, through once within 10 minutes | 0 token written; 1 no terminal or a bad `--push` sha; 2 no reason or an agent | no |
+| `qg override --reason "<why>" [--push <sha>]` | lets the next commit of what is staged now, or the push of `<sha>`, through once within 10 minutes | 0 token written; 1 no terminal or a bad `--push` sha; 2 no reason or an agent | with a grant naming `override`, or `push` for `--push` |
+| `qg grant --agent [<duration>] <action,action>`, `qg grant --revoke`, `qg grant --status` | issues, ends or shows the agent grant (`## The agent grant`) | 0; 2 on a bad duration or action, without a terminal, or for an agent | `--status` only |
 | `qg init --profile docs\|php\|nuxt\|flutter\|hugo [--force]` | writes `quality/checks.tsv`, `rules.tsv`, `baseline.tsv` and `config` from `templates/init/<profile>.tsv`. `config` protects the five gate files by exact path, plus every tracked `.doc-lint` for docs, which also gets `guard_doc_lint`. An existing `config` is kept, with a warning naming what it lacks. Next: `qg hooks install`, commit, `qg doctor` | 0; 2 on a bad profile or an existing `checks.tsv` without `--force` | no |
 | `qg migrate [--draft]` | rewrites a v1 `checks.tsv` as v2 and writes `quality/config` from the `VAULT.md` keys | 1 without `--draft`, listing rows with no why; 0 with `--draft`; 2 when there is nothing to migrate | no |
 | `qg hooks`, `qg hooks status [--user [--config-dir <dir>]...]` | what is installed (`vault/architecture/guard-agent-hooks.md`) | 0 | yes |
 | `qg hooks install [--claude [--user [--config-dir <dir>]...]]`, `qg hooks remove [--claude [--user ...]]` | installs or removes the git hooks or the guard entries (`vault/architecture/guard-agent-hooks.md`) | 0; 2 from a linked worktree (`--user`) or on invalid settings JSON | no |
 | `qg report`, `qg verify <range>` | pass through to `guard.sh report` and `guard.sh verify` | from `guard.sh` | yes |
-| `qg baseline`, `qg accept <id> --reason "<why>"` | pass through to `guard.sh baseline` and `guard.sh accept` | from `guard.sh` | no |
+| `qg baseline`, `qg accept <id> --reason "<why>"` | pass through to `guard.sh baseline` and `guard.sh accept` | from `guard.sh` | `baseline` with a grant naming it; `accept` never |
 
 **`qg run push` with no `--ref`** prints the refusal under the heading `the push gate failed (run by
 hand, every push row)` and skips the accept-limit check, which binds a named ref only. `qg run

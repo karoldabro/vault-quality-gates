@@ -31,6 +31,16 @@ QG_SKIP_REASON="<why>" git commit        # the same, in one line
 exported, so the hook refuses the commit. Write the variable on the same command as `git commit`,
 or use `qg override`. An agent may not override; it stops and tells the operator.
 
+**An operator may let agents baseline and override for a while**, from a separate terminal:
+
+```
+qg grant --agent 2h baseline,override,push   # at most 8 hours; every use is logged
+qg grant --status                            # anyone
+qg grant --revoke                            # ends it now
+```
+
+The rules are in `vault/architecture/qg-cli.md`, `## The agent grant`.
+
 ## `qg`, the command for people and agents
 
 A gate is one row of `quality/checks.tsv`. Each row runs a driver, which wraps one tool and yields
