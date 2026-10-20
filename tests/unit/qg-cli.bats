@@ -141,7 +141,7 @@ teardown() {
     user_settings "$HOME/.claude" guard-stop.sh
     run "$QG" doctor
     [ "$status" -eq 1 ]
-    [[ "$output" == *"fail  ${HOME}/.claude/settings.json lacks the Stop entry guard-stop.sh (a human runs qg hooks install --claude --user)"* ]]
+    [[ "$output" == *"fail  ${HOME}/.claude/settings.json does not run ${PLUGIN}/templates/claude-hooks/guard-stop.sh as its Stop entry (a human runs qg hooks install --claude --user)"* ]]
     rm "$HOME/.claude/settings.json"
     run "$QG" doctor
     [ "$status" -eq 1 ]
@@ -160,7 +160,7 @@ teardown() {
     user_settings "$HOME/.claude-factory" guard-bash.sh
     run "$QG" doctor
     [ "$status" -eq 1 ]
-    [[ "$output" == *"fail  ${HOME}/.claude-factory/settings.json lacks the PreToolUse entry guard-bash.sh"* ]]
+    [[ "$output" == *"fail  ${HOME}/.claude-factory/settings.json does not run ${PLUGIN}/templates/claude-hooks/guard-bash.sh as its PreToolUse entry"* ]]
     user_settings "$HOME/.claude-factory"
     run "$QG" doctor
     [ "$status" -eq 0 ]
@@ -193,14 +193,14 @@ teardown() {
 @test "doctor warns once per per-repo guard entry and still exits 0" {
     healthy_setup
     mkdir -p .claude
-    jq -n --arg p "$PLUGIN/templates/claude-hooks" '{hooks: {PreToolUse: [{matcher: "Bash", hooks: [{type: "command", command: "\($p)/guard-bash.sh"}]},
-                                 {matcher: "Edit", hooks: [{type: "command", command: "\($p)/guard-edit.sh"},
+    jq -n '{hooks: {PreToolUse: [{matcher: "Bash", hooks: [{type: "command", command: "/old/plugin/templates/claude-hooks/guard-bash.sh"}]},
+                                 {matcher: "Edit", hooks: [{type: "command", command: "/old/plugin/templates/claude-hooks/guard-edit.sh"},
                                                            {type: "command", command: "/usr/bin/true"}]}]}}' > .claude/settings.json
     run "$QG" doctor
     [ "$status" -eq 0 ]
     [ "$(grep -c 'warn  .*/.claude/settings.json lists the guard ' <<<"$output")" = 2 ]
-    [[ "$output" == *"lists the guard ${PLUGIN}/templates/claude-hooks/guard-bash.sh"*'qg hooks remove --claude'* ]]
-    [[ "$output" == *"lists the guard ${PLUGIN}/templates/claude-hooks/guard-edit.sh"* ]]
+    [[ "$output" == *'lists the guard /old/plugin/templates/claude-hooks/guard-bash.sh'*'qg hooks remove --claude'* ]]
+    [[ "$output" == *'lists the guard /old/plugin/templates/claude-hooks/guard-edit.sh'* ]]
 }
 
 @test "doctor exits 0 on a fully installed setup and --json counts match the text" {

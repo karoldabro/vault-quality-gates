@@ -811,9 +811,17 @@ plugin_copy() {
              'git --work-tree ../../vault-quality-gates checkout HEAD -- lib' 'git checkout-index -a -f --prefix=../../vault-quality-gates/' \
              'cd ../.. && cd vault-quality-gates && git checkout -- . && git pull' 'GIT_WORK_TREE=../../vault-quality-gates git checkout -- .' \
              'export GIT_DIR=../../vault-quality-gates/.git; git reset --hard' 'git --git-dir=../../vault-quality-gates/.git stash' \
-             'git worktree add ../../vault-quality-gates/inner' 'git -C "$X" reset --hard'; do
+             'git worktree add ../../vault-quality-gates/inner' 'git -C "$X" reset --hard' \
+             'cd ../../vault-quality-gates; cd /tmp; cd -; git commit -m x' \
+             'pushd ../../vault-quality-gates; pushd /tmp; popd; git commit -m x' \
+             'pushd ../../vault-quality-gates && pushd /tmp && pushd && git reset --hard' \
+             'export GIT_DIR=../../vault-quality-gates/.git; mkdir -p sub; cd sub; git commit -m x' \
+             'cd "$WHERE" && git commit -m x' 'cd -; git commit -m x' 'popd; git commit -m x'; do
         bash_case deny "$c"
     done
+    bash_case allow 'export GIT_DIR=../../vault-quality-gates/.git; unset GIT_DIR; git commit -m x'
+    bash_case allow 'cd /tmp; cd -; git commit -m x'
+    bash_case allow 'pushd /tmp; popd; git commit -m x'
     bash_case allow 'git -C ../../vault-quality-gates log -1'
     bash_case allow 'cd ../../vault-quality-gates && git status'
     bash_case allow 'git checkout -b feature && git commit -m x'
@@ -826,10 +834,13 @@ plugin_copy() {
     for c in 'exec -c git commit -m x' 'exec -a x -c bash' 'systemd-run --user git commit -m x' 'systemd-run -E A=1 make' \
              'systemd-run -p EnvironmentFile=/tmp/e true' 'echo "git push" | at now' 'batch <<< "git push"' \
              'tmux new-session -d "git commit -m x"' 'tmux new-window make' 'tmux send-keys -t 0 "git push" Enter' \
-             'screen -dm git push' 'nice systemd-run true'; do
+             'screen -dm git push' 'nice systemd-run true' 'dbus-run-session -- git push' \
+             'busctl --user call org.freedesktop.systemd1 /org/freedesktop/systemd1 x StartTransientUnit' \
+             'systemctl --user start qg-job.service' 'systemctl --user restart x' 'systemctl --user run x'; do
         bash_case deny "$c"
     done
     bash_case allow 'tmux ls'
+    bash_case allow 'systemctl --user status x'
     bash_case allow 'exec -a name ls'
     no_bad
 }

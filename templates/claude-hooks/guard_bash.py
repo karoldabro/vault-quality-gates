@@ -102,7 +102,9 @@ FIRST_POSITIONAL = {'flock', 'chrt', 'taskset', 'timeout'}
 BLIND_ARGS = {'xargs', 'parallel'}
 # Programs that start a command in a fresh environment or outside this process tree, so the agent
 # markers the override checks never reach it; tmux only through the subcommands that run one.
-LAUNCHERS = {'systemd-run', 'at', 'batch', 'screen'}
+LAUNCHERS = {'systemd-run', 'at', 'batch', 'screen', 'dbus-run-session', 'busctl'}
+# systemctl starts a unit the user manager runs, outside this process tree.
+SYSTEMCTL_RUN = {'start', 'restart', 'try-restart', 'reload-or-restart', 'try-reload-or-restart', 'run'}
 TMUX_RUN = {'new-session', 'new', 'new-window', 'neww', 'send-keys', 'send', 'split-window', 'splitw', 'respawn-pane', 'respawn-window', 'run-shell', 'run'}
 JOINED_SCRIPT = {'watch', 'ssh', 'su', 'runuser'}
 REMOTE = {'docker', 'podman', 'kubectl', 'nerdctl', 'lxc', 'vagrant'}
@@ -116,8 +118,11 @@ class Ctx:
     def __init__(self, cwd):
         self.cwd, self.origin, self.written, self.flags, self.repo = cwd, cwd, set(), set(), repo_root(cwd)
         self.gitdirs = None
-        # GIT_DIR and GIT_WORK_TREE assigned or exported so far; None for a value computed at run time.
+        # GIT_DIR and GIT_WORK_TREE assigned or exported so far, each as the value and its absolute
+        # form at the assignment; None for a value computed at run time.
         self.gitenv = {}
+        # cd - and popd return to these; cwd_known is False once a cd target is computed at run time.
+        self.oldpwd, self.dirstack, self.cwd_known = None, [], True
         self.seg, self.remote = {'words': [], 'redirs': [], 'heredoc': ''}, False
 
 
@@ -234,7 +239,7 @@ def check_name(name, via_env=False):
 def check_var(name, value, ctx, dynamic=False):
     check_name(name)
     if name in ('GIT_DIR', 'GIT_WORK_TREE'):
-        ctx.gitenv[name] = None if dynamic else value
+        ctx.gitenv[name] = None if dynamic else (value, os.path.join(ctx.cwd, value))
     if GATE_VAR.match(name):
         raise Deny(f'{name} is read by the commit gate; an agent may not set it')
     if name == 'HUSKY' and value == '0':
@@ -299,7 +304,13 @@ def check_git_tree(sub, rest, ctx, cwd, where):
     """A git command that writes may not have its work tree, git dir or output prefix inside the
     protected main worktree: the cwd after -C, --work-tree, --git-dir, GIT_WORK_TREE, GIT_DIR,
     checkout-index --prefix and the folder of worktree add, each resolved with realpath."""
-    paths = [cwd] + where + [ctx.gitenv[k] for k in ('GIT_DIR', 'GIT_WORK_TREE') if k in ctx.gitenv]
+    if not ctx.cwd_known:
+        raise Deny(f'git {sub} runs in a folder a cd computed at run time, so the hook cannot see which repository it changes')
+    paths = [cwd] + where
+    for k in ('GIT_DIR', 'GIT_WORK_TREE'):
+        # The value as git reads it from the cwd now, and as it pointed when it was assigned.
+        if k in ctx.gitenv:
+            paths += list(ctx.gitenv[k]) if ctx.gitenv[k] else [None]
     if sub == 'checkout-index':
         paths += [rest[j + 1] for j, t in enumerate(rest[:-1]) if t == '--prefix'] + [t[9:] for t in rest if t.startswith('--prefix=')]
     if sub == 'worktree' and rest[:1] == ['add']:
@@ -595,7 +606,8 @@ def scan_program(w, ctx, depth, remote):
         raise Deny(f'the command word {w[0]} is computed at run time, so the hook cannot tell which program runs')
     if cmd == 'script' or cmd == 'eval' and any(t.dynamic for t in args):
         raise Deny(f'{cmd} runs text the hook cannot see before it runs')
-    if cmd in LAUNCHERS or (cmd == 'tmux' and any(t in TMUX_RUN for t in args)):
+    if cmd in LAUNCHERS or (cmd == 'tmux' and any(t in TMUX_RUN for t in args)) \
+            or (cmd == 'systemctl' and any(t in SYSTEMCTL_RUN for t in args)):
         raise Deny(f'{cmd} starts a command outside this process tree, without the agent markers the gate reads')
     if cmd in WRAPPERS or cmd in REMOTE:
         return scan_wrapper(cmd, w, ctx, depth, remote)
@@ -606,10 +618,8 @@ def scan_program(w, ctx, depth, remote):
     if w[0] == 'qg' or ('/' in w[0] and os.path.realpath(os.path.join(ctx.cwd, w[0])) == QG_SH):
         ctx.flags.add('qg')
         return scan_qg(args)
-    if cmd in ('cd', 'pushd'):
-        ctx.cwd = os.path.join(ctx.cwd, args[0]) if args and not args[0].startswith(('-', '+')) else ctx.cwd
-        ctx.cwd = HOME if cmd == 'cd' and not args else ctx.cwd
-        return
+    if cmd in ('cd', 'pushd', 'popd'):
+        return track_cwd(cmd, args, ctx)
     # An installed plugin program may take the plugin path as an argument (a vault command naming
     # this repo); its redirects and the commands chained to it are still checked.
     installed = '/' in w[0] and installed_script(w[0], ctx)
@@ -626,6 +636,39 @@ def scan_program(w, ctx, depth, remote):
         exempt = set()
     check_needles([t for j, t in enumerate(w) if j not in exempt], cmd, plugin=not installed)
     scan_command(cmd, w, args, ctx, depth, remote)
+
+
+def track_cwd(cmd, args, ctx):
+    """cd, pushd and popd move the checked cwd as bash would: a bare cd goes HOME, cd - to OLDPWD,
+    pushd and popd through a directory stack. A target computed at run time, a stack rotation or an
+    empty stack makes the cwd unknown, and a writing git command after it is denied."""
+    ops = [t for t in args if t not in ('-L', '-P', '-e', '-n', '--')]
+    here = ctx.cwd
+    if any(t.dynamic for t in ops) or (cmd != 'cd' and any(re.match(r'[+-]\d+\Z', t) for t in ops)):
+        ctx.cwd_known = False
+        return
+    if cmd == 'popd':
+        if not ctx.dirstack:
+            ctx.cwd_known = False
+            return
+        ctx.cwd = ctx.dirstack.pop()
+    elif cmd == 'cd' and ops[:1] == ['-']:
+        if ctx.oldpwd is None:
+            ctx.cwd_known = False
+            return
+        ctx.cwd = ctx.oldpwd
+    elif cmd == 'pushd' and not ops:
+        if not ctx.dirstack:
+            ctx.cwd_known = False
+            return
+        ctx.cwd, ctx.dirstack[-1] = ctx.dirstack[-1], here
+        ctx.oldpwd = here
+        return
+    else:
+        ctx.cwd = os.path.join(ctx.cwd, ops[0]) if ops else HOME
+        if cmd == 'pushd':
+            ctx.dirstack.append(here)
+    ctx.oldpwd = here
 
 
 def scan_command(cmd, w, args, ctx, depth, remote):
@@ -691,6 +734,11 @@ def check_declare(cmd, args, ctx):
         hit = next((t for t in names if t in MARKERS), None)
         if hit:
             raise Deny(f'{cmd} {hit} clears the agent marker the commit gate reads')
+        for t in names:
+            if cmd == 'unset':
+                ctx.gitenv.pop(t, None)
+            elif t in ('GIT_DIR', 'GIT_WORK_TREE'):
+                ctx.gitenv[t] = None  # read and printf -v set a value the hook cannot see
         return
     for t in args:
         if not t.startswith(('-', '+')):

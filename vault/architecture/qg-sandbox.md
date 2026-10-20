@@ -47,7 +47,9 @@ This is the only list of the names a tool sees; the driver contract links here.
 Both modes give the command its own session, stdin from `/dev/null`, and a kill of its process group
 after it exits. Sandboxed, it also holds no descriptor above 2, and `bin/qg-sandbox` stays as a child
 subreaper: when the tool exits, it kills every descendant left, one that started its own session
-included. Output leaves only through descriptors 1 and 2, which the caller opened on files in `QG_OUT`.
+included. The tool runs in a nested Landlock domain that holds only the signal and abstract-socket
+scopes, so it cannot signal or ptrace that parent to escape the kill.
+Output leaves only through descriptors 1 and 2, which the caller opened on files in `QG_OUT`.
 
 ## What a sandboxed tool may write
 
@@ -74,7 +76,7 @@ real path differs from the given path, and a file grant with more than one hard 
 |---|---|
 | `socket` with family `AF_UNIX`, high bits ignored | `EACCES` |
 | `socketpair` of any type but `SOCK_STREAM`, after masking `SOCK_CLOEXEC` and `SOCK_NONBLOCK` | `EACCES`; a datagram pair could reach named sockets such as the journal |
-| `chown`, `fchown`, `lchown`, `fchownat`; `setxattr`, `removexattr` and their `l`, `f` and `at` forms | `EPERM` |
+| `chown`, `fchown`, `lchown`, `fchownat`; `file_setattr`; `setxattr`, `removexattr` and their `l`, `f` and `at` forms | `EPERM` |
 | any call through a foreign architecture entry, such as the 32-bit `int 0x80` | the process is killed |
 | a system call number at or above `0x40000000` (x32), `io_uring_setup` | `ENOSYS` |
 | a signal to a process outside the sandbox, an abstract Unix socket outside it | refused by Landlock scoping |
@@ -84,12 +86,14 @@ real path differs from the given path, and a file grant with more than one hard 
 **Constraint: a runner runs outside the sandbox; only the tool it starts is confined.** A runner is
 read from the config revision, so the commit under test cannot change it. `qg_tool` calls it under
 the child environment, in its own session, as `<runner> <tree> <cache> <prefix> <argv>`. The prefix
-is `/usr/bin/env -i <child environment> bin/qg-sandbox --declared ... --armed <marker> --keep-session --`.
+is `/usr/bin/env -i <child environment> bin/qg-sandbox --tree <tree> --declared ... --armed <marker> --keep-session --`.
 `qg_sandbox_argv` checks each declared path but creates none, because the runner prepares the tree.
-When the sandbox arms, `bin/qg-sandbox` grants each declared folder that exists as a real folder. It
-skips, with one stderr line, one that is missing, not a folder, or reached through a symlink, such
-as `node_modules/.cache` under the `node_modules` link `quality/bin/in-node.sh` makes in commit mode.
-A missing armed marker afterwards is `status: error`, as for a direct tool. With `QG_SANDBOX=0` the
+When the sandbox arms, `bin/qg-sandbox` creates each missing component of a declared folder, one at
+a time with `O_NOFOLLOW`, and grants it. It skips, with one stderr line, one reached through a
+symlink or not a folder, such as `node_modules/.cache` under the `node_modules` link `in-node.sh` makes.
+A missing armed marker afterwards is `status: error`, as for a direct tool. For a runner row,
+`sandbox: armed` means a `qg-sandbox` armed under the runner: the runner is trusted config-revision
+code and could write the marker itself. With `QG_SANDBOX=0` the
 runner gets `<runner> <tree> <cache> <argv>`, so a container runner passes the argv on unchanged.
 
 **Constraint: a runner's stdout carries only the tool's output.** `eslint` and `flutter-test` read
@@ -131,7 +135,8 @@ unconfined under the same child environment.
 ## Accepted limits
 
 - A tool can read every file the operator can, and can open TCP connections.
-- A tool can `chmod` and `utime` any file it can reach: Landlock does not handle either right.
+- A tool can `chmod` and `utime` any file it can reach, and set file flags with the
+  `FS_IOC_SETFLAGS` and `FS_IOC_FSSETXATTR` ioctls: Landlock handles none of these rights.
 - A suite may rewrite the SDK stamps; the next unsandboxed `flutter` command then downloads that
   artifact again.
 - `shell` rows, runners and the drivers marked `"sandbox": false` run open under the child

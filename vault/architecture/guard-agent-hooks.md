@@ -23,6 +23,9 @@ An entry is one of the three when its command's file name is `guard-bash.sh`, `g
 `guard-stop.sh`. Install replaces every such entry, whatever its folder, and keeps every other
 entry. Remove drops exactly those three. A settings file that is not valid JSON is left unchanged,
 and the command exits 2. With several targets, install and remove check every target first.
+At user level an entry counts as installed only when its command is exactly
+`<main worktree>/templates/claude-hooks/<name>` under its event, and that file is executable.
+`qg doctor` fails naming that path. Its repo-level duplicate warning matches by file name, in any folder.
 
 | command | target |
 |---|---|
@@ -40,13 +43,25 @@ The `--user` forms run in `bin/qg` itself, because only `qg` holds the caller's 
 worktree of the plugin stays editable, the one the hooks run from included. A git command other than
 a read is denied when its work tree lies in the main worktree. The checked paths are the tracked cwd,
 `-C`, `--work-tree`, `--git-dir`, an assigned or exported `GIT_WORK_TREE` or `GIT_DIR`,
-`checkout-index --prefix` and the folder of `worktree add`, each resolved with `realpath`.
+`checkout-index --prefix` and the folder of `worktree add`, each resolved with `realpath`. The cwd
+follows `cd`, `cd -` and the `pushd`/`popd` stack. A `GIT_DIR` or `GIT_WORK_TREE` value is checked
+both against the cwd of its assignment and the cwd git runs in; `unset` drops it. After a `cd` to a
+computed folder, a stack rotation or an unknown `OLDPWD`, a writing git command is denied.
 
-**Launchers.** `script`, `exec -c`, `systemd-run`, `at`, `batch`, `screen` and the tmux subcommands
-that run a command (`new-session`, `new-window`, `split-window`, `send-keys`, `respawn-*`,
-`run-shell`) are denied. Each can start a command without the agent markers. The override does not
-rely on this list alone: `lib/guard-override.sh` refuses when any ancestor process below init holds
-`CLAUDECODE` or `AI_AGENT` in `/proc/<pid>/environ`, or when one of those files cannot be read.
+**Launchers.** `script`, `exec -c`, `systemd-run`, `at`, `batch`, `screen`, `dbus-run-session`,
+`busctl`, `systemctl` with `start`, `restart` or `run`, and the tmux subcommands that run a command
+(`new-session`, `new-window`, `split-window`, `send-keys`, `respawn-*`, `run-shell`) are denied.
+Each can start a command without the agent markers.
+
+**The override's own check.** `lib/guard-override.sh` refuses when the hook or an ancestor holds
+`CLAUDECODE` or `AI_AGENT` in `/proc/<pid>/environ`, or when one of those files cannot be read. The
+walk stops at the user manager or init. It fails closed at a process on the hook's terminal whose
+parent is init or the user manager, because that process was orphaned and lost the parent that may
+have been the agent. The check covers only commands that stay in the agent's process tree; a command
+a service manager starts falls outside it, which is why the launchers above are denied.
+
+**Accepted, predates S6:** a git alias already set in a repo or global git config runs as git runs
+it, unscanned. `guard-bash.sh` denies setting an alias, never one that already exists.
 
 **Global write denials.** Both hooks deny a write or an edit under these paths, compared by the
 spelled and the resolved path (`write_denials.py`):

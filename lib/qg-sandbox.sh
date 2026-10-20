@@ -72,8 +72,8 @@ qg_sandbox_grant() {
 # --write ... --armed <marker> --` when sandboxed, `/usr/bin/env -i <env>` when QG_SANDBOX is 0, and
 # sets QG_SANDBOX_MODE to sandboxed or open. It creates the private folder (QG_SANDBOX_PRIVATE) and
 # every declared folder, refusing a bad one. With --runner a runner prepares the tree first, so the
-# declared folders are checked here but created nothing: bin/qg-sandbox grants each one that exists
-# as a real folder when it arms, and keeps the runner's session. --out also grants QG_OUT. Returns
+# declared folders are only checked here: bin/qg-sandbox creates a missing one when it arms, grants it,
+# skips one reached through a symlink, and keeps the runner's session. --out also grants QG_OUT. Returns
 # 125 with QG_SANDBOX_ERROR set when a grant is refused. Pair it with qg_sandbox_finish.
 qg_sandbox_argv() {
     local out='' runner='' private tree w g v home
@@ -114,7 +114,7 @@ qg_sandbox_argv() {
         for w in "${ws[@]}"; do
             if [ -n "$runner" ]; then
                 g="$(qg_sandbox_path "$w")" || { qg_sandbox_finish; QG_SANDBOX_ERROR="qg-sandbox: ${g}"; return 125; }
-                grants+=(--declared "${tree}/${g}")
+                grants+=(--tree "$tree" --declared "$g")
             else
                 g="$(qg_sandbox_grant "$tree" "$w")" || { qg_sandbox_finish; QG_SANDBOX_ERROR="qg-sandbox: ${g}"; return 125; }
                 grants+=(--write "$g")

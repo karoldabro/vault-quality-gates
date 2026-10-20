@@ -415,7 +415,7 @@ EOF
     [ "$(jq -r .metric "$QG_OUT/result.json")" = 1 ]
     [ -L "$TREE/node_modules" ] && [ -s "$TREE/.nuxt/types.d.ts" ]
     [ ! -e "$WORK/main/node_modules/.cache/escaped" ]
-    [[ "$output" == *'node_modules/.cache is or passes through a symlink; not writable'* ]]
+    [[ "$output" == *'node_modules/.cache is reached through a symlink; not writable'* ]]
 }
 
 @test "the armed record never follows a symlink a repo driver plants" {
@@ -477,4 +477,34 @@ EOF
     run /code/bin/qg-sandbox --write "$WORK/out" --write "$WORK/one" --armed "$WORK/out/armed" -- true
     [ "$status" -eq 125 ] && [ ! -e "$WORK/out/armed" ]
     [[ "$output" == *"grant $WORK/one is a file with 2 links"* ]]
+}
+
+@test "a tool that kills its sandbox parent cannot leave a session-escaped grandchild alive" {
+    mkdir -p "$TREE/rec"
+    # The tool starts a grandchild in its own session, records its pid, then signals its parent.
+    { printf '#!/usr/bin/env bash\n'
+      printf 'setsid sleep 4242 > /dev/null 2>&1 < /dev/null & echo "$!" > rec/grandchild.pid\n'
+      printf 'sleep 0.2\nkill -KILL "$PPID" 2>/dev/null && echo "parent killed" || echo "parent kill refused"\n'
+      printf 'kill -STOP "$PPID" 2>/dev/null && echo "parent stopped" || echo "parent stop refused"\nexit 3\n'
+    } > "$TREE/tool"
+    chmod +x "$TREE/tool"
+    QG_SANDBOX_WRITES=rec run timeout 30 bash -c ". $LIB; qg_sandbox_run --cwd \"\$QG_TREE\" -- ./tool"
+    [ "$status" -eq 3 ]
+    [[ "$output" == *'parent kill refused'* ]] && [[ "$output" == *'parent stop refused'* ]]
+    local pid state
+    pid="$(cat "$TREE/rec/grandchild.pid")"
+    [ -n "$pid" ]
+    state="$(awk '{ print $3 }' "/proc/$pid/stat" 2>/dev/null || true)"
+    [ -z "$state" ] || [ "$state" = Z ] || { kill -KILL "$pid"; echo "grandchild $pid still running"; return 1; }
+}
+
+@test "a runner that prepares nothing still gets its report folder created and writable" {
+    { printf '#!/usr/bin/env bash\ntree="$1"; shift 2\ncd "$tree" && exec "$@"\n'; } > "$WORK/runner"
+    printf '%s\n' '#!/usr/bin/env bash' 'echo "<testsuites/>" > quality-reports/junit.xml' > "$TREE/vitest"
+    chmod +x "$WORK/runner" "$TREE/vitest"
+    [ ! -e "$TREE/quality-reports" ]
+    QG_RUNNER="$WORK/runner" run bash -c ". /code/lib/qg-driver-kit.sh
+        qg_tool quality-reports/junit.xml '0 1' ./vitest || { echo \"ERR: \$QG_ERROR\"; exit 3; }"
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [ -s "$TREE/quality-reports/junit.xml" ] && [ -d "$TREE/quality-reports" ] && [ ! -L "$TREE/quality-reports" ]
 }

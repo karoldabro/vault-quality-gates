@@ -40,25 +40,26 @@ qg_doctor() {
     done
 
     # Claude Code hooks: the agent guards live at user level, for ~/.claude and, when it exists,
-    # ~/.claude-factory. One predicate decides "installed": guard_claude_entry_state in
-    # lib/guard-install.sh, read through guard_hooks_status_user. A per-repo entry duplicates them.
+    # ~/.claude-factory. The user level needs the exact command under the main worktree:
+    # guard_claude_entry_state in lib/guard-install.sh, read through guard_hooks_status_user. A
+    # per-repo entry duplicates them; it is matched by file name, in any folder.
     # shellcheck source=guard-install.sh
     . "${GUARD_LIB_DIR}/guard-install.sh"
-    local state entry seen_bad=''
+    local state entry seen_bad='' main
+    main="$(guard_main_worktree)"
     while read -r state entry f; do
         if [ "$state" = installed ]; then note ok "${f} runs ${entry}"
         elif ! jq -e 'type == "object"' "$f" >/dev/null 2>&1; then
             [[ "$seen_bad" == *"|${f}|"* ]] || note fail "${f} is missing or not JSON: agents run without the guards (a human runs qg hooks install --claude --user)"
             seen_bad+="|${f}|"
         else
-            note fail "${f} lacks the $([ "$entry" = guard-stop.sh ] && printf Stop || printf PreToolUse) entry ${entry} (a human runs qg hooks install --claude --user)"
+            note fail "${f} does not run ${main}/templates/claude-hooks/${entry} as its $([ "$entry" = guard-stop.sh ] && printf Stop || printf PreToolUse) entry (a human runs qg hooks install --claude --user)"
         fi
     done < <(guard_hooks_status_user)
     if [ -r .claude/settings.json ]; then
-        for name in $GUARD_CLAUDE_NAMES; do
-            [ "$(guard_claude_entry_state .claude/settings.json "$name" "$(guard_main_worktree)")" = installed ] \
-                && note warn "${REPO_ROOT}/.claude/settings.json lists the guard $(guard_main_worktree)/templates/claude-hooks/${name}; the user-level entry covers it (a human runs qg hooks remove --claude)"
-        done
+        while IFS= read -r f; do
+            [ -z "$f" ] || note warn "${REPO_ROOT}/.claude/settings.json lists the guard ${f}; the user-level entry covers it (a human runs qg hooks remove --claude)"
+        done < <(jq -r "${GUARD_JQ_DEFS}"' (.hooks.PreToolUse[]?, .hooks.Stop[]?) | .hooks[]? | select(ours) | .command' .claude/settings.json 2>/dev/null)
     fi
 
     # The machine tool-path file: the tool folders every gate entry puts after the system folders.

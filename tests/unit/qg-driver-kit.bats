@@ -228,7 +228,7 @@ runner_tool() {
     [ "$status" -ne 0 ]
 }
 
-@test "with a runner a declared folder is never created: a missing or linked one is skipped, never granted" {
+@test "with a runner a missing declared folder is created when the sandbox arms, and a linked one is skipped" {
     mkdir -p "$WORK/elsewhere/.cache"
     { printf '#!/usr/bin/env bash\ntree="$1"; shift 2\n'
       printf 'ln -s %q "$tree/node_modules"\ncd "$tree" && exec "$@"\n' "$WORK/elsewhere"
@@ -238,8 +238,8 @@ runner_tool() {
     chmod +x "$WORK/runner" "$TREE/tool"
     QG_RUNNER="$WORK/runner" QG_SANDBOX_WRITES='reports node_modules/.cache' run kit 'qg_tool - 0 ./tool || { echo "ERR: $QG_ERROR"; exit 3; }'
     [ "$status" -eq 0 ]
-    [ "$(cat "$QG_OUT/stdout")" = $'reports refused\ncache refused' ]
-    [[ "$output" == *'declared path '*'/reports cannot be opened'*'not writable'* ]]
-    [[ "$output" == *'/node_modules/.cache is or passes through a symlink; not writable'* ]]
-    [ ! -e "$TREE/reports" ] && [ ! -e "$WORK/elsewhere/.cache/c" ]
+    [ "$(cat "$QG_OUT/stdout")" = 'cache refused' ]
+    [ -s "$TREE/reports/r" ] && [ ! -L "$TREE/reports" ]
+    [[ "$output" == *'/node_modules/.cache is reached through a symlink; not writable'* ]]
+    [ ! -e "$WORK/elsewhere/.cache/c" ]
 }

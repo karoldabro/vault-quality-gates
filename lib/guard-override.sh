@@ -20,23 +20,35 @@ guard_override_allowed() {
     guard_override_ancestors_clean
 }
 
-# guard_override_ancestors_clean -> 1 when this process or any ancestor below init holds
-# CLAUDECODE or AI_AGENT in /proc/<pid>/environ, or when one of those files cannot be read. An agent
-# that starts a command with a fresh environment (env -i, a launcher, tmux) is still its ancestor.
+# guard_override_ancestors_clean -> 1 when this process or any ancestor holds CLAUDECODE or
+# AI_AGENT in /proc/<pid>/environ, or when one of those files cannot be read. An agent that starts a
+# command with a fresh environment (env -i, a launcher, tmux) is still its ancestor.
+#
+# The walk stops at the user manager (systemd --user) or init and never reads past it. A process on
+# this hook's terminal whose parent is init, the user manager or a process that has left /proc was
+# orphaned: the parent it lost may have been the agent, so the walk fails closed there. A terminal
+# emulator, the normal child of the user manager, holds no controlling terminal and passes.
 # Builtins only: the hook's PATH is no help here.
 guard_override_ancestors_clean() {
-    local pid="$$" kv k v ppid
-    while [ "$pid" -gt 1 ]; do
+    local pid="$$" kv stat ppid tty mytty='' comm
+    while :; do
         [ -r "/proc/${pid}/environ" ] || return 1
         while IFS= read -r -d '' kv; do
             case "$kv" in CLAUDECODE=*|AI_AGENT=*) return 1 ;; esac
         done < "/proc/${pid}/environ" || return 1
-        ppid=''
-        while read -r k v; do [ "$k" = PPid: ] && { ppid="$v"; break; }; done < "/proc/${pid}/status" || return 1
-        case "$ppid" in ''|*[!0-9]*) return 1 ;; esac
+        # /proc/<pid>/stat: pid (comm) state ppid pgrp session tty_nr ...; comm may hold spaces.
+        IFS= read -r stat < "/proc/${pid}/stat" || return 1
+        read -r _ ppid _ _ tty _ <<<"${stat##*) }"
+        case "$ppid$tty" in ''|*[!0-9]*) return 1 ;; esac
+        [ -n "$mytty" ] || mytty="$tty"
+        comm=''
+        [ "$ppid" -le 1 ] || { IFS= read -r comm < "/proc/${ppid}/comm" || return 1; }
+        if [ "$tty" != 0 ] && [ "$tty" = "$mytty" ] && { [ "$ppid" -le 1 ] || [ "$comm" = systemd ]; }; then
+            return 1
+        fi
+        [ "$ppid" -gt 1 ] && [ "$comm" != systemd ] || return 0
         pid="$ppid"
     done
-    return 0
 }
 
 _guard_override_field() {

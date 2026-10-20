@@ -294,6 +294,17 @@ record_all() {
     [ "$(git rev-parse HEAD)" = "$head" ]
 }
 
+@test "the skip reason is refused when the commit runs in an orphan on the terminal, whose parent is gone" {
+    install_hooks
+    printf 'BAD\n' > app/a.php; git add app/a.php
+    local head; head="$(git rev-parse HEAD)"
+    local inner="sleep 1; QG_SKIP_REASON='orphaned' git commit -q -m skipped > /dev/null 2>&1; echo rc=\$? > $WORK/orphan-rc"
+    # The middle bash exits at once, so the subshell is reparented to init while the terminal stays open.
+    run at_tty "bash -c $(printf '%q' "( $inner ) & exit 0"); sleep 6; cat $WORK/orphan-rc"
+    [[ "$output" == *'rc=1'* ]] || { printf '%s\n' "$output"; return 1; }
+    [ "$(git rev-parse HEAD)" = "$head" ]
+}
+
 @test "pre-push still reads every ref on stdin after the clean restart" {
     stub_plugin
     fake_path

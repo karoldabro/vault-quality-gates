@@ -186,7 +186,7 @@ qg_pnpm_prepare() {
     : > "${work}/.empty-rc"
     printf 'registry=https://registry.npmjs.org/\nstore-dir=%s/store\ncache-dir=%s/cache\n' "$store" "$store" > "${work}/.npmrc"
     printf 'packages: []\nstoreDir: %s/store\ncacheDir: %s/cache\n' "$store" "$store" > "${work}/pnpm-workspace.yaml"
-    QG_PNPM=(env "HOME=${work}" "XDG_CONFIG_HOME=${work}"
+    QG_PNPM=(env "LANG=${LANG:-C.UTF-8}" "HOME=${work}" "XDG_CONFIG_HOME=${work}"
         "npm_config_userconfig=${work}/.empty-rc" "npm_config_globalconfig=${work}/.empty-rc" pnpm)
 }
 

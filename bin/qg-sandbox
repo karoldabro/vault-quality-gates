@@ -1,18 +1,21 @@
 #!/usr/bin/python3 -I
 """qg-sandbox: run one command so it cannot write outside its grants nor open a Unix socket.
 
-usage: qg-sandbox [--write <absolute path>]... [--declared <absolute folder>]... [--armed <file>]
-                  [--max-abi <n>] [--keep-session] -- <argv...>
+usage: qg-sandbox [--write <absolute path>]... [--tree <folder> --declared <relative folder>...]
+                  [--armed <file>] [--max-abi <n>] [--keep-session] -- <argv...>
 
 Landlock limits writes to the --write paths: a folder gets every handled right, a file gets write
 and truncate. It also scopes signals and abstract Unix sockets to the sandbox. A seccomp filter
 kills a call through a foreign architecture entry; returns ENOSYS for x32 numbers and io_uring_setup;
-returns EPERM for the chown family and for setting or removing an extended attribute; returns EACCES
-for socket(AF_UNIX) and for a socketpair that is not SOCK_STREAM. Reads, TCP, chmod and utime stay open.
+returns EPERM for the chown family, file_setattr, and setting or removing an extended attribute;
+returns EACCES for socket(AF_UNIX) and for a socketpair that is not SOCK_STREAM. Reads, TCP, chmod,
+utime and the attribute ioctls stay open.
 
 A --write path that is missing, a symlink, reached through one, or a file with more than one link
-refuses the run. A --declared folder is checked when the sandbox arms, after a runner prepared the
-tree: one that is missing, not a folder, or reached through a symlink is skipped with a stderr line.
+refuses the run. A --declared folder, relative to --tree, is resolved when the sandbox arms, after a
+runner prepared the tree: each missing component is created as a folder, and a path reached through
+a symlink, or one that is not a folder, is skipped with a stderr line. The tool runs in a nested
+Landlock domain that holds only the scopes, so it cannot signal or ptrace this process.
 
 Before the rules apply the process starts its own session (unless --keep-session: the caller already
 did and kills its process group), reads stdin from /dev/null and closes every descriptor above 2. It
@@ -36,11 +39,11 @@ ARCHES = {
     "x86_64": dict(arch=0xC000003E, socket=41, socketpair=53,
                    eperm=[92, 93, 94, 260,                  # chown, fchown, lchown, fchownat
                           188, 189, 190, 197, 198, 199,     # set/remove xattr, l-, f- forms
-                          463, 466]),                       # setxattrat, removexattrat
+                          463, 466, 469]),                  # setxattrat, removexattrat, file_setattr
     "aarch64": dict(arch=0xC00000B7, socket=198, socketpair=199,
                     eperm=[54, 55,                          # fchownat, fchown
                            5, 6, 7, 14, 15, 16,             # set/remove xattr, l-, f- forms
-                           463, 466]),                      # setxattrat, removexattrat
+                           463, 466, 469]),                 # setxattrat, removexattrat, file_setattr
 }
 NR_CREATE_RULESET, NR_ADD_RULE, NR_RESTRICT_SELF = 444, 445, 446
 NR_IO_URING_SETUP = 425
@@ -81,19 +84,24 @@ def syscall(nr, *args):
 def parse(argv):
     global KEEP_SESSION
     writes, declared, armed, max_abi, i = [], [], None, None, 0
+    tree = None
     while i < len(argv):
         a = argv[i]
         if a == "--keep-session":
             KEEP_SESSION, i = True, i + 1
             continue
         if a == "--":
-            return writes, declared, armed, max_abi, argv[i + 1:]
-        if a in ("--write", "--declared", "--armed", "--max-abi") and i + 1 < len(argv):
+            if declared and tree is None:
+                die("--declared needs --tree")
+            return writes, [(tree, d) for d in declared], armed, max_abi, argv[i + 1:]
+        if a in ("--write", "--declared", "--tree", "--armed", "--max-abi") and i + 1 < len(argv):
             v = argv[i + 1]
             if a == "--write":
                 writes.append(v)
             elif a == "--declared":
                 declared.append(v)
+            elif a == "--tree":
+                tree = v
             elif a == "--armed":
                 armed = v
             elif v.isdigit():
@@ -148,6 +156,40 @@ def open_grant(path):
     return fd, st
 
 
+def open_declared(tree, rel):
+    """-> (fd, None) of the folder <tree>/<rel>, each missing component created as a folder; or
+    (None, reason) when a component is a symlink or not a folder, or a component cannot be made."""
+    fd, st = open_grant(tree)
+    if fd is None:
+        return None, f"has a tree that {st}"
+    for comp in rel.split("/"):
+        if comp in ("", ".", "..") or not stat.S_ISDIR(os.fstat(fd).st_mode):
+            os.close(fd)
+            return None, "is not a plain path of folders"
+        try:
+            nfd = os.open(comp, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=fd)
+        except FileNotFoundError:
+            try:
+                os.mkdir(comp, 0o755, dir_fd=fd)
+                nfd = os.open(comp, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=fd)
+            except OSError as e:
+                os.close(fd)
+                return None, f"cannot be created: {e.strerror}"
+        except OSError as e:
+            os.close(fd)
+            return None, f"cannot be opened: {e.strerror}"
+        os.close(fd)
+        fd = nfd
+        st = os.fstat(fd)
+        if stat.S_ISLNK(st.st_mode):
+            os.close(fd)
+            return None, "is reached through a symlink"
+    if not stat.S_ISDIR(os.fstat(fd).st_mode):
+        os.close(fd)
+        return None, "is not a folder"
+    return fd, None
+
+
 def add_rule(rfd, path, fd, access):
     rule = ctypes.create_string_buffer(struct.pack("<Qi", access, fd))
     rc = syscall(NR_ADD_RULE, ctypes.c_long(rfd), ctypes.c_long(RULE_PATH_BENEATH), rule, ctypes.c_uint32(0))
@@ -179,15 +221,12 @@ def landlock(writes, declared, max_abi):
             die(f"grant {path} is a file with {st.st_nlink} links")
         else:
             add_rule(rfd, path, fd, FS_FILE)
-    for path in declared:
-        fd, st = open_grant(path)
-        if fd is not None and not stat.S_ISDIR(st.st_mode):
-            os.close(fd)
-            fd, st = None, "is not a folder"
+    for tree, rel in declared:
+        fd, why = open_declared(tree, rel)
         if fd is None:
-            print(f"qg-sandbox: declared path {path} {st}; not writable", file=sys.stderr)
+            print(f"qg-sandbox: declared path {tree}/{rel} {why}; not writable", file=sys.stderr)
             continue
-        add_rule(rfd, path, fd, FS_HANDLED)
+        add_rule(rfd, f"{tree}/{rel}", fd, FS_HANDLED)
     if libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0:
         die("PR_SET_NO_NEW_PRIVS failed")
     rc = syscall(NR_RESTRICT_SELF, ctypes.c_long(rfd), ctypes.c_uint32(0))
@@ -252,19 +291,38 @@ def descendants_of(me):
 def run(cmd):
     child = os.fork()
     if child == 0:
+        # A nested domain with only the scopes: the tool can neither signal nor ptrace this parent,
+        # which must outlive it to kill what it leaves behind.
+        attr = ctypes.create_string_buffer(struct.pack("<QQQ", 0, 0, SCOPE_ABSTRACT_UNIX_SOCKET | SCOPE_SIGNAL))
+        rfd = syscall(NR_CREATE_RULESET, attr, ctypes.c_size_t(24), ctypes.c_uint32(0))
+        if rfd < 0 or syscall(NR_RESTRICT_SELF, ctypes.c_long(rfd), ctypes.c_uint32(0)) < 0:
+            print("qg-sandbox: cannot scope the tool away from its parent", file=sys.stderr)
+            os._exit(126)
+        os.close(rfd)
         try:
             os.execvp(cmd[0], cmd)
         except OSError as e:
             print(f"qg-sandbox: cannot run {cmd[0]}: {e.strerror}", file=sys.stderr)
         os._exit(127)
+    reaped = []
+
+    def forward(sig, _frame):
+        if reaped:
+            return
+        try:
+            os.kill(child, sig)
+        except OSError:
+            pass
+
     for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
-        signal.signal(sig, lambda s, _f: os.kill(child, s))
+        signal.signal(sig, forward)
     while True:
         try:
             pid, status = os.waitpid(child, 0)
             break
         except InterruptedError:
             continue
+    reaped.append(child)
     code = exit_code(status)
     # Kill what the tool left, including a process that started its own session; each orphan of a
     # killed process becomes this process's child, so repeat until none is left.
