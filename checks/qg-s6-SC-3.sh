@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# S6 SC-3 — delivery: this branch's engine (sandboxed) and main's engine each run on a fresh scratch
+# S6 SC-3 — delivery: this branch's engine (sandboxed) and the pre-S6 engine each run on a fresh scratch
 # clone of recycling_mobile_app at release/1.17.0 and app.givore.com at release/1.19.0, with
 # `qg baseline --only` the suite and mutation rows first, so the push rows read a fresh suite run,
 # then `qg run push`. Every row must give the same id, value and status, and every compared row of a
@@ -16,9 +16,11 @@
 set -uo pipefail
 exec < /dev/null
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MAIN="${HOME}/workspace/vault-quality-gates"
-[ -x "${MAIN}/bin/qg" ] || { printf 'no main engine at %s\n' "$MAIN"; exit 2; }
-[ "$(git -C "$MAIN" rev-parse HEAD)" != "$(git -C "$ROOT" rev-parse HEAD)" ] || { printf 'main already holds this branch; nothing to compare\n'; exit 2; }
+# The reference engine is main as it stood before S6, so the check still compares once S6 is merged.
+REF=2978d66
+MAIN="$(mktemp -d)"; trap 'rm -rf "$MAIN"' EXIT
+git -C "$ROOT" archive "$REF" | tar -x -C "$MAIN" || { printf 'cannot extract %s\n' "$REF"; exit 2; }
+[ -x "${MAIN}/bin/qg" ] || { printf 'no engine in %s\n' "$REF"; exit 2; }
 command -v jq > /dev/null || { printf 'jq is not on PATH\n'; exit 2; }
 # shellcheck source=../lib/qg-toolpath.sh
 . "${ROOT}/lib/qg-toolpath.sh"
@@ -29,7 +31,7 @@ toolpath="$(qg_tool_path_file)" && [ -s "$toolpath" ] || {
 tmp="$(mktemp -d)"
 # On a failure the scratch folder is kept, with every engine's json and stderr, for the operator to
 # read; the full report also goes to report.txt there.
-trap 'if [ "$bad" -eq 0 ]; then rm -rf "$tmp"; fi' EXIT
+trap 'rm -rf "$MAIN"; if [ "$bad" -eq 0 ]; then rm -rf "$tmp"; fi' EXIT
 exec > >(tee "${tmp}/report.txt")
 touch "${tmp}/mark"
 bad=0
