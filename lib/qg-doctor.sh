@@ -10,6 +10,8 @@ qg_doctor() {
         out+="$1"$'\t'"$2"$'\n'
     }
 
+    [ -x /bin/bash ] && note ok '/bin/bash is installed' \
+        || note fail '/bin/bash is missing; every git hook, guard.sh and qg start with #!/bin/bash -p'
     for f in jq python3 git flock; do
         command -v "$f" >/dev/null 2>&1 && note ok "$f is installed" || note fail "$f is missing; the gate needs it"
     done
@@ -38,13 +40,25 @@ qg_doctor() {
     done
 
     # Claude Code hooks: the agent guards live at user level, for ~/.claude and, when it exists,
-    # ~/.claude-factory. A per-repo entry duplicates them.
-    qg_doctor_user_entries "${HOME}/.claude"
-    [ ! -d "${HOME}/.claude-factory" ] || qg_doctor_user_entries "${HOME}/.claude-factory"
+    # ~/.claude-factory. One predicate decides "installed": guard_claude_entry_state in
+    # lib/guard-install.sh, read through guard_hooks_status_user. A per-repo entry duplicates them.
+    # shellcheck source=guard-install.sh
+    . "${GUARD_LIB_DIR}/guard-install.sh"
+    local state entry seen_bad=''
+    while read -r state entry f; do
+        if [ "$state" = installed ]; then note ok "${f} runs ${entry}"
+        elif ! jq -e 'type == "object"' "$f" >/dev/null 2>&1; then
+            [[ "$seen_bad" == *"|${f}|"* ]] || note fail "${f} is missing or not JSON: agents run without the guards (a human runs qg hooks install --claude --user)"
+            seen_bad+="|${f}|"
+        else
+            note fail "${f} lacks the $([ "$entry" = guard-stop.sh ] && printf Stop || printf PreToolUse) entry ${entry} (a human runs qg hooks install --claude --user)"
+        fi
+    done < <(guard_hooks_status_user)
     if [ -r .claude/settings.json ]; then
-        while IFS= read -r f; do
-            [ -n "$f" ] && note warn "${REPO_ROOT}/.claude/settings.json lists the guard ${f}; the user-level entry covers it (a human runs qg hooks remove --claude)"
-        done < <(jq -r "${QG_DOCTOR_GUARD_JQ}"' | .[] | .command' .claude/settings.json 2>/dev/null)
+        for name in $GUARD_CLAUDE_NAMES; do
+            [ "$(guard_claude_entry_state .claude/settings.json "$name" "$(guard_main_worktree)")" = installed ] \
+                && note warn "${REPO_ROOT}/.claude/settings.json lists the guard $(guard_main_worktree)/templates/claude-hooks/${name}; the user-level entry covers it (a human runs qg hooks remove --claude)"
+        done
     fi
 
     # The machine tool-path file: the tool folders every gate entry puts after the system folders.
@@ -98,45 +112,12 @@ qg_doctor() {
 }
 
 GUARD_DOCTOR_HOOKS='pre-commit pre-merge-commit pre-applypatch pre-push post-rewrite'
-# Every hook entry of a settings.json whose command's file name is one of the three agent guards,
-# as {event, name, command}.
-QG_DOCTOR_GUARD_JQ='[(.hooks // {}) | to_entries[] | .key as $event | (.value | arrays)[]
-    | (.hooks | arrays)[] | (.command | strings) as $c
-    | ($c | sub("^\\s+"; "") | sub("\\s+$"; "") | split("/") | last) as $n
-    | select($n == "guard-bash.sh" or $n == "guard-edit.sh" or $n == "guard-stop.sh")
-    | {event: $event, name: $n, command: $c}]'
-
-# qg_doctor_user_entries <claude config dir> -> a fail for each of the three guard entries its
-# settings.json lacks: guard-bash.sh and guard-edit.sh under PreToolUse, guard-stop.sh under Stop.
-# Called from qg_doctor, whose note() it uses.
-qg_doctor_user_entries() {
-    local file="${1}/settings.json" n ev have
-    if ! have="$(jq -c "$QG_DOCTOR_GUARD_JQ" "$file" 2>/dev/null)"; then
-        note fail "${file} is missing or not JSON: agents run without the guards (a human runs qg hooks install --claude --user)"
-        return
-    fi
-    for n in guard-bash.sh guard-edit.sh guard-stop.sh; do
-        ev=PreToolUse; [ "$n" != guard-stop.sh ] || ev=Stop
-        if jq -e --arg n "$n" --arg ev "$ev" 'any(.[]; .name == $n and .event == $ev)' <<<"$have" >/dev/null; then
-            note ok "${file} runs ${n}"
-        else
-            note fail "${file} lacks the ${ev} entry ${n} (a human runs qg hooks install --claude --user)"
-        fi
-    done
-}
 
 # qg_doctor_tool_path -> a fail when the machine tool-path file is absent, and one per entry the
-# engine drops from PATH. qg_tool_path_file and qg_tool_path_bad come from lib/qg-toolpath.sh.
+# engine drops from PATH. qg_tool_path_file and qg_tool_path_bad come from lib/qg-toolpath.sh,
+# which bin/qg sources through lib/qg-clean-env.sh.
 qg_doctor_tool_path() {
     local file bad entry n=0
-    if ! declare -F qg_tool_path_file >/dev/null && [ -r "${GUARD_LIB_DIR}/qg-toolpath.sh" ]; then
-        # shellcheck source=qg-toolpath.sh
-        . "${GUARD_LIB_DIR}/qg-toolpath.sh"
-    fi
-    if ! declare -F qg_tool_path_file >/dev/null || ! declare -F qg_tool_path_bad >/dev/null; then
-        note fail "${GUARD_LIB_DIR}/qg-toolpath.sh is missing, so the machine tool-path file cannot be checked"
-        return
-    fi
     if ! file="$(qg_tool_path_file)" || [ -z "$file" ]; then
         note fail "cannot locate the machine tool-path file: the plugin's main worktree has no readable git dir"
         return
@@ -167,7 +148,6 @@ qg_glob_hits() {
 # The v1 checks.tsv header. The loader no longer needs it once v1 is gone; this mode still has to
 # recognise it on an old branch.
 QG_DOCTOR_V1_HEADER=$'id\tscope\tkind\tcommand\tparser\tartifact\tdirection\tthreshold\tgate'
-QG_DOCTOR_V2_HEADER=$'id\ton\tkind\tdriver\targs\tdirection\tthreshold\tgate\twhy'
 
 # qg_doctor_branches -> `qg doctor --all-branches`: every local branch and remote-tracking ref whose
 # quality/checks.tsv is v1, has an unrecognised header, or is v2 without quality/config. Each is
@@ -200,7 +180,7 @@ qg_doctor_branches() {
         mapfile -t verdicts < <(
             for sha in "${shas[@]}"; do printf '%s:quality/checks.tsv\n%s:quality/config\n' "$sha" "$sha"; done \
                 | git cat-file --batch \
-                | awk -v v1="$QG_DOCTOR_V1_HEADER" -v v2="$QG_DOCTOR_V2_HEADER" '
+                | awk -v v1="$QG_DOCTOR_V1_HEADER" -v v2="$GUARD_CHECKS_HEADER_V2" '
                     function answer(a) { print a; k++ }
                     rem > 0 {
                         if (first) { line1 = $0; first = 0 }

@@ -58,6 +58,45 @@ def main(act, args):
             print("socketpair ok")
         except OSError as e:
             print(f"socketpair errno {e.errno}")
+    elif act == "dgrampair":
+        for name, kind in (("dgram", socket.SOCK_DGRAM), ("seqpacket", socket.SOCK_SEQPACKET),
+                           ("stream-cloexec", socket.SOCK_STREAM | socket.SOCK_CLOEXEC | socket.SOCK_NONBLOCK)):
+            try:
+                a, b = socket.socketpair(socket.AF_UNIX, kind)
+                a.close()
+                b.close()
+                print(f"{name} ok")
+            except OSError as e:
+                print(f"{name} errno {e.errno}")
+    elif act == "owner":
+        p = args[0]
+        for name, call in (("chown", lambda: os.chown(p, os.getuid(), os.getgid())),
+                           ("lchown", lambda: os.lchown(p, os.getuid(), os.getgid())),
+                           ("setxattr", lambda: os.setxattr(p, "user.qg", b"x")),
+                           ("removexattr", lambda: os.removexattr(p, "user.qg")),
+                           ("chmod", lambda: os.chmod(p, 0o644)),
+                           ("utime", lambda: os.utime(p))):
+            try:
+                call()
+                print(f"{name} ok")
+            except OSError as e:
+                print(f"{name} errno {e.errno}")
+    elif act == "escape":
+        # A grandchild that starts its own session and outlives this process.
+        if os.fork() == 0:
+            os.setsid()
+            if os.fork() == 0:
+                with open(args[0], "w") as f:
+                    f.write(str(os.getpid()))
+                os.execvp("sleep", ["sleep", "300"])
+            os._exit(0)
+        os.wait()
+        import time
+        for _ in range(50):
+            if os.path.exists(args[0]) and os.path.getsize(args[0]):
+                break
+            time.sleep(0.05)
+        print("escape started")
     elif act == "fds":
         for n in args:
             try:

@@ -8,7 +8,6 @@ GUARD="__GUARD_SH__"
 # shellcheck source=../../lib/qg-clean-env.sh
 . "${GUARD%/bin/guard.sh}/lib/qg-clean-env.sh" || { printf 'vault-guard: plugin lib missing; commit refused\n' >&2; exit 1; }
 qg_clean_env QG_SKIP_REASON -- "$@"
-unset GUARD_CONFIG_REV
 set -uo pipefail
 # shellcheck source=../../lib/guard-hook.sh
 . "$(dirname "$GUARD")/../lib/guard-hook.sh" || { printf 'vault-guard: plugin lib missing; commit refused\n' >&2; exit 1; }

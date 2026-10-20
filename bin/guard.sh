@@ -4,7 +4,7 @@
 GUARD_SELF="$(command -p readlink -f "${BASH_SOURCE[0]}")"
 # shellcheck source=../lib/qg-clean-env.sh
 . "${GUARD_SELF%/bin/*}/lib/qg-clean-env.sh" || exit 2
-qg_clean_env GUARD_CONFIG_REV GUARD_SHA GUARD_BASE -- "$@"
+qg_clean_env GUARD_CONFIG_REV GUARD_SHA GUARD_BASE GIT_NO_REPLACE_OBJECTS -- "$@"
 # A replace ref or graft could swap the commit whose configuration judges this run.
 export GIT_NO_REPLACE_OBJECTS=1
 

@@ -204,6 +204,7 @@ commit_config() {  # commit_config <quality/config text> -> QG_CONFIG_REV is the
 @test "a Dart driver's tool runs without the caller's PUB_CACHE and XDG_CACHE_HOME, with FLUTTER_ROOT the pinned SDK" {
     export PUB_CACHE="$WORK/caller-pub" XDG_CACHE_HOME="$WORK/caller-xdg" FLUTTER_ROOT="$WORK/caller-flutter"
     export FAKE_OUT="$FIX/lakos.json"
+    fake_env_save
     "$ROOT/drivers/lakos.sh" run > /dev/null
     [ "$(result .status)" = measured ]
     # The child's PUB_CACHE is always the real home's, never the caller's.

@@ -3,14 +3,22 @@
 # hooks call; qg reads the same configuration and explains it. Subcommands, options, exit codes
 # and --json shapes: vault/architecture/qg-cli.md.
 #
-# The clean start (lib/qg-clean-env.sh). QG_CALLER_PATH carries the caller's PATH through it, for
-# `hooks install --claude --user`; a value the caller exported is overwritten. VAULT_FRAMEWORK_PATH
-# tells `qg init` which doc-lint to name; init refuses an agent, so only a human's value is used.
+# The clean start (lib/qg-clean-env.sh). QG_CALLER_PATH, an unexported variable that only
+# `hooks install --claude --user` reads, is the caller's PATH: the restart carries it as the first
+# argument, and any exported value is dropped. VAULT_FRAMEWORK_PATH tells `qg init` which doc-lint
+# to name; init refuses an agent, so only a human's value is used.
 QG_SELF="$(command -p readlink -f "${BASH_SOURCE[0]}")"
 # shellcheck source=../lib/qg-clean-env.sh
 . "${QG_SELF%/bin/*}/lib/qg-clean-env.sh" || exit 2
-[ -n "${QG_CLEAN_ENV:-}" ] || export QG_CALLER_PATH="${PATH:-}"
-qg_clean_env QG_CALLER_PATH VAULT_FRAMEWORK_PATH -- "$@"
+unset QG_CALLER_PATH
+if [ -n "${QG_CLEAN_ENV:-}" ] && [[ "${1:-}" == --qg-caller-path=* ]]; then
+    QG_CALLER_PATH="${1#--qg-caller-path=}"; shift
+else
+    QG_CALLER_PATH="${PATH:-}"
+fi
+# shellcheck disable=SC2034  # qg_clean_env reads it on the restart
+QG_RESTART_ARGS=("--qg-caller-path=${QG_CALLER_PATH}")
+qg_clean_env VAULT_FRAMEWORK_PATH -- "$@"
 # A replace ref or graft could swap the commit whose configuration judges this run.
 export GIT_NO_REPLACE_OBJECTS=1
 set -uo pipefail
@@ -196,7 +204,7 @@ cmd_run() {
 
 # qg_results_json <exit> -> {verdict, exit, rows[]} from qg-last/RESULTS.txt and each row's result.
 qg_results_json() {
-    local last line id value ref status detail verdict
+    local last id value ref status detail verdict
     last="$(guard_common_dir)/qg-last"
     case "$1" in 0) verdict=pass ;; 1) verdict=fail ;; *) verdict=error ;; esac
     {
@@ -260,7 +268,7 @@ case "$cmd" in
     # hooks runs in this process, not through guard.sh: --user reads QG_CALLER_PATH, which only qg
     # holds, and needs no repository.
     hooks)
-        [ "${1:-}" = status ] || qg_refuse_agent "hooks ${1:-}"
+        [ "${1:-status}" = status ] || qg_refuse_agent "hooks ${1:-}"
         [[ " $* " == *' --user '* ]] || qg_repo
         # shellcheck source=../lib/guard-install.sh
         . "${GUARD_LIB_DIR}/guard-install.sh"; guard_hooks "$@"; exit $? ;;

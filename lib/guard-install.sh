@@ -17,6 +17,7 @@
 # was written by someone else, and this refuses to overwrite it.
 
 GUARD_MARK_START='# vault-guard-start'
+# shellcheck disable=SC2034  # the closing marker every template carries; doctor and readers match it
 GUARD_MARK_END='# vault-guard-end'
 GUARD_HOOK_NAMES='pre-commit pre-merge-commit pre-applypatch pre-push post-rewrite'
 GUARD_CLAUDE_NAMES='guard-bash.sh guard-edit.sh guard-stop.sh'
@@ -30,13 +31,13 @@ guard_hooks_dir() { printf '%s' "$(git rev-parse --git-path hooks)"; }
 guard_plugin_dir() { (cd "${GUARD_LIB_DIR}/.." && pwd -P); }
 
 # guard_main_worktree -> the main worktree of the plugin checkout, which the user-level entries
-# name; the plugin folder itself when it is no git checkout.
+# name: the folder holding the git common dir that also holds the tool-path file; the plugin folder
+# itself when it is no git checkout.
 guard_main_worktree() {
-    local plugin common
-    plugin="$(guard_plugin_dir)"
-    common="$(git -C "$plugin" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+    local common
+    common="$(qg_tool_path_file)" && common="${common%/qg-tool-path}"
     if [ "${common##*/}" = .git ] && [ -d "${common%/.git}" ]; then (cd -P "${common%/.git}" && pwd -P)
-    else printf '%s' "$plugin"; fi
+    else guard_plugin_dir; fi
 }
 
 guard_hooks_is_ours() {
@@ -109,32 +110,55 @@ guard_claude_valid() {
     jq -e 'type == "object"' "$1" >/dev/null 2>&1
 }
 
-# guard_claude_edit <install|remove> <file> <plugin> -> rewrites the file; exit 2, unchanged, when
-# it is not a JSON object.
-guard_claude_edit() {
-    local how="$1" file="$2" plugin="$3" tmp prog hooks="${3}/templates/claude-hooks"
+# guard_claude_render <install|remove> <file> <plugin> <out> -> writes the edited settings into
+# <out>, touching nothing else; exit 2 when <file> is not a JSON object. An absent or empty file
+# reads as {}.
+guard_claude_render() {
+    local how="$1" file="$2" hooks="${3}/templates/claude-hooks" out="$4" prog="${GUARD_JQ_DEFS} strip"
     command -v jq >/dev/null 2>&1 || { guard_err 'guard: --claude needs jq'; return 2; }
-    guard_claude_valid "$file" || { guard_err "guard: ${file} is not valid JSON — leaving it alone"; return 2; }
-    if [ "$how" = remove ]; then
-        [ -s "$file" ] || return 0
-        prog="${GUARD_JQ_DEFS} strip"
-    else
-        mkdir -p "$(dirname "$file")" || return 2
-        [ -s "$file" ] || printf '{}\n' > "$file"
-        prog="${GUARD_JQ_DEFS} strip | add(\$bash; \$edit; \$stop)"
+    guard_claude_valid "$file" || { guard_err "guard: ${file} is not valid JSON — leaving every target alone"; return 2; }
+    [ "$how" = remove ] || prog+=" | add(\$bash; \$edit; \$stop)"
+    { if [ -s "$file" ]; then cat "$file"; else printf '{}\n'; fi; } \
+        | jq --arg bash "${hooks}/guard-bash.sh" --arg edit "${hooks}/guard-edit.sh" --arg stop "${hooks}/guard-stop.sh" \
+            "$prog" > "$out" || { guard_err "guard: ${file} is not valid JSON — leaving every target alone"; return 2; }
+}
+
+# guard_claude_apply <install|remove> <file> <rendered> -> writes the rendered settings over the
+# file. A file whose JSON value did not change keeps its bytes; remove never creates a file.
+guard_claude_apply() {
+    local how="$1" file="$2" new="$3"
+    if [ -s "$file" ]; then
+        [ "$(jq -cS . "$new")" = "$(jq -cS . "$file")" ] || cat "$new" > "$file" || return 2
+    elif [ "$how" = install ]; then
+        mkdir -p "$(dirname "$file")" && cat "$new" > "$file" || return 2
     fi
-    tmp="$(mktemp)"
-    jq --arg bash "${hooks}/guard-bash.sh" --arg edit "${hooks}/guard-edit.sh" --arg stop "${hooks}/guard-stop.sh" \
-        "$prog" "$file" > "$tmp" || { rm -f "$tmp"; guard_err "guard: ${file} is not valid JSON — leaving it alone"; return 2; }
-    # A file whose JSON value did not change keeps its bytes.
-    [ "$(jq -cS . "$tmp")" = "$(jq -cS . "$file")" ] || cat "$tmp" > "$file"
-    rm -f "$tmp"
     if [ "$how" = remove ]; then printf 'removed guard-bash.sh, guard-edit.sh and guard-stop.sh from %s\n' "$file"
     else printf 'installed PreToolUse guard-bash.sh and guard-edit.sh, and Stop guard-stop.sh, into %s\n' "$file"; fi
 }
 
+# guard_claude_edit <install|remove> <plugin> <file>... -> renders every file first, then writes
+# them all, so an invalid target leaves every target unchanged; exit 2 then.
+guard_claude_edit() {
+    local how="$1" plugin="$2" dir file i=0 rc=0
+    shift 2
+    dir="$(mktemp -d)"
+    for file in "$@"; do
+        i=$((i + 1))
+        [ "$how" = install ] || [ -s "$file" ] || continue
+        guard_claude_render "$how" "$file" "$plugin" "${dir}/${i}" || { rm -rf "$dir"; return 2; }
+    done
+    i=0
+    for file in "$@"; do
+        i=$((i + 1))
+        [ -e "${dir}/${i}" ] || continue
+        guard_claude_apply "$how" "$file" "${dir}/${i}" || rc=2
+    done
+    rm -rf "$dir"
+    return "$rc"
+}
+
 # Repo-level entries: the hooks run in place from the plugin checkout, never copied.
-guard_hooks_install_claude() { guard_claude_edit install "$(guard_claude_settings)" "$(guard_plugin_dir)"; }
+guard_hooks_install_claude() { guard_claude_edit install "$(guard_plugin_dir)" "$(guard_claude_settings)"; }
 
 # guard_user_targets <config dir>... -> ~/.claude/settings.json and <dir>/settings.json, once each.
 guard_user_targets() {
@@ -152,52 +176,44 @@ guard_user_targets() {
 guard_user_linked() {
     local plugin dir common
     plugin="$(guard_plugin_dir)"
-    dir="$(git -C "$plugin" rev-parse --path-format=absolute --git-dir 2>/dev/null)" || return 0
-    common="$(git -C "$plugin" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 0
+    dir="$(qg_toolpath_git -C "$plugin" rev-parse --path-format=absolute --git-dir)" || return 0
+    common="$(qg_toolpath_git -C "$plugin" rev-parse --path-format=absolute --git-common-dir)" || return 0
     [ "$dir" != "$common" ]
 }
 
+# Renders every settings target first, writes them all, and writes the tool-path file last, so a
+# refusal leaves every file as it was.
 guard_hooks_install_user() {
-    local plugin file tp entries
+    local tp entries
     local -a targets
     if guard_user_linked; then
         guard_err "guard: $(guard_plugin_dir) is a linked worktree or no git checkout; run qg hooks install --claude --user from the main worktree"
         return 2
     fi
     [ -n "${QG_CALLER_PATH:-}" ] || { guard_err 'guard: install --claude --user reads your PATH through qg; run qg hooks install --claude --user'; return 2; }
-    mapfile -t targets < <(guard_user_targets "$@")
-    for file in "${targets[@]}"; do
-        guard_claude_valid "$file" || { guard_err "guard: ${file} is not valid JSON — leaving every target alone"; return 2; }
-    done
-    plugin="$(guard_main_worktree)"
     tp="$(qg_tool_path_file)" || { guard_err 'guard: cannot find the git directory of the plugin checkout'; return 2; }
+    mapfile -t targets < <(guard_user_targets "$@")
+    guard_claude_edit install "$(guard_main_worktree)" "${targets[@]}" || return $?
     entries="$(qg_tool_path_from "$QG_CALLER_PATH")"
     if [ -n "$entries" ]; then printf '%s\n' "$entries" > "$tp"; else : > "$tp"; fi || return 2
     printf 'wrote %s:\n%s\n' "$tp" "${entries:-  (no pnpm, node, php, composer, docker or hugo on your PATH)}"
-    for file in "${targets[@]}"; do
-        guard_claude_edit install "$file" "$plugin" || return $?
-    done
 }
 
 guard_hooks_remove_user() {
-    local file rc=0
     local -a targets
     mapfile -t targets < <(guard_user_targets "$@")
-    for file in "${targets[@]}"; do
-        guard_claude_valid "$file" || { guard_err "guard: ${file} is not valid JSON — leaving every target alone"; return 2; }
-    done
-    for file in "${targets[@]}"; do
-        [ -e "$file" ] || continue
-        guard_claude_edit remove "$file" "$(guard_main_worktree)" || rc=$?
-    done
-    return "$rc"
+    guard_claude_edit remove "$(guard_main_worktree)" "${targets[@]}"
 }
 
-# guard_claude_entry_state <settings file> <guard file name> <plugin> -> installed or absent: the
-# entry is installed when a hook's command is exactly <plugin>/templates/claude-hooks/<name>.
+# guard_claude_entry_state <settings file> <guard file name> <plugin> -> installed or absent. The
+# one predicate for "the entry is installed": a hook under its event (PreToolUse for guard-bash.sh
+# and guard-edit.sh, Stop for guard-stop.sh) whose command is exactly
+# <plugin>/templates/claude-hooks/<name>, and that file exists and is executable.
 guard_claude_entry_state() {
-    if jq -e --arg c "${3}/templates/claude-hooks/${2}" \
-        'any((.hooks.PreToolUse[]?, .hooks.Stop[]?); any(.hooks[]?; .command == $c))' "$1" >/dev/null 2>&1; then
+    local cmd="${3}/templates/claude-hooks/${2}" event=PreToolUse
+    [ "$2" != guard-stop.sh ] || event=Stop
+    if [ -x "$cmd" ] && jq -e --arg c "$cmd" --arg e "$event" \
+        'any(.hooks[$e][]?; any(.hooks[]?; .command == $c))' "$1" >/dev/null 2>&1; then
         printf 'installed'
     else
         printf 'absent'
@@ -264,7 +280,7 @@ guard_hooks() {
         install:1:)  guard_hooks_install || return $?; guard_hooks_install_claude ;;
         install:1:1) guard_hooks_install_user "${dirs[@]}" ;;
         remove::)    guard_hooks_remove ;;
-        remove:1:)   guard_claude_edit remove "$(guard_claude_settings)" "$(guard_plugin_dir)" ;;
+        remove:1:)   guard_claude_edit remove "$(guard_plugin_dir)" "$(guard_claude_settings)" ;;
         remove:1:1)  guard_hooks_remove_user "${dirs[@]}" ;;
         status::)    guard_hooks_status ;;
         status::1|status:1:1) guard_hooks_status_user "${dirs[@]}" ;;

@@ -72,7 +72,7 @@ nothing.
 | `QG_RUNNER` | the path of a copy of the committed runner; set only when `args` holds `runner=` |
 | `QG_RUN_DIR` | a directory the engine creates for one invocation and deletes at exit, for reports rows share |
 | `QG_CONFIG_REV` | the commit whose configuration judges this run; read a config key there with `git show`, never from the working tree |
-| `QG_PRIVATE` | set only inside a sandboxed process: its private 0700 folder, also its `HOME` and `TMPDIR`, removed after the run |
+| `QG_PRIVATE` | set only for a process `qg_sandbox_run` starts: its private 0700 folder, removed after the run. The full child environment: `vault/architecture/qg-sandbox.md` |
 
 **`QG_TREE` is the only directory a driver measures.** Under `commit` it is
 `<git-common-dir>/guard-tree` when the gate prepared the staged-tree copy. Otherwise it is the

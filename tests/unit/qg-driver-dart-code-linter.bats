@@ -230,7 +230,7 @@ report_fn() {
 }
 
 @test "dart-code-linter measures through the real kit path under the sandbox" {
-    unset QG_SANDBOX
+    export QG_SANDBOX=1
     export QG_SANDBOX_WRITES="$("$DRIVER" describe | jq -r '.writes | join(" ")')"
     # The sandbox hides the test's variables, so this fake has its report and its escape target baked in.
     { printf '#!/usr/bin/env bash\nFIX=%q\nESC=%q\n' "$FIX/dcl.json" "$WORK/escaped"; cat <<'EOF2'

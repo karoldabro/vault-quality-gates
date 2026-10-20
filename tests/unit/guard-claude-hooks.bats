@@ -527,12 +527,14 @@ plugin_copy() {
     git -C "$1" -c user.email=t@e -c user.name=t commit -q -m plugin
 }
 
-@test "BASH_ENV, SHELLOPTS, BASHOPTS and BASH_FUNC_ assignments or exports are denied beside any command" {
+@test "BASH_FUNC_ assignments are denied beside any command and BASH_ENV, SHELLOPTS and BASHOPTS beside git, qg or a hook" {
     local c
-    for c in 'BASH_ENV=/tmp/e ls' 'BASH_ENV=/tmp/e' 'export BASH_ENV=/tmp/e' 'export BASH_ENV' 'declare -x BASH_ENV=/tmp/e' \
-             'SHELLOPTS=xtrace make' 'export SHELLOPTS' 'BASHOPTS=extdebug ls' 'readonly BASHOPTS=x' \
-             "env 'BASH_FUNC_git%%=() { :; }' ls" "env BASH_FUNC_ls=x ls" "bash -c 'BASH_ENV=/tmp/e true'" \
-             'typeset -x BASH_ENV=/tmp/e; npm test'; do
+    # BASH_FUNC_ denies beside any command; the other names beside git, a hook, qg, guard.sh or the plugin.
+    for c in 'BASH_ENV=/tmp/e git status' 'BASH_ENV=/tmp/e; git commit -m x' 'export BASH_ENV=/tmp/e; git commit -m x' \
+             'export BASH_ENV; qg run commit' 'declare -x BASH_ENV=/tmp/e && git push' 'SHELLOPTS=xtrace git commit -m x' \
+             'export SHELLOPTS; git log' 'BASHOPTS=extdebug qg run push' 'readonly BASHOPTS=x; /code/bin/guard.sh report' \
+             "env 'BASH_FUNC_git%%=() { :; }' ls" "env BASH_FUNC_ls=x ls" "bash -c 'BASH_ENV=/tmp/e git status'" \
+             'typeset -x BASH_ENV=/tmp/e; npm test; git commit -m x' 'BASH_ENV=/tmp/e make hooks'; do
         bash_case deny "$c"
     done
     no_bad
@@ -542,7 +544,7 @@ plugin_copy() {
     local c
     for c in 'GIT_REPLACE_REF_BASE=refs/x/ git log' 'GIT_NO_REPLACE_OBJECTS=0 git show HEAD' \
              'GIT_ALTERNATE_OBJECT_DIRECTORIES=/tmp/o git status' 'GIT_OBJECT_DIRECTORY=/tmp/o git log' \
-             'GIT_EXTERNAL_DIFF=/tmp/d git diff' 'env GIT_EXTERNAL_DIFF=/tmp/d git diff' 'export GIT_OBJECT_DIRECTORY=/tmp/o'; do
+             'GIT_EXTERNAL_DIFF=/tmp/d git diff' 'env GIT_EXTERNAL_DIFF=/tmp/d git diff' 'export GIT_OBJECT_DIRECTORY=/tmp/o; git log'; do
         bash_case deny "$c"
     done
     bash_case allow 'git log -1'
@@ -779,10 +781,79 @@ plugin_copy() {
 
 @test "assigning LD_PRELOAD, LD_LIBRARY_PATH or LD_AUDIT is denied" {
     local c
-    for c in 'LD_PRELOAD=/tmp/x.so ls' 'export LD_LIBRARY_PATH=/tmp' 'env LD_AUDIT=/tmp/a.so true' \
-             'LD_PRELOAD=/tmp/x.so git status' 'declare -x LD_PRELOAD=/tmp/x.so'; do
+    for c in 'LD_PRELOAD=/tmp/x.so git status' 'export LD_LIBRARY_PATH=/tmp; qg run commit' 'env LD_AUDIT=/tmp/a.so git commit -m x' \
+             'declare -x LD_PRELOAD=/tmp/x.so; git push' 'LD_LIBRARY_PATH=build /code/bin/qg run commit'; do
         bash_case deny "$c"
     done
     bash_case allow 'echo $LD_LIBRARY_PATH'
+    no_bad
+}
+
+@test "loader and shell names, and computed export names, are allowed in a command that names no git, hook, qg or plugin" {
+    printf '#!/usr/bin/env bash\necho tests\n' > run_tests; chmod +x run_tests
+    printf 'A=1\n# c\n' > .env
+    local c
+    for c in 'LD_LIBRARY_PATH=build ./run_tests' 'export LD_LIBRARY_PATH=/x' 'export $(grep -v ^# .env | xargs)' \
+             'LD_PRELOAD=/tmp/x.so ls' 'SHELLOPTS=xtrace make' 'export BASH_ENV' 'BASHOPTS=extdebug ls'; do
+        bash_case allow "$c"
+    done
+    bash_case deny 'export $(grep -v ^# .env | xargs); git commit -m x'
+    no_bad
+}
+
+@test "git cannot change the protected main worktree through a relative path, a work tree, a prefix or a tracked cwd" {
+    plugin_copy "$WORK/vault-quality-gates"
+    mkdir -p "$WORK/side"; git -C "$WORK/vault-quality-gates" worktree add -q "$WORK/side/s6" -b s6
+    HOOKS="$WORK/vault-quality-gates/templates/claude-hooks"
+    cd "$WORK/side/s6" || return 1
+    local c
+    for c in 'git -C ../../vault-quality-gates reset --hard HEAD~1' 'git --work-tree=../../vault-quality-gates checkout HEAD -- lib' \
+             'git --work-tree ../../vault-quality-gates checkout HEAD -- lib' 'git checkout-index -a -f --prefix=../../vault-quality-gates/' \
+             'cd ../.. && cd vault-quality-gates && git checkout -- . && git pull' 'GIT_WORK_TREE=../../vault-quality-gates git checkout -- .' \
+             'export GIT_DIR=../../vault-quality-gates/.git; git reset --hard' 'git --git-dir=../../vault-quality-gates/.git stash' \
+             'git worktree add ../../vault-quality-gates/inner' 'git -C "$X" reset --hard'; do
+        bash_case deny "$c"
+    done
+    bash_case allow 'git -C ../../vault-quality-gates log -1'
+    bash_case allow 'cd ../../vault-quality-gates && git status'
+    bash_case allow 'git checkout -b feature && git commit -m x'
+    bash_case allow 'git checkout-index -a --prefix=/tmp/export/'
+    no_bad
+}
+
+@test "launchers that start a command without the agent markers are denied" {
+    local c
+    for c in 'exec -c git commit -m x' 'exec -a x -c bash' 'systemd-run --user git commit -m x' 'systemd-run -E A=1 make' \
+             'systemd-run -p EnvironmentFile=/tmp/e true' 'echo "git push" | at now' 'batch <<< "git push"' \
+             'tmux new-session -d "git commit -m x"' 'tmux new-window make' 'tmux send-keys -t 0 "git push" Enter' \
+             'screen -dm git push' 'nice systemd-run true'; do
+        bash_case deny "$c"
+    done
+    bash_case allow 'tmux ls'
+    bash_case allow 'exec -a name ls'
+    no_bad
+}
+
+@test "inline code that starts a program with a changed environment or a pty is denied, however it spells the program" {
+    local c
+    for c in "python3 -c 'import os; os.environ.pop(\"CLAUDE\"+\"CODE\"); os.execvp(\"g\"+\"it\", [\"g\"+\"it\", \"push\"])'" \
+             "python3 -c 'import subprocess; subprocess.run([\"g\"+\"it\", \"push\"], env={})'" \
+             "node -e 'require(\"child_process\").spawnSync(\"g\"+\"it\", [], {env: {}})'" \
+             "python3 -c 'import pty, os; pty.spawn([\"sh\"])'"; do
+        bash_case deny "$c"
+    done
+    printf 'import subprocess\nsubprocess.run(["ls"])\n' > tool.py
+    bash_case allow 'python3 tool.py'
+    bash_case deny  'python3 tool.py && git status'
+    bash_case allow "python3 -c 'import subprocess; subprocess.run([\"ls\"])'"
+    no_bad
+}
+
+@test "interpreter code that only reads a denied root is allowed" {
+    bash_case allow "python3 -c \"print(open('/usr/local/bin/foo').read())\""
+    bash_case allow "python3 -c \"print(open('$HOME/.bashrc').read())\""
+    printf '#!/usr/local/bin/python3\nprint(1)\n' > shebang.py
+    bash_case allow 'python3 shebang.py'
+    bash_case deny  "python3 -c \"open('$HOME/.bashrc', 'a').write('x')\""
     no_bad
 }

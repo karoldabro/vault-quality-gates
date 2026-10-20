@@ -53,8 +53,8 @@ rows that differ only in `metric=` run PHP Insights once.
 default, so a committed or untracked sibling config never shadows the protected one.
 
 **pnpm on the host:** `jscpd` and `jscpd-added` without `bin=` run `pnpm dlx jscpd@<version>` through
-`qg_pnpm_prepare` in `lib/qg-driver-kit.sh`. It runs from an empty folder under `env -i`, keeping only
-`PATH` and `LANG`, with an empty user and global rc and the public registry. No `.npmrc`, XDG config or
+`qg_pnpm_prepare` in `lib/qg-driver-kit.sh`. It runs from an empty folder under the child environment of
+`vault/architecture/qg-sandbox.md`, with `HOME` set to that folder, an empty user and global rc and the public registry. No `.npmrc`, XDG config or
 `npm_config_*`/`pnpm_config_*` variable of the caller or the commit reaches it. Its store and dlx cache
 live under `<git-common-dir>/guard-cache/pnpm`, so a second run needs no network.
 
@@ -126,7 +126,7 @@ must hold `sentence-count.sh`, `prose-match.sh` and `doc-lint-patterns.tsv`.
 
 **Constraint: a commit cannot change what is checked.** Before it lints, the driver replaces every
 `.doc-lint` and `VAULT.md` in the measured tree with the config revision's copies. It writes empty
-root ones when that revision has none. The linter gets no variable or function of the caller beyond `PATH`, `HOME` and
+root ones when that revision has none. The linter runs through `qg_sandbox_run`, open, with the child environment and
 `LC_ALL=C`. The driver refuses any measured tree but `<git-common-dir>/guard-tree`, and a config
 path under a folder linked out of that tree. A link turned into a markdown file is linted whole.
 

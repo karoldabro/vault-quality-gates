@@ -53,7 +53,7 @@ PLUGIN_RE = re.compile('(%s)(/|\\Z)' % '|'.join(re.escape(p.lower()) for p in PL
 # Needles that only count when the same command also names git, .git, a hook or the plugin: a file
 # called ai_agent.py is ordinary, an agent marker cleared beside a commit is not.
 SOFT_NEEDLES = ('claudecode', 'ai_agent')
-NAMES_GIT = re.compile(r'\bgit\b|\.git|hook|husky|' + '|'.join(re.escape(p) for p in PLUGIN_SPELLINGS if len(p) > 1), re.I)
+NAMES_GIT = re.compile(r'\bgit\b|\.git|hook|husky|\bqg\b|guard\.sh|' + '|'.join(re.escape(p) for p in PLUGIN_SPELLINGS if len(p) > 1), re.I)
 # What a command scanned so far: every text read (the input, scripts, inline code) and the soft
 # findings that turn into a denial once that text names git.
 SEEN, DEFERRED = [], []
@@ -73,6 +73,10 @@ CODE_FLAG = re.compile(r'-[a-zA-Z]*[ceErp]\Z|--(eval|print|command)\Z')
 RISKY_CODE = re.compile(r'\bgit\b|\.git|\bpty\b|subprocess|system|\bexec\b|exec[lvS_F(]|spawn|popen|passthru|proc_open|fork|hooks'
                         r'|unlink|remove|rmtree|rename|chmod|symlink|`|\\x[0-9a-f]|\bchr\s*\(|base64|\beval\b|__import__|getattr'
                         r'|compile|child_process|writefile|file_put_contents|fopen|\bqx\b|shutil|\bos\.', re.I)
+# A program start, and a changed environment or pseudo-terminal for it: together they can run git
+# without the agent markers, whatever the code spells the program's name with.
+EXEC_PRIM = re.compile(r'exec[lv]p?e?\b|os\.exec|subprocess|child_process|\bspawn|os\.system|\bsystem\s*\(|popen|proc_open|passthru', re.I)
+STRIP_ENV = re.compile(r'environ|\benv\s*[=:\[]|putenv|unsetenv|clearenv|process\.env|%ENV|\$ENV\b|\bpty\b|\bscript\b', re.I)
 READ_ONLY = {'cat', 'less', 'more', 'head', 'tail', 'grep', 'egrep', 'fgrep', 'rg', 'ag', 'ls', 'stat', 'file', 'wc', 'jq', 'yq',
              'diff', 'cmp', 'sort', 'uniq', 'cut', 'tr', 'echo', 'printf', 'true', 'false', 'pwd', 'realpath', 'readlink', 'dirname',
              'basename', 'test', '[', 'which', 'type', 'du', 'df', 'tree', 'column', 'nl', 'od', 'hexdump', 'xxd', 'md5sum',
@@ -96,6 +100,10 @@ WRAPPERS = {'sudo': {'-u', '-g', '-C', '-D', '-h', '-p', '-r', '-t', '-U', '-T',
             'elif': set(), 'if': set(), 'while': set(), 'until': set(), 'function': set()}
 FIRST_POSITIONAL = {'flock', 'chrt', 'taskset', 'timeout'}
 BLIND_ARGS = {'xargs', 'parallel'}
+# Programs that start a command in a fresh environment or outside this process tree, so the agent
+# markers the override checks never reach it; tmux only through the subcommands that run one.
+LAUNCHERS = {'systemd-run', 'at', 'batch', 'screen'}
+TMUX_RUN = {'new-session', 'new', 'new-window', 'neww', 'send-keys', 'send', 'split-window', 'splitw', 'respawn-pane', 'respawn-window', 'run-shell', 'run'}
 JOINED_SCRIPT = {'watch', 'ssh', 'su', 'runuser'}
 REMOTE = {'docker', 'podman', 'kubectl', 'nerdctl', 'lxc', 'vagrant'}
 
@@ -108,6 +116,8 @@ class Ctx:
     def __init__(self, cwd):
         self.cwd, self.origin, self.written, self.flags, self.repo = cwd, cwd, set(), set(), repo_root(cwd)
         self.gitdirs = None
+        # GIT_DIR and GIT_WORK_TREE assigned or exported so far; None for a value computed at run time.
+        self.gitenv = {}
         self.seg, self.remote = {'words': [], 'redirs': [], 'heredoc': ''}, False
 
 
@@ -204,19 +214,27 @@ def git_dirs(ctx):
     return ctx.gitdirs
 
 
-def check_name(name):
-    """A name no agent may assign, export or pass through env: it changes what bash, git or the
-    loader runs, or it is the agent marker the gate reads."""
+def check_name(name, via_env=False):
+    """A name an agent may not assign, export or pass through env. BASH_FUNC_*, a non-identifier
+    passed through env and the agent markers always deny; the other names that change what bash,
+    git or the loader runs deny only in a command that also names git, a hook, qg or the plugin."""
+    if name.startswith('BASH_FUNC_'):
+        raise Deny(f'{name} exports a shell function to every bash the commit gate starts')
     if not IDENT.match(name):
-        raise Deny(f'{name} is no plain identifier; only env can set it, and bash would import it')
-    if name in DENIED_NAMES or name.startswith('BASH_FUNC_'):
-        raise Deny(f'{name} changes what bash, git or the loader runs; an agent may not set it')
+        if via_env:
+            raise Deny(f'{name} is no plain identifier; only env can set it, and bash would import it')
+        DEFERRED.append(f'{name} is no plain identifier, in a command that names git, a hook, qg or the plugin')
+        return
     if name in MARKERS:
         raise Deny(f'{name} is the agent marker the commit gate reads; an agent may not change or clear it')
+    if name in DENIED_NAMES:
+        DEFERRED.append(f'{name} changes what bash, git or the loader runs, in a command that names git, a hook, qg or the plugin')
 
 
-def check_var(name, value, ctx):
+def check_var(name, value, ctx, dynamic=False):
     check_name(name)
+    if name in ('GIT_DIR', 'GIT_WORK_TREE'):
+        ctx.gitenv[name] = None if dynamic else value
     if GATE_VAR.match(name):
         raise Deny(f'{name} is read by the commit gate; an agent may not set it')
     if name == 'HUSKY' and value == '0':
@@ -226,7 +244,7 @@ def check_var(name, value, ctx):
 
 
 def check_git(a, ctx, cwd):
-    i = 0
+    i, where = 0, []
     while i < len(a) and a[i].startswith('-'):
         t = a[i]
         if t.startswith('--config-env'):
@@ -236,9 +254,16 @@ def check_git(a, ctx, cwd):
             i += t == '-c'
             check_git_key(kv.split('=', 1)[0])
         elif t == '-C' and i + 1 < len(a):
+            if a[i + 1].dynamic:
+                raise Deny(f'git -C {a[i + 1]} is computed at run time, so the hook cannot see which repository it changes')
             cwd = os.path.join(cwd, a[i + 1])
             i += 1
-        elif t in ('--git-dir', '--work-tree', '--namespace', '--exec-path', '--super-prefix'):
+        elif t in ('--git-dir', '--work-tree') and i + 1 < len(a):
+            where.append(a[i + 1])
+            i += 1
+        elif t.startswith(('--git-dir=', '--work-tree=')):
+            where.append(t.split('=', 1)[1] if not t.dynamic else t)
+        elif t in ('--namespace', '--exec-path', '--super-prefix'):
             i += 1
         elif t.startswith('--exec-path'):
             raise Deny('git --exec-path swaps the git programs that run the hooks')
@@ -260,7 +285,39 @@ def check_git(a, ctx, cwd):
         raise Deny('git branch -u retargets the upstream the stop hook reads; push with git push -u instead')
     if sub in VERIFY_SUBS:
         check_no_verify(sub, rest)
+    if not git_is_read(sub, rest):
+        check_git_tree(sub, rest, ctx, cwd, where)
     check_ref_writers(sub, rest, ctx, cwd)
+
+
+def git_is_read(sub, rest):
+    return sub in GIT_READ or (sub == 'config' and git_config_is_read(rest)) or (sub == 'branch' and not rest) \
+        or (sub == 'notes' and rest[:1] in ([], ['list'], ['show']))
+
+
+def check_git_tree(sub, rest, ctx, cwd, where):
+    """A git command that writes may not have its work tree, git dir or output prefix inside the
+    protected main worktree: the cwd after -C, --work-tree, --git-dir, GIT_WORK_TREE, GIT_DIR,
+    checkout-index --prefix and the folder of worktree add, each resolved with realpath."""
+    paths = [cwd] + where + [ctx.gitenv[k] for k in ('GIT_DIR', 'GIT_WORK_TREE') if k in ctx.gitenv]
+    if sub == 'checkout-index':
+        paths += [rest[j + 1] for j, t in enumerate(rest[:-1]) if t == '--prefix'] + [t[9:] for t in rest if t.startswith('--prefix=')]
+    if sub == 'worktree' and rest[:1] == ['add']:
+        skip = False
+        for t in rest[1:]:
+            if skip:
+                skip = False
+            elif t.startswith('-'):
+                skip = t in ('-b', '-B', '--reason')
+            else:
+                paths.append(t)
+                break
+    for p in paths:
+        if p is None or getattr(p, 'dynamic', False) or '$' in p:
+            raise Deny(f'git {sub} works on a repository the hook cannot see before it runs')
+        real = os.path.realpath(os.path.join(ctx.cwd, cwd, p))
+        if in_plugin(real):
+            raise Deny(f'git {sub} changes {real}, inside the plugin main worktree {MAIN}, which only a human changes')
 
 
 def check_ref_writers(sub, rest, ctx, cwd):
@@ -397,8 +454,7 @@ def git_exempt(args):
     while i < len(args) and args[i].startswith('-'):
         i += 2 if args[i] in ('-c', '-C', '--git-dir', '--work-tree', '--namespace') else 1
     sub, rest = (args[i], args[i + 1:]) if i < len(args) else ('', [])
-    if sub in GIT_READ or (sub == 'config' and git_config_is_read(rest)) or (sub == 'branch' and not rest) \
-            or (sub == 'notes' and rest[:1] in ([], ['list'], ['show'])):
+    if git_is_read(sub, rest):
         return set(range(len(args)))
     return {i + 1 + j for j in message_indices(sub, rest)}
 
@@ -465,9 +521,7 @@ def run_file(path, ctx, depth, shell):
     if shell or re.match(r'#!.*\b(ba|z|da|k)?sh\b', text):
         scan_script(text, ctx, depth + 1)
     else:
-        SEEN.append(text)
-        check_needles([text], f'the script {path}')
-        check_text_roots(text, f'the script {path}')
+        check_code(f'the script {path}', text, inline=False)
 
 
 def is_read_only(cmd, args):
@@ -493,6 +547,11 @@ def unwrap(cmd, w, ctx):
                 raise Deny('env -i / env -u strips the agent markers')
             if t.startswith(('-S', '--split-string')) or (t[1:2] != '-' and 'S' in t):
                 raise Deny('env -S runs a string the hook would have to re-parse')
+    k = 1
+    while cmd == 'exec' and k < len(w) and w[k].startswith('-') and w[k] != '--':
+        if 'c' in w[k][1:]:
+            raise Deny('exec -c runs the command with an empty environment, without the agent markers')
+        k += 2 if w[k] == '-a' else 1
     if cmd == 'flock' and any(t in ('-c', '--command') for t in w):
         raise Deny('flock -c runs a shell string the hook cannot see')
     while i < len(w) and w[i].startswith('-') and w[i] != '--':
@@ -507,7 +566,7 @@ def unwrap(cmd, w, ctx):
         # and the identifiers again as assignments of the command they precede.
         j = i
         while j < len(w) and '=' in w[j]:
-            check_name(w[j].split('=', 1)[0])
+            check_name(w[j].split("=", 1)[0], via_env=True)
             j += 1
     if cmd in FIRST_POSITIONAL and i < len(w):
         i += 1
@@ -518,7 +577,7 @@ def scan_words(w, ctx, depth, remote=False):
     i = 0
     while i < len(w) and (m := re.match(r'([A-Za-z_]\w*)=(.*)\Z', w[i], re.S)):
         check_needles([w[i]], 'the assignment')
-        check_var(m.group(1), m.group(2), ctx)
+        check_var(m.group(1), m.group(2), ctx, w[i].dynamic)
         i += 1
     names, w = {re.match(r'\w+', t).group(0) for t in w[:i]}, w[i:]
     if not w:
@@ -536,6 +595,8 @@ def scan_program(w, ctx, depth, remote):
         raise Deny(f'the command word {w[0]} is computed at run time, so the hook cannot tell which program runs')
     if cmd == 'script' or cmd == 'eval' and any(t.dynamic for t in args):
         raise Deny(f'{cmd} runs text the hook cannot see before it runs')
+    if cmd in LAUNCHERS or (cmd == 'tmux' and any(t in TMUX_RUN for t in args)):
+        raise Deny(f'{cmd} starts a command outside this process tree, without the agent markers the gate reads')
     if cmd in WRAPPERS or cmd in REMOTE:
         return scan_wrapper(cmd, w, ctx, depth, remote)
     if cmd in JOINED_SCRIPT:
@@ -636,7 +697,7 @@ def check_declare(cmd, args, ctx):
             name, eq, value = t.partition('=')
             name = name[:-1] if eq and name.endswith('+') else name
             if eq:
-                check_var(name, value, ctx)
+                check_var(name, value, ctx, t.dynamic)
             else:
                 check_name(name)
 
@@ -726,7 +787,7 @@ def scan_guard(args):
 def scan_qg(args):
     words = [a for a in args if a != '--json']
     sub = words[0] if words else 'help'
-    if sub in QG_READS or words[:2] == ['hooks', 'status']:
+    if sub in QG_READS or words[:2] == ['hooks', 'status'] or words == ['hooks']:
         return
     raise Deny(f'qg {sub} changes the gate; an agent may run only {", ".join(sorted(QG_READS))} and hooks status')
 
@@ -755,19 +816,24 @@ def stdin_script(cmd, ctx, depth, shell):
     here = seg['heredoc'] or next((t for o, t in seg['redirs'] if o == '<<<'), None)
     src = next((t for o, t in seg['redirs'] if o == '<'), None)
     if here is not None:
-        return scan_script(here, ctx, depth + 1) if shell else check_code(cmd, here)
+        return scan_script(here, ctx, depth + 1) if shell else check_code(f'{cmd} code', here)
     if src is not None:
         return run_file(src, ctx, depth, shell)
     raise Deny(f'{cmd} reads its program from a pipe the hook cannot see')
 
 
-def check_code(cmd, code):
+def check_code(what, code, inline=True):
+    """Interpreter code: needles and denied roots always. Inline or heredoc code that starts a
+    program with a changed environment or a pseudo-terminal always, since it can spell the program's
+    name to avoid every check. RISKY_CODE, script files included, once the input names git."""
     SEEN.append(code)
-    check_needles([code], f'{cmd} code')
-    check_text_roots(code, f'{cmd} code')
+    check_needles([code], what)
+    check_text_roots(code, what)
+    if inline and EXEC_PRIM.search(code) and STRIP_ENV.search(code):
+        raise Deny(f'{what} starts a program with a changed environment or a pseudo-terminal, which can drop the agent markers')
     m = RISKY_CODE.search(code)
     if m:
-        DEFERRED.append(f'{cmd} inline code uses {m.group(0)}, which can run git or rewrite files, in a command that names git, a hook or the plugin')
+        DEFERRED.append(f'{what} uses {m.group(0)}, which can run git or rewrite files, in a command that names git, a hook or the plugin')
 
 
 def check_text_roots(text, what):
@@ -783,7 +849,7 @@ def scan_interpreter(cmd, args, w, ctx, depth, remote):
         if CODE_FLAG.match(t) and not (cmd.startswith('python') and t in ('-E',)) and j + 1 < len(args):
             if args[j + 1].dynamic:
                 raise Deny(f'{cmd} {t} runs code computed at run time')
-            return check_code(cmd, args[j + 1])
+            return check_code(f'{cmd} code', args[j + 1])
         if t == '-m' and j + 1 < len(args):
             if RISKY_CODE.search(args[j + 1]):
                 DEFERRED.append(f'{cmd} -m {args[j + 1]} can run git or rewrite files, in a command that names git, a hook or the plugin')

@@ -140,7 +140,8 @@ dl_place_config() {
 
 # dl_lint <dir> <report> <path>... -> runs the linter from <dir> on ./<path>, DL_BATCH paths per call,
 # appending its output to <report>, and sets DL_RC to the highest exit code. The kit's qg_tool keeps
-# one call's output and passes the caller's environment; this needs batches and `env -i`.
+# one call's output, and this needs batches, so each batch goes through qg_sandbox_run itself:
+# unconfined (the linter is the framework's own code), with the child environment and LC_ALL=C.
 dl_lint() {
     local dir="$1" report="$2" rc i p
     shift 2
@@ -150,7 +151,8 @@ dl_lint() {
         batch=()
         for p in "${paths[@]:i:DL_BATCH}"; do batch+=("./${p}"); done
         rc=0
-        ( cd "$dir" && env -i PATH="$PATH" HOME="${HOME:-/}" LC_ALL=C "$DL_LINTER" "${batch[@]}" ) >> "$report" 2>&1 < /dev/null || rc=$?
+        QG_SANDBOX=0 LC_ALL=C qg_sandbox_run --cwd "$dir" -- "$DL_LINTER" "${batch[@]}" >> "$report" 2>&1 || rc=$?
+        [ -z "$QG_SANDBOX_ERROR" ] || { printf '%s\n' "$QG_SANDBOX_ERROR" >> "$report"; rc=125; }
         [ "$rc" -le "$DL_RC" ] || DL_RC="$rc"
     done
 }

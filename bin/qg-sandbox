@@ -1,37 +1,52 @@
 #!/usr/bin/python3 -I
 """qg-sandbox: run one command so it cannot write outside its grants nor open a Unix socket.
 
-usage: qg-sandbox [--write <absolute path>]... [--armed <file>] [--max-abi <n>] [--keep-session] -- <argv...>
+usage: qg-sandbox [--write <absolute path>]... [--declared <absolute folder>]... [--armed <file>]
+                  [--max-abi <n>] [--keep-session] -- <argv...>
 
 Landlock limits writes to the --write paths: a folder gets every handled right, a file gets write
 and truncate. It also scopes signals and abstract Unix sockets to the sandbox. A seccomp filter
-kills a call through a foreign architecture entry, returns ENOSYS for x32 numbers and io_uring_setup,
-and returns EACCES for socket(AF_UNIX). Reads and TCP stay open.
+kills a call through a foreign architecture entry; returns ENOSYS for x32 numbers and io_uring_setup;
+returns EPERM for the chown family and for setting or removing an extended attribute; returns EACCES
+for socket(AF_UNIX) and for a socketpair that is not SOCK_STREAM. Reads, TCP, chmod and utime stay open.
 
-Before the rules apply the process starts its own session, reads stdin from /dev/null and closes
-every descriptor above 2. --armed <file> is written just before execvp. A run that cannot arm exits
-125 with one stderr line and never writes the marker; lib/qg-sandbox.sh reads its absence as a
-failure. --keep-session skips setsid, for a caller that already started the session and kills its
-process group after the run, such as a runner. --max-abi lowers the Landlock ABI, for tests. Rules:
-vault/plans/2026-10-20-1022-qg-s6-agent-hooks.rules.md, section "Sandbox".
+A --write path that is missing, a symlink, reached through one, or a file with more than one link
+refuses the run. A --declared folder is checked when the sandbox arms, after a runner prepared the
+tree: one that is missing, not a folder, or reached through a symlink is skipped with a stderr line.
+
+Before the rules apply the process starts its own session (unless --keep-session: the caller already
+did and kills its process group), reads stdin from /dev/null and closes every descriptor above 2. It
+then becomes a child subreaper, writes the --armed marker, runs the command as its child, and, when
+the child exits, kills every descendant left and exits with the child's status (128 + signal for a
+signal). A run that cannot arm exits 125 with one stderr line and never writes the marker;
+lib/qg-sandbox.sh reads its absence as a failure. --max-abi lowers the Landlock ABI, for tests.
+Rules: vault/architecture/qg-sandbox.md.
 """
 import ctypes
 import os
 import platform
+import signal
 import stat
 import struct
 import sys
 
 ABI_MIN = 6
-ARCHES = {  # machine -> (AUDIT_ARCH_*, socket syscall number)
-    "x86_64": (0xC000003E, 41),
-    "aarch64": (0xC00000B7, 198),
+# machine -> AUDIT_ARCH_*, socket, socketpair, and the calls that change ownership or extended attributes.
+ARCHES = {
+    "x86_64": dict(arch=0xC000003E, socket=41, socketpair=53,
+                   eperm=[92, 93, 94, 260,                  # chown, fchown, lchown, fchownat
+                          188, 189, 190, 197, 198, 199,     # set/remove xattr, l-, f- forms
+                          463, 466]),                       # setxattrat, removexattrat
+    "aarch64": dict(arch=0xC00000B7, socket=198, socketpair=199,
+                    eperm=[54, 55,                          # fchownat, fchown
+                           5, 6, 7, 14, 15, 16,             # set/remove xattr, l-, f- forms
+                           463, 466]),                      # setxattrat, removexattrat
 }
 NR_CREATE_RULESET, NR_ADD_RULE, NR_RESTRICT_SELF = 444, 445, 446
 NR_IO_URING_SETUP = 425
 X32_BIT = 0x40000000
-AF_UNIX = 1
-ENOSYS, EACCES = 38, 13
+AF_UNIX, SOCK_STREAM, SOCK_FLAGS = 1, 1, 0o2000000 | 0o4000  # SOCK_CLOEXEC | SOCK_NONBLOCK
+EPERM, EACCES, ENOSYS = 1, 13, 38
 
 # LANDLOCK_ACCESS_FS_*: every right that changes the file system. Reads and execution are not handled.
 FS_WRITE_FILE = 1 << 1
@@ -42,9 +57,9 @@ SCOPE_ABSTRACT_UNIX_SOCKET, SCOPE_SIGNAL = 1 << 0, 1 << 1
 CREATE_RULESET_VERSION = 1
 RULE_PATH_BENEATH = 1
 
-PR_SET_SECCOMP, SECCOMP_MODE_FILTER, PR_SET_NO_NEW_PRIVS = 22, 2, 38
+PR_SET_SECCOMP, SECCOMP_MODE_FILTER, PR_SET_NO_NEW_PRIVS, PR_SET_CHILD_SUBREAPER = 22, 2, 38, 36
 RET_KILL_PROCESS, RET_ERRNO, RET_ALLOW = 0x80000000, 0x00050000, 0x7FFF0000
-LD_W_ABS, JEQ_K, JGE_K, RET_K = 0x20, 0x15, 0x35, 0x06
+LD_W_ABS, JEQ_K, JGE_K, AND_K, RET_K = 0x20, 0x15, 0x35, 0x54, 0x06
 
 KEEP_SESSION = False
 libc = ctypes.CDLL(None, use_errno=True)
@@ -65,18 +80,20 @@ def syscall(nr, *args):
 
 def parse(argv):
     global KEEP_SESSION
-    writes, armed, max_abi, i = [], None, None, 0
+    writes, declared, armed, max_abi, i = [], [], None, None, 0
     while i < len(argv):
         a = argv[i]
         if a == "--keep-session":
             KEEP_SESSION, i = True, i + 1
             continue
         if a == "--":
-            return writes, armed, max_abi, argv[i + 1:]
-        if a in ("--write", "--armed", "--max-abi") and i + 1 < len(argv):
+            return writes, declared, armed, max_abi, argv[i + 1:]
+        if a in ("--write", "--declared", "--armed", "--max-abi") and i + 1 < len(argv):
             v = argv[i + 1]
             if a == "--write":
                 writes.append(v)
+            elif a == "--declared":
+                declared.append(v)
             elif a == "--armed":
                 armed = v
             elif v.isdigit():
@@ -107,12 +124,39 @@ def isolate():
         # A process group leader cannot start a session: run on in a child that can.
         pid = os.fork()
         if pid:
-            code = os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1])
-            sys.exit(code if code >= 0 else 128 - code)
+            sys.exit(exit_code(os.waitpid(pid, 0)[1]))
         os.setsid()
 
 
-def landlock(writes, max_abi):
+def exit_code(status):
+    code = os.waitstatus_to_exitcode(status)
+    return code if code >= 0 else 128 - code
+
+
+def open_grant(path):
+    """-> (fd, stat) of a path whose every component is real, or (None, reason)."""
+    if not os.path.isabs(path) or os.path.normpath(path) != path:
+        return None, "is not a normalised absolute path"
+    try:
+        fd = os.open(path, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except OSError as e:
+        return None, f"cannot be opened: {e.strerror}"
+    st = os.fstat(fd)
+    if stat.S_ISLNK(st.st_mode) or os.readlink(f"/proc/self/fd/{fd}") != path:
+        os.close(fd)
+        return None, "is or passes through a symlink"
+    return fd, st
+
+
+def add_rule(rfd, path, fd, access):
+    rule = ctypes.create_string_buffer(struct.pack("<Qi", access, fd))
+    rc = syscall(NR_ADD_RULE, ctypes.c_long(rfd), ctypes.c_long(RULE_PATH_BENEATH), rule, ctypes.c_uint32(0))
+    os.close(fd)
+    if rc < 0:
+        die(f"grant {path} was refused by Landlock (errno {-rc})")
+
+
+def landlock(writes, declared, max_abi):
     abi = syscall(NR_CREATE_RULESET, None, ctypes.c_size_t(0), ctypes.c_uint32(CREATE_RULESET_VERSION))
     if abi < 0:
         die(f"Landlock is not available (errno {-abi})")
@@ -125,20 +169,25 @@ def landlock(writes, max_abi):
     if rfd < 0:
         die(f"landlock_create_ruleset failed (errno {-rfd})")
     for path in writes:
-        if not os.path.isabs(path) or os.path.normpath(path) != path:
-            die(f"grant {path} is not a normalised absolute path")
-        try:
-            fd = os.open(path, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC)
-        except OSError as e:
-            die(f"grant {path} cannot be opened: {e.strerror}")
-        st = os.fstat(fd)
-        if stat.S_ISLNK(st.st_mode) or os.readlink(f"/proc/self/fd/{fd}") != path:
-            die(f"grant {path} is or passes through a symlink")
-        rule = ctypes.create_string_buffer(struct.pack("<Qi", FS_HANDLED if stat.S_ISDIR(st.st_mode) else FS_FILE, fd))
-        rc = syscall(NR_ADD_RULE, ctypes.c_long(rfd), ctypes.c_long(RULE_PATH_BENEATH), rule, ctypes.c_uint32(0))
-        if rc < 0:
-            die(f"grant {path} was refused by Landlock (errno {-rc})")
-        os.close(fd)
+        fd, st = open_grant(path)
+        if fd is None:
+            die(f"grant {path} {st}")
+        if stat.S_ISDIR(st.st_mode):
+            add_rule(rfd, path, fd, FS_HANDLED)
+        elif st.st_nlink > 1:
+            os.close(fd)
+            die(f"grant {path} is a file with {st.st_nlink} links")
+        else:
+            add_rule(rfd, path, fd, FS_FILE)
+    for path in declared:
+        fd, st = open_grant(path)
+        if fd is not None and not stat.S_ISDIR(st.st_mode):
+            os.close(fd)
+            fd, st = None, "is not a folder"
+        if fd is None:
+            print(f"qg-sandbox: declared path {path} {st}; not writable", file=sys.stderr)
+            continue
+        add_rule(rfd, path, fd, FS_HANDLED)
     if libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0:
         die("PR_SET_NO_NEW_PRIVS failed")
     rc = syscall(NR_RESTRICT_SELF, ctypes.c_long(rfd), ctypes.c_uint32(0))
@@ -147,24 +196,33 @@ def landlock(writes, max_abi):
     os.close(rfd)
 
 
-def seccomp(audit_arch, nr_socket):
+def seccomp(arch):
     def ins(code, jt, jf, k):
         return struct.pack("HBBI", code, jt, jf, k)
-    prog = b"".join([
+    prog = [
         ins(LD_W_ABS, 0, 0, 4),                       # seccomp_data.arch
-        ins(JEQ_K, 1, 0, audit_arch),
+        ins(JEQ_K, 1, 0, arch["arch"]),
         ins(RET_K, 0, 0, RET_KILL_PROCESS),           # a 32-bit or other foreign entry
         ins(LD_W_ABS, 0, 0, 0),                       # seccomp_data.nr
         ins(JGE_K, 0, 1, X32_BIT),
         ins(RET_K, 0, 0, RET_ERRNO | ENOSYS),         # x32 numbers
         ins(JEQ_K, 0, 1, NR_IO_URING_SETUP),
         ins(RET_K, 0, 0, RET_ERRNO | ENOSYS),
-        ins(JEQ_K, 0, 3, nr_socket),
+    ]
+    for nr in arch["eperm"]:
+        prog += [ins(JEQ_K, 0, 1, nr), ins(RET_K, 0, 0, RET_ERRNO | EPERM)]
+    prog += [
+        ins(JEQ_K, 0, 3, arch["socketpair"]),
+        ins(LD_W_ABS, 0, 0, 24),                      # low 32 bits of args[1], the type
+        ins(AND_K, 0, 0, 0xFFFFFFFF & ~SOCK_FLAGS),
+        ins(JEQ_K, 4, 3, SOCK_STREAM),                # stream: allow; any other type: EACCES
+        ins(JEQ_K, 0, 3, arch["socket"]),
         ins(LD_W_ABS, 0, 0, 16),                      # low 32 bits of args[0], the family
         ins(JEQ_K, 0, 1, AF_UNIX),
         ins(RET_K, 0, 0, RET_ERRNO | EACCES),
         ins(RET_K, 0, 0, RET_ALLOW),
-    ])
+    ]
+    prog = b"".join(prog)
 
     class Fprog(ctypes.Structure):
         _fields_ = [("len", ctypes.c_ushort), ("filter", ctypes.c_void_p)]
@@ -175,16 +233,67 @@ def seccomp(audit_arch, nr_socket):
         die(f"seccomp filter refused (errno {ctypes.get_errno()})")
 
 
+def descendants_of(me):
+    """-> the pids whose parent is `me`; a subreaper inherits every orphaned descendant."""
+    kids = []
+    for name in os.listdir("/proc"):
+        if not name.isdigit():
+            continue
+        try:
+            with open(f"/proc/{name}/stat") as f:
+                fields = f.read().rsplit(")", 1)[1].split()
+        except OSError:
+            continue
+        if int(fields[1]) == me:
+            kids.append(int(name))
+    return kids
+
+
+def run(cmd):
+    child = os.fork()
+    if child == 0:
+        try:
+            os.execvp(cmd[0], cmd)
+        except OSError as e:
+            print(f"qg-sandbox: cannot run {cmd[0]}: {e.strerror}", file=sys.stderr)
+        os._exit(127)
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(sig, lambda s, _f: os.kill(child, s))
+    while True:
+        try:
+            pid, status = os.waitpid(child, 0)
+            break
+        except InterruptedError:
+            continue
+    code = exit_code(status)
+    # Kill what the tool left, including a process that started its own session; each orphan of a
+    # killed process becomes this process's child, so repeat until none is left.
+    me = os.getpid()
+    while True:
+        for pid in descendants_of(me):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
+        try:
+            os.waitpid(-1, 0)
+        except ChildProcessError:
+            break
+    sys.exit(code)
+
+
 def main():
-    writes, armed, max_abi, cmd = parse(sys.argv[1:])
+    writes, declared, armed, max_abi, cmd = parse(sys.argv[1:])
     if not cmd:
         die("no command after --")
     arch = ARCHES.get(platform.machine())
     if arch is None:
         die(f"architecture {platform.machine()} is not supported")
     isolate()
-    landlock(writes, max_abi)
-    seccomp(*arch)
+    landlock(writes, declared, max_abi)
+    seccomp(arch)
+    if libc.prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
+        die("PR_SET_CHILD_SUBREAPER failed")
     if armed:
         try:
             fd = os.open(armed, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
@@ -192,11 +301,7 @@ def main():
             os.close(fd)
         except OSError as e:
             die(f"cannot write the armed marker {armed}: {e.strerror}")
-    try:
-        os.execvp(cmd[0], cmd)
-    except OSError as e:
-        print(f"qg-sandbox: cannot run {cmd[0]}: {e.strerror}", file=sys.stderr)
-        sys.exit(127)
+    run(cmd)
 
 
 main()

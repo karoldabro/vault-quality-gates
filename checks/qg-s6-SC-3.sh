@@ -3,8 +3,10 @@
 # clone of recycling_mobile_app at release/1.17.0 and app.givore.com at release/1.19.0, with
 # `qg run push` and `qg run baseline --only` the suite and mutation rows. Every row must give the
 # same id, value and status, every compared row must be measured, and nothing under ~/.pub-cache or
-# the Flutter SDK may change except the SDK's bin/cache stamps and lockfile. The real checkouts are
-# only read.
+# the Flutter SDK may change except the SDK's bin/cache stamps and lockfile. In the app.givore.com
+# clones a staged one-line change runs `qg run commit --json` on both engines: the rows must match
+# and `typecheck-new`, whose runner links node_modules into the staged tree, must be measured. The
+# real checkouts are only read.
 #
 # Run by the operator: the agent hook refuses scripts that set QG_* names.
 # Exit 0 pass, 1 fail, 2 could not run.
@@ -35,9 +37,21 @@ measure() {
     jq -r '.rows[] | "\(.id)|\(.value)|\(.status)"' "${3}.push.json" "${3}.base.json" | sort
 }
 
+# measure_commit <engine qg> <clone> <out prefix> -> stages a one-line change to the first tracked
+# .ts file under composables/ or utils/, runs the commit rows, prints id|value|status, and unstages.
+measure_commit() {
+    local f
+    f="$(cd "$2" && git ls-files | grep -E '^(composables|utils)/.*\.ts$' | head -1)"
+    [ -n "$f" ] || return 2
+    (cd "$2" && printf '// qg-s6-SC-3\n' >> "$f" && git add "$f" \
+        && "$1" run commit --json > "${3}.commit.json" 2> "${3}.commit.err"; git reset -q -- "$f"; git checkout -q -- "$f")
+    jq -r '.rows[] | "\(.id)|\(.value)|\(.status)"' "${3}.commit.json" | sort
+}
+
 run_new() {   # <name> <src> <ref> <baseline rows>; this branch's engine first, before main touches the SDK
     clone "$2" "$3" "${tmp}/${1}-new" || { printf 'clone of %s failed\n' "$1"; exit 2; }
     measure "${ROOT}/bin/qg" "${tmp}/${1}-new" "${tmp}/${1}-new" "$4" > "${tmp}/${1}-new.rows"
+    [ "$1" != app ] || measure_commit "${ROOT}/bin/qg" "${tmp}/${1}-new" "${tmp}/${1}-new" > "${tmp}/${1}-new.commit.rows"
 }
 
 compare() {   # <name> <src> <ref> <baseline rows>
@@ -53,6 +67,14 @@ compare() {   # <name> <src> <ref> <baseline rows>
     fi
     if grep -rqs '^sandbox: armed' "${tmp}/${name}-new/.git/qg-last"; then printf '  ok       %s: rows ran inside qg-sandbox\n' "$name"
     else printf '  FAILING  %s: no row log records sandbox: armed\n' "$name"; bad=1; fi
+    [ "$name" = app ] || return 0
+    new="$(cat "${tmp}/${name}-new.commit.rows")"
+    old="$(measure_commit "${MAIN}/bin/qg" "${tmp}/${name}-old" "${tmp}/${name}-old")"
+    [ -n "$new" ] || { printf '%s: this engine printed no commit rows\n' "$name"; tail -20 "${tmp}/${name}-new.commit.err"; exit 2; }
+    if [ "$new" = "$old" ]; then printf '  ok       %s: same commit rows on both engines\n' "$name"
+    else printf '  FAILING  %s: commit rows differ (< this branch, > main):\n' "$name"; diff <(printf '%s\n' "$new") <(printf '%s\n' "$old"); bad=1; fi
+    if grep -q '^typecheck-new|.*|measured$' <<<"$new"; then printf '  ok       %s: typecheck-new measured on a staged commit\n' "$name"
+    else printf '  FAILING  %s: typecheck-new is not measured on a staged commit\n' "$name"; grep '^typecheck-new|' <<<"$new"; bad=1; fi
 }
 
 MOBILE="${HOME}/workspace/recycling_mobile_app"

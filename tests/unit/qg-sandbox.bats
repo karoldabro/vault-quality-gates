@@ -391,3 +391,90 @@ EOF
     [ "$(jq -c . "$WORK/sandboxed.json")" = "$(jq -c . "$QG_OUT/result.json")" ]
     [ "$(jq -r .metric "$QG_OUT/result.json")" = 3 ]
 }
+
+@test "a commit tree whose runner links node_modules measures nuxt-typecheck sandboxed" {
+    # The main checkout holds node_modules and .nuxt; the staged tree has neither, as in commit mode.
+    mkdir -p "$WORK/main/node_modules/.bin" "$WORK/main/node_modules/.cache" "$WORK/main/.nuxt"
+    { printf '#!/usr/bin/env bash\n'
+      printf 'echo x > .nuxt/types.d.ts && echo "nuxt dir written"\n'
+      printf 'echo y > node_modules/.cache/escaped 2>/dev/null || echo "linked cache refused"\n'
+      printf 'echo "app.vue(1,1): error TS2322: wrong type"\nexit 1\n'
+    } > "$WORK/main/node_modules/.bin/nuxt"
+    chmod +x "$WORK/main/node_modules/.bin/nuxt"
+    # The runner does what in-node.sh does in commit mode, then runs the sandboxed argv.
+    { printf '#!/usr/bin/env bash\ntree="$1"; shift 2\n'
+      printf '[ ! -e "$tree/node_modules" ] || { echo "node_modules is already in the tree" >&2; exit 2; }\n'
+      printf 'ln -s %q "$tree/node_modules" && rm -rf "$tree/.nuxt" && cp -R %q "$tree/.nuxt" || exit 2\n' \
+          "$WORK/main/node_modules" "$WORK/main/.nuxt"
+      printf 'cd "$tree" && exec "$@"\n'
+    } > "$WORK/runner"
+    chmod +x "$WORK/runner"
+    export QG_RUNNER="$WORK/runner" QG_SANDBOX_WRITES="$(/code/drivers/nuxt-typecheck.sh describe | jq -r '.writes | join(" ")')"
+    QG_ARGS='runner=quality/bin/in-node.sh' run /code/drivers/nuxt-typecheck.sh run
+    [ "$(jq -r .status "$QG_OUT/result.json")" = measured ] || { echo "$output"; return 1; }
+    [ "$(jq -r .metric "$QG_OUT/result.json")" = 1 ]
+    [ -L "$TREE/node_modules" ] && [ -s "$TREE/.nuxt/types.d.ts" ]
+    [ ! -e "$WORK/main/node_modules/.cache/escaped" ]
+    [[ "$output" == *'node_modules/.cache is or passes through a symlink; not writable'* ]]
+}
+
+@test "the armed record never follows a symlink a repo driver plants" {
+    new_repo "$TREE"; commit_all init
+    mkdir -p "$WORK/plugin/drivers"
+    cp -R /code/lib /code/bin "$WORK/plugin/"
+    : > "$WORK/target"
+    # A repo driver may write QG_OUT; it plants links where an armed record could be appended.
+    mkdir -p quality/drivers
+    { printf '#!/usr/bin/env bash\ncase "$1" in describe) echo "{\\"name\\":\\"mine\\",\\"needs_tree\\":false}";;\n'
+      printf '  run) ln -s %q "$QG_OUT/.qg-sandbox.log"; ln -s %q "$QG_OUT/../sandbox.log" 2>/dev/null\n' "$WORK/target" "$WORK/target"
+      printf '       echo "{\\"schema\\":\\"qg.result/1\\",\\"status\\":\\"measured\\",\\"metric\\":0,\\"findings\\":[],\\"error\\":null}" > "$QG_OUT/result.json";;\n'
+      printf '  *) exit 2;; esac\n'
+    } > quality/drivers/mine.sh
+    chmod +x quality/drivers/mine.sh
+    commit_all driver
+    local row tmp
+    row="$(printf '%s\t' r commit diff mine - down 0 refuse why - - -)"
+    tmp="$WORK/run"; mkdir -p "$tmp"
+    bash -c '. "$1/lib/qg-driver.sh"; REPO_ROOT="$PWD"; GUARD_TREE_DIR="$PWD"; GUARD_CONFIG_REV="$(git rev-parse HEAD)"
+        guard_cfg_show() { git show "${GUARD_CONFIG_REV}:$1"; }
+        guard_run_driver "$2" HEAD /dev/null "$3"' _ "$WORK/plugin" "$row" "$tmp"
+    [ ! -s "$WORK/target" ]
+    [ "$(tail -1 "$tmp/output")" = 'sandbox: armed' ]
+    [ ! -L "$tmp/sandbox.log" ]
+}
+
+@test "socketpair is refused unless it is SOCK_STREAM, whatever its CLOEXEC and NONBLOCK flags" {
+    run probe dgrampair
+    [ "$output" = $'dgram errno 13\nseqpacket errno 13\nstream-cloexec ok' ]
+    QG_SANDBOX=0 run probe dgrampair
+    [ "$output" = $'dgram ok\nseqpacket ok\nstream-cloexec ok' ]
+}
+
+@test "chown and setting or removing an extended attribute are refused; chmod and utime are not" {
+    mkdir -p "$TREE/out"; : > "$TREE/out/f"
+    QG_SANDBOX_WRITES=out run probe owner out/f
+    [ "$output" = $'chown errno 1\nlchown errno 1\nsetxattr errno 1\nremovexattr errno 1\nchmod ok\nutime ok' ]
+    # The control: unsandboxed, chown to oneself succeeds.
+    QG_SANDBOX=0 run probe owner "$TREE/out/f"
+    [[ "$output" == *'chown ok'* ]]
+}
+
+@test "a descendant that starts its own session is killed when the tool exits" {
+    QG_SANDBOX_WRITES=rec run probe escape rec/escaped.pid
+    [ "$output" = 'escape started' ] || { echo "$output"; return 1; }
+    local pid state
+    pid="$(cat "$TREE/rec/escaped.pid")"
+    [ -n "$pid" ]
+    state="$(awk '{ print $3 }' "/proc/$pid/stat" 2>/dev/null || true)"
+    [ -z "$state" ] || [ "$state" = Z ] || { kill "$pid"; echo "escaped $pid still running"; return 1; }
+}
+
+@test "a declared path that exists as a file is refused, and a hard-linked file grant is refused" {
+    : > "$TREE/coverage"
+    QG_SANDBOX_WRITES=coverage run probe write x
+    [ "$status" -eq 125 ] && [[ "$output" == *'declared path coverage is not a folder'* ]]
+    : > "$WORK/one"; ln "$WORK/one" "$WORK/two"
+    run /code/bin/qg-sandbox --write "$WORK/out" --write "$WORK/one" --armed "$WORK/out/armed" -- true
+    [ "$status" -eq 125 ] && [ ! -e "$WORK/out/armed" ]
+    [[ "$output" == *"grant $WORK/one is a file with 2 links"* ]]
+}

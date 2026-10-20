@@ -10,7 +10,7 @@ exec < /dev/null
 . "$(dirname "${BASH_SOURCE[0]}")/_qg-cases.sh"
 qg_cases \
     guard-claude-hooks.bats \
-    "BASH_ENV, SHELLOPTS, BASHOPTS and BASH_FUNC_ assignments or exports are denied beside any command" \
+    "BASH_FUNC_ assignments are denied beside any command and BASH_ENV, SHELLOPTS and BASHOPTS beside git, qg or a hook" \
     "GIT_REPLACE_REF_BASE, GIT_NO_REPLACE_OBJECTS, GIT_ALTERNATE_OBJECT_DIRECTORIES, GIT_OBJECT_DIRECTORY and GIT_EXTERNAL_DIFF are denied" \
     "env with a name that is no plain identifier is denied and the command after it is still checked" \
     "export -f, declare -fx and typeset -fx are denied" \

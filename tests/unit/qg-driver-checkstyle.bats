@@ -10,6 +10,7 @@
 # The repo comes from gate_repo: app/a.php is committed as one line "clean"; tests stage edits.
 
 load guard-helpers
+load qg-fakes
 
 DRIVER=/code/drivers/checkstyle.sh
 REPORT=build/checkstyle.xml
@@ -17,6 +18,7 @@ REPORT=build/checkstyle.xml
 setup() {
     export LC_ALL=C
     WORK="$(mktemp -d)"
+    fakes_setup
     unset QG_ARGS QG_RUN_DIR CLAUDECODE AI_AGENT FAKE_REUSE FAKE_REPORT FAKE_DEST
     export GUARD_LOCK_WAIT=5
     mkdir -p "$WORK/out"
@@ -44,6 +46,7 @@ if [ -n "${FAKE_REPORT:-}" ] && [ -n "${FAKE_DEST:-}" ]; then mkdir -p "$(dirnam
 exit "${FAKE_RC:-0}"
 EOF
     chmod +x "$1"
+    fake_bake "$1"
 }
 
 result() { jq -r "$1" "$QG_OUT/result.json"; }
@@ -261,4 +264,23 @@ EOF
     [ "$(result .metric)" = 4 ]
     measure lines=added
     [ "$(result .metric)" = 1 ]
+}
+
+@test "the runner sees only the passed names, and a child it leaves in the background is killed" {
+    two_file_report
+    # The runner records its environment and leaves a sleeper behind, both into files baked in.
+    { printf '#!/usr/bin/env bash\n'
+      printf 'env | cut -d= -f1 | sort > %q\n' "$WORK/runner.env"
+      printf 'sleep 300 > /dev/null 2>&1 < /dev/null & echo "$!" > %q\n' "$WORK/sleep.pid"
+      printf 'mkdir -p "$1/build"; cp %q "$1/%s"\n' "$FAKE_REPORT" "$REPORT"
+    } > "$WORK/runner"
+    SECRET_TOKEN=leak measure
+    [ "$(result .status)" = measured ]
+    ! grep -qx SECRET_TOKEN "$WORK/runner.env" || return 1
+    ! grep -q '^FAKE_' "$WORK/runner.env" || return 1
+    grep -qx QG_TREE "$WORK/runner.env"
+    local pid state
+    pid="$(cat "$WORK/sleep.pid")"
+    state="$(awk '{ print $3 }' "/proc/$pid/stat" 2>/dev/null || true)"
+    [ -z "$state" ] || [ "$state" = Z ] || { kill "$pid"; echo "sleeper $pid still running"; return 1; }
 }

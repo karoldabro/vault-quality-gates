@@ -36,8 +36,11 @@ case "${1:-}" in
         else tracked="$(git -C "${QG_REPO:-.}" ls-tree --name-only "$QG_TARGET" -- "$report" 2>/dev/null)"; fi
         [ -z "$tracked" ] || { qg_fail checkstyle findings "${report} is committed; a report must come from this run"; exit 0; }
         rc=0
-        "$QG_RUNNER" "$QG_TREE" "${QG_CACHE:-/tmp}" > "${QG_OUT}/stdout" 2> "${QG_OUT}/stderr" < /dev/null || rc=$?
+        # Unconfined, but with the child environment, its own session and its process group killed after.
+        QG_SANDBOX=0 qg_sandbox_run --runner "$QG_RUNNER" "$QG_TREE" "${QG_CACHE:-/tmp}" -- \
+            > "${QG_OUT}/stdout" 2> "${QG_OUT}/stderr" || rc=$?
         cat "${QG_OUT}/stderr"
+        [ -z "$QG_SANDBOX_ERROR" ] || { qg_fail checkstyle findings "$QG_SANDBOX_ERROR"; exit 0; }
         [ "$rc" = 0 ] || { tail -20 "${QG_OUT}/stdout"; qg_fail checkstyle findings "runner exited ${rc}"; exit 0; }
         f="${QG_TREE}/${report}"
         [ -s "$f" ] || { qg_fail checkstyle findings "the runner wrote no ${report}"; exit 0; }

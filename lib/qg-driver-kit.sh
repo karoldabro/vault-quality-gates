@@ -174,7 +174,8 @@ qg_clover_percent() {
 }
 
 # qg_pnpm_prepare <empty work folder> -> fills QG_PNPM with the command that runs pnpm from that
-# folder with no inherited configuration: no environment variable but PATH and LANG, HOME and the XDG
+# folder with no inherited configuration: qg_tool already starts it from the child environment
+# (vault/architecture/qg-sandbox.md); on top of that, HOME and the XDG
 # config folder pointed at the work folder, empty user and global rc files, and the public registry.
 # The store and the dlx cache live under QG_CACHE, which agents may not write, so a second run needs
 # no network. Callers run "${QG_PNPM[@]}" through qg_tool with QG_TOOL_DIR set to the folder.
@@ -185,7 +186,7 @@ qg_pnpm_prepare() {
     : > "${work}/.empty-rc"
     printf 'registry=https://registry.npmjs.org/\nstore-dir=%s/store\ncache-dir=%s/cache\n' "$store" "$store" > "${work}/.npmrc"
     printf 'packages: []\nstoreDir: %s/store\ncacheDir: %s/cache\n' "$store" "$store" > "${work}/pnpm-workspace.yaml"
-    QG_PNPM=(env -i "PATH=${PATH}" "LANG=${LANG:-C.UTF-8}" "HOME=${work}" "XDG_CONFIG_HOME=${work}"
+    QG_PNPM=(env "HOME=${work}" "XDG_CONFIG_HOME=${work}"
         "npm_config_userconfig=${work}/.empty-rc" "npm_config_globalconfig=${work}/.empty-rc" pnpm)
 }
 

@@ -15,25 +15,16 @@
 #   anything else     writes its sorted env to $TOOL_ENV and its argv, one per line, to $ARGV; copies
 #                     each "<cwd path>=<source>" word of $FAKE_WRITE; prints $FAKE_OUT; exits $FAKE_RC
 
+# shellcheck source=qg-fakes.bash
+. "${BATS_TEST_DIRNAME}/qg-fakes.bash"
+
 fake_sdk() {  # fake_sdk <root>
     mkdir -p "$1/bin/cache/dart-sdk/bin"
-    cat > "$1/bin/cache/dart-sdk/bin/dart" <<'EOF'
-#!/usr/bin/env bash
-own_env="$(env | sort)"
-if [ -z "${CALLS:-}" ]; then
-    # qg_sandbox_run starts a tool from an empty environment: take the test's names from the
-    # nearest ancestor process that has them. Works only unsandboxed, as dart_setup runs.
-    p=$PPID
-    while [ "${p:-0}" -gt 1 ]; do
-        if tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | grep -q '^CALLS='; then
-            while IFS= read -r -d '' kv; do
-                case "$kv" in CALLS=*|ARGV=*|PUB_ENV=*|PUB_CWD=*|TOOL_ENV=*|FAKE_*) export "${kv?}" ;; esac
-            done < "/proc/$p/environ"
-            break
-        fi
-        p="$(awk '{ print $4 }' "/proc/$p/stat" 2>/dev/null)"
-    done
-fi
+    { printf '#!/usr/bin/env bash\nown_env="$(env | sort)"\n'
+      # qg_sandbox_run starts a tool from an empty environment: the test's names come from the file
+      # the qg-fakes.bash driver wrapper or fake_env_save writes, its path baked in here.
+      printf '[ -n "${CALLS:-}" ] || [ ! -r %q ] || . %q\n' "$WORK/fake.env" "$WORK/fake.env"
+      cat <<'EOF'
 printf 'dart %s\n' "$*" >> "${CALLS:-/dev/null}"
 if [ "${1:-} ${2:-}" = 'pub get' ]; then
     env | sort > "${PUB_ENV:-/dev/null}"; pwd > "${PUB_CWD:-/dev/null}"
@@ -47,6 +38,7 @@ for w in ${FAKE_WRITE:-}; do mkdir -p "$(dirname "${w%%=*}")"; cp "${w#*=}" "${w
 [ -z "${FAKE_OUT:-}" ] || cat "$FAKE_OUT"
 exit "${FAKE_RC:-0}"
 EOF
+    } > "$1/bin/cache/dart-sdk/bin/dart"
     printf '%s\n' '#!/usr/bin/env bash' 'printf "flutter %s\n" "$*" >> "${CALLS:-/dev/null}"' > "$1/bin/flutter"
     chmod +x "$1/bin/flutter" "$1/bin/cache/dart-sdk/bin/dart"
 }
@@ -73,6 +65,8 @@ dart_setup() {
     export QG_SANDBOX=0
     export CALLS="$WORK/calls" ARGV="$WORK/argv" PUB_ENV="$WORK/pub.env" PUB_CWD="$WORK/pub.cwd" TOOL_ENV="$WORK/tool.env"
     export PATH="$SDK/bin:$PATH"
+    # A suite with DRIVER calls it through the qg-fakes.bash wrapper, which writes $WORK/fake.env.
+    [ -z "${DRIVER:-}" ] || fakes_setup
 }
 
 dart_teardown() {

@@ -36,8 +36,7 @@ an agent outside a guarded Claude Code session still meets the second.
 - Every subcommand except `help` and the `hooks` forms with `--user` runs from inside a git
   repository and exits 2 otherwise.
 - `qg` starts from the clean environment in `vault/architecture/guard-environment.md`, so no
-  inherited variable, function or `PATH` entry steers it or the engine. It keeps the caller's `PATH`
-  as `QG_CALLER_PATH`, which only `hooks install --claude --user` reads. Linux only.
+  inherited variable, function or `PATH` entry steers it or the engine. Linux only.
 - `list`, `explain` and `drivers` read the configuration committed at `HEAD`, never the working tree.
 - An unknown subcommand prints the help on stderr and exits 2.
 
@@ -57,9 +56,8 @@ an agent outside a guarded Claude Code session still meets the second.
 | `qg override --reason "<why>" [--push <sha>]` | lets the next commit of what is staged now, or the push of `<sha>`, through once within 10 minutes | 0 token written; 1 no terminal or a bad `--push` sha; 2 no reason or an agent | no |
 | `qg init --profile docs\|php\|nuxt\|flutter\|hugo [--force]` | writes `quality/checks.tsv`, `rules.tsv`, `baseline.tsv` and `config` from `templates/init/<profile>.tsv`. `config` protects the five gate files by exact path, plus every tracked `.doc-lint` for docs, which also gets `guard_doc_lint`. An existing `config` is kept, with a warning naming what it lacks. Next: `qg hooks install`, commit, `qg doctor` | 0; 2 on a bad profile or an existing `checks.tsv` without `--force` | no |
 | `qg migrate [--draft]` | rewrites a v1 `checks.tsv` as v2 and writes `quality/config` from the `VAULT.md` keys | 1 without `--draft`, listing rows with no why; 0 with `--draft`; 2 when there is nothing to migrate | no |
-| `qg hooks status [--user [--config-dir <dir>]...]` | the installed git hooks and repo-level Claude Code entries; with `--user`, one `installed\|absent <entry> <file>` line per guard entry and user-level target | 0 | yes |
-| `qg hooks install [--claude]`, `qg hooks remove [--claude]` | the git hooks; `--claude` adds the three guard entries to `.claude/settings.json`, and `remove --claude` removes only them | 0; 2 on invalid settings JSON | no |
-| `qg hooks install --claude --user [--config-dir <dir>]...`, `qg hooks remove --claude --user [...]` | the three guard entries in `~/.claude/settings.json` and each `<dir>/settings.json`; install also writes the machine tool-path file (`vault/architecture/guard-agent-hooks.md`) | 0; 2 from a linked worktree or on invalid settings JSON | no |
+| `qg hooks`, `qg hooks status [--user [--config-dir <dir>]...]` | what is installed (`vault/architecture/guard-agent-hooks.md`) | 0 | yes |
+| `qg hooks install [--claude [--user [--config-dir <dir>]...]]`, `qg hooks remove [--claude [--user ...]]` | installs or removes the git hooks or the guard entries (`vault/architecture/guard-agent-hooks.md`) | 0; 2 from a linked worktree (`--user`) or on invalid settings JSON | no |
 | `qg report`, `qg verify <range>` | pass through to `guard.sh report` and `guard.sh verify` | from `guard.sh` | yes |
 | `qg baseline`, `qg accept <id> --reason "<why>"` | pass through to `guard.sh baseline` and `guard.sh accept` | from `guard.sh` | no |
 

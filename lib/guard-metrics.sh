@@ -258,6 +258,7 @@ guard_run_shell() {
     # shellcheck disable=SC2016  # $1 is expanded by the child bash
     QG_SANDBOX=0 qg_sandbox_run -- /bin/bash -c 'set -uo pipefail; eval "$1"' qg-shell-row \
         "$(guard_substitute "$command" "$base" "$files")" > "$tmp/output" 2>&1 || status=$?
+    [ -z "$QG_SANDBOX_ERROR" ] || { guard_err "$QG_SANDBOX_ERROR"; return 2; }
     # parser '-' means the command's own output is the float; every other parser reads the
     # artifact. Passing the artifact cell to '-' records the literal '-'.
     # $(cat) drops trailing newlines first, as the captured output always did, so a command

@@ -10,6 +10,11 @@ HOME_REAL = os.path.realpath(HOME)
 STARTUP = ('.bashrc', '.bash_profile', '.bash_login', '.profile', '.zshrc', '.zshenv', '.zprofile')
 # A path inside interpreter code: ~, $HOME or ${HOME} followed by /, or an absolute path.
 TEXT_PATH = re.compile(r'''(?:~|\$\{HOME\}|\$HOME)(?=/)[^\s'"`;|&<>(){}\[\],]*|/[^\s'"`;|&<>(){}\[\],]+''')
+# Code that writes a file or starts a program: a write mode passed as an argument, a write or file call,
+# a shell redirect, or a process start.
+WRITES = re.compile(r''',\s*['"][rbt]*[wax+][rwabt+]*['"]|write|append|>|unlink|remove|rmtree|rename|replace\(|mkdir|makedirs'''
+                    r'''|copy|move|chmod|chown|symlink|link\(|truncate|touch|exec|system|spawn|popen|subprocess|child_process'''
+                    r'''|shutil|fopen|file_put_contents|\bfs\.|File\.|pathlib|\bdd\b|\btee\b|\bcp\b|\bmv\b|\brm\b|\bln\b|install''', re.I)
 _roots = {}
 
 
@@ -75,7 +80,12 @@ def denial(path, plugin):
 
 
 def text_denial(text, plugin):
-    """The first denied path spelled inside code, with its reason, or None."""
+    """The first denied path spelled inside code that writes or runs something, with its reason, or
+    None. Code that only reads, and a shebang line, name paths harmlessly."""
+    if text.startswith('#!'):
+        text = text.partition('\n')[2]
+    if not WRITES.search(text):
+        return None
     for m in TEXT_PATH.finditer(text):
         t = re.sub(r'^(~|\$\{HOME\}|\$HOME)', lambda _: HOME, m.group(0))
         why = denial(t, plugin)

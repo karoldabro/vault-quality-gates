@@ -50,7 +50,7 @@ kit() { bash -c ". $KIT; $1"; }
 # writes the tree and a file outside it, then prints its count.
 runner_tool() {
     { printf '#!/usr/bin/env bash\n'
-      printf 'tree="$1"; shift 2\necho prepared > "$tree/prepared" && echo "runner wrote the tree"\n'
+      printf 'tree="$1"; shift 2\necho prepared > "$tree/prepared" && echo "runner wrote the tree"\nmkdir -p "$tree/coverage"\n'
       printf 'cd "$tree" && exec "$@"\n'
     } > "$WORK/runner"
     { printf '#!/usr/bin/env bash\n'
@@ -226,4 +226,20 @@ runner_tool() {
     [ "$output" = /committed ]
     QG_REPO="$WORK/cfg" QG_CONFIG_REV="$rev" run kit 'qg_kit_config_key no_such_key'
     [ "$status" -ne 0 ]
+}
+
+@test "with a runner a declared folder is never created: a missing or linked one is skipped, never granted" {
+    mkdir -p "$WORK/elsewhere/.cache"
+    { printf '#!/usr/bin/env bash\ntree="$1"; shift 2\n'
+      printf 'ln -s %q "$tree/node_modules"\ncd "$tree" && exec "$@"\n' "$WORK/elsewhere"
+    } > "$WORK/runner"
+    printf '%s\n' '#!/usr/bin/env bash' 'echo r > reports/r 2>/dev/null || echo "reports refused"' \
+        'echo c > node_modules/.cache/c 2>/dev/null || echo "cache refused"' > "$TREE/tool"
+    chmod +x "$WORK/runner" "$TREE/tool"
+    QG_RUNNER="$WORK/runner" QG_SANDBOX_WRITES='reports node_modules/.cache' run kit 'qg_tool - 0 ./tool || { echo "ERR: $QG_ERROR"; exit 3; }'
+    [ "$status" -eq 0 ]
+    [ "$(cat "$QG_OUT/stdout")" = $'reports refused\ncache refused' ]
+    [[ "$output" == *'declared path '*'/reports cannot be opened'*'not writable'* ]]
+    [[ "$output" == *'/node_modules/.cache is or passes through a symlink; not writable'* ]]
+    [ ! -e "$TREE/reports" ] && [ ! -e "$WORK/elsewhere/.cache/c" ]
 }

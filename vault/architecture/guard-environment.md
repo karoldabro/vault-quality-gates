@@ -26,20 +26,31 @@ Stdin, the working directory and the arguments pass through, so `pre-push` still
 | `HOME`, `USER`, `LOGNAME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`, `SSH_AUTH_SOCK`, `XDG_RUNTIME_DIR`, `DISPLAY` | every entry |
 | `GIT_DIR`, `GIT_INDEX_FILE`, `GIT_WORK_TREE`, `GIT_PREFIX`, `GIT_AUTHOR_*`, `GIT_COMMITTER_*` (name, email, date), `GIT_REFLOG_ACTION`, `GIT_PUSH_OPTION_COUNT`, `GIT_PUSH_OPTION_<n>`, `GITHEAD_<sha>` (the merged heads `pre-merge-commit` reads) | every entry |
 | `CLAUDECODE`, `AI_AGENT` | every entry |
-| `QG_SKIP_REASON` | the git hook templates; each also unsets `GUARD_CONFIG_REV` |
-| `GUARD_CONFIG_REV` (the agent factory's config pin), `GUARD_SHA`, `GUARD_BASE` (the commit `pre-push` and `qg` name) | `bin/guard.sh` |
-| `QG_CALLER_PATH`, set to the caller's `PATH` before the restart; an exported value is overwritten | `bin/qg` |
+| `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` and their lowercase forms, `SSL_CERT_FILE`, `SSL_CERT_DIR`, `NODE_EXTRA_CA_CERTS` | every entry |
+| `QG_SKIP_REASON` | the git hook templates |
+| `GUARD_CONFIG_REV` (the agent factory's config pin), `GUARD_SHA`, `GUARD_BASE` (the commit `pre-push` and `qg` name), `GIT_NO_REPLACE_OBJECTS` | `bin/guard.sh` |
+| `VAULT_FRAMEWORK_PATH` (the doc-lint `qg init` names) | `bin/qg` |
 
 `PWD`, `OLDPWD`, `SHLVL` and `_` never trigger the restart, nor does a `PATH` equal to the clean
 `PATH`. An entry restarts at most once: a process that carries `QG_CLEAN_ENV` and still holds another
 name exits 2 naming it, so a forged `QG_CLEAN_ENV` can only stop the entry.
 
+`bin/qg` keeps the caller's `PATH` in the unexported variable `QG_CALLER_PATH`, which only
+`hooks install --claude --user` reads. The restart passes it as the argument `--qg-caller-path=<PATH>`,
+read only when `QG_CLEAN_ENV` is set. An exported `QG_CALLER_PATH` is an unkept name, so it never
+reaches `qg`.
+
 After the start, `bin/guard.sh` and `bin/qg` export `GIT_NO_REPLACE_OBJECTS=1` before they read any
 config revision, so a replace ref cannot swap the commit whose configuration judges the run.
 
+**Dropped names.** Every other name is dropped, among them `NODE_OPTIONS`, `PYTHONPATH`,
+`LD_PRELOAD`, `BASH_ENV`, `GIT_CONFIG_*`, `GIT_EXEC_PATH`, `GIT_EDITOR`, `XDG_CONFIG_HOME`,
+`PNPM_HOME`, `COMPOSER_HOME`, `FLUTTER_ROOT`, `PUB_CACHE`, `JAVA_HOME` and every `GUARD_*` and `QG_*`
+name the list above does not keep.
+
 **Failure mode:** a tool a row needs that lives outside the system folders and the tool-path file
-is not found, and the row reports unmeasurable. A variable a row or a repo runner needs, such as
-`VAULT_FRAMEWORK_PATH`, does not reach it either.
+is not found, and the row reports unmeasurable. A variable a row or a repo runner needs that is
+not kept, such as `COMPOSER_HOME`, does not reach it either.
 
 ## The machine tool-path file
 

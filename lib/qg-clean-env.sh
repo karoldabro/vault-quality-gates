@@ -8,7 +8,8 @@
 # When one is outside the kept list, it re-executes the script under `env -i` with only the kept
 # names, PATH set to the clean PATH and QG_CLEAN_ENV=1. A process that carries QG_CLEAN_ENV and
 # still holds another name exits 2, so an entry restarts at most once; a forged QG_CLEAN_ENV can
-# only turn a restart into that exit. Stdin, the working directory and the arguments pass through.
+# only turn a restart into that exit. Stdin, the working directory and the arguments pass through;
+# the restart puts the words of the array QG_RESTART_ARGS, when the entry sets one, before them.
 
 # shellcheck source=qg-toolpath.sh
 . "${BASH_SOURCE[0]%/*}/qg-toolpath.sh"
@@ -16,7 +17,8 @@
 QG_KEPT_NAMES='HOME USER LOGNAME LANG LC_ALL LC_CTYPE TERM SSH_AUTH_SOCK XDG_RUNTIME_DIR DISPLAY
 GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE
 GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE GIT_REFLOG_ACTION GIT_PUSH_OPTION_COUNT
-CLAUDECODE AI_AGENT'
+CLAUDECODE AI_AGENT
+HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy SSL_CERT_FILE SSL_CERT_DIR NODE_EXTRA_CA_CERTS'
 
 qg_clean_env() {
     local kv name clean extra='' marked=''
@@ -56,5 +58,5 @@ qg_clean_env() {
         printf 'vault-guard: the environment still holds%s after the clean restart; refused\n' "$extra" >&2
         exit 2
     fi
-    exec /usr/bin/env -i "${keep[@]}" PATH="$clean" QG_CLEAN_ENV=1 /bin/bash -p "$0" "$@"
+    exec /usr/bin/env -i "${keep[@]}" PATH="$clean" QG_CLEAN_ENV=1 /bin/bash -p "$0" "${QG_RESTART_ARGS[@]+"${QG_RESTART_ARGS[@]}"}" "$@"
 }

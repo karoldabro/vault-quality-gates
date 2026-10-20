@@ -110,7 +110,8 @@ guard_run_driver() {
     args="$(guard_substitute "$(guard_row_field "$row" args)" "$base" "$files")"
     path="$(guard_driver_path "$driver" "$tmp")" || { guard_err "$path"; return 2; }
     unset QG_RUNNER QG_SANDBOX_SDK
-    export QG_SANDBOX=1 QG_SANDBOX_WRITES=''
+    export QG_SANDBOX=1 QG_SANDBOX_WRITES='' QG_SANDBOX_LOG="$tmp/sandbox.log"
+    : > "$QG_SANDBOX_LOG"
     if guard_driver_builtin "$driver" >/dev/null; then
         desc="$("$path" describe 2>/dev/null)"
         [ "$(jq -r 'if .sandbox == false then 0 else 1 end' <<<"$desc" 2>/dev/null)" != 0 ] || QG_SANDBOX=0
@@ -128,9 +129,9 @@ guard_run_driver() {
     QG_BASES="${GUARD_BASES:-$base}" QG_TARGET="${GUARD_TARGET:-${GUARD_SHA:-HEAD}}" QG_REPO="$REPO_ROOT" \
     QG_TREE="${GUARD_TREE_DIR:-$PWD}" QG_CACHE="${GUARD_CACHE_DIR:-$(git rev-parse --path-format=absolute --git-common-dir)/guard-cache}" \
         guard_driver_launch "$repo" "$path" > "$tmp/output" 2>&1 || status=$?
-    unset QG_RUNNER QG_SANDBOX QG_SANDBOX_WRITES
+    unset QG_RUNNER QG_SANDBOX QG_SANDBOX_WRITES QG_SANDBOX_LOG
     # The row log keeps the sandbox record last, inside the tail the engine keeps.
-    [ ! -s "$tmp/out/.qg-sandbox.log" ] || sort -u "$tmp/out/.qg-sandbox.log" >> "$tmp/output"
+    [ -L "$tmp/sandbox.log" ] || [ ! -s "$tmp/sandbox.log" ] || sort -u "$tmp/sandbox.log" >> "$tmp/output"
     r="$tmp/out/result.json"
     [ -z "$QG_SANDBOX_ERROR" ] || { guard_err "$QG_SANDBOX_ERROR"; return 2; }
     [ "$status" -eq 0 ] || { guard_err "driver ${driver} exited ${status}"; return 2; }

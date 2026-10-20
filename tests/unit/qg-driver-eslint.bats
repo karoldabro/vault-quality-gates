@@ -17,6 +17,7 @@
 #   dash quality/bin/tree-report.sh lint + guard-added-lines.sh --checkstyle    2   (the repo of commit_repo)
 
 load guard-helpers
+load qg-fakes
 
 DRIVER=/code/drivers/eslint.sh
 FIX=/code/tests/fixtures/drivers
@@ -25,6 +26,7 @@ MESS='complexity,sonarjs/cognitive-complexity,max-depth,max-lines,max-lines-per-
 setup() {
     export LC_ALL=C
     WORK="$(mktemp -d)"
+    fakes_setup
     unset QG_RUNNER QG_ARGS QG_RUN_DIR QG_REPO QG_BASES QG_TARGET CLAUDECODE AI_AGENT FAKE_PREFIX
     export GUARD_LOCK_WAIT=5
     TREE="$WORK/tree"; mkdir -p "$TREE" "$WORK/out"
@@ -44,18 +46,6 @@ fake_eslint() {  # fake_eslint <tree> — node_modules/.bin/eslint in <tree>
     mkdir -p "$1/node_modules/.bin"
     cat > "$1/node_modules/.bin/eslint" <<'EOF'
 #!/usr/bin/env bash
-if [ -z "${FAKE_CALLS:-}" ]; then
-    # qg_sandbox_run starts the tool from an empty environment: take the test's FAKE_* names from the
-    # nearest ancestor process that has them. Works only unsandboxed, as setup runs.
-    p=$PPID
-    while [ "${p:-0}" -gt 1 ]; do
-        if tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | grep -q '^FAKE_CALLS='; then
-            while IFS= read -r -d '' kv; do case "$kv" in FAKE_*) export "${kv?}" ;; esac; done < "/proc/$p/environ"
-            break
-        fi
-        p="$(awk '{ print $4 }' "/proc/$p/stat" 2>/dev/null)"
-    done
-fi
 echo call >> "${FAKE_CALLS:-/dev/null}"
 : > "${FAKE_ARGV:-/dev/null}"; printf '%s\0' "$@" >> "${FAKE_ARGV:-/dev/null}"
 out=''
@@ -66,6 +56,7 @@ fi
 exit "${FAKE_RC:-0}"
 EOF
     chmod +x "$1/node_modules/.bin/eslint"
+    fake_bake "$1/node_modules/.bin/eslint"
 }
 
 # argv — the fake's argv without the leading `-o <private folder>/eslint.json` the driver adds.
@@ -189,7 +180,7 @@ commit_repo() {
 }
 
 @test "eslint runs sandboxed: its report reaches the driver and nothing in the tree is written" {
-    unset QG_SANDBOX
+    export QG_SANDBOX=1
     # The sandbox hides the test's variables, so this fake has its report and its targets baked in.
     { printf '#!/usr/bin/env bash\nJSON=%q\nESC=%q\n' "$FAKE_JSON" "$WORK/escaped"; cat <<'EOF'
 out=''

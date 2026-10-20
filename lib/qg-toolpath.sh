@@ -80,8 +80,11 @@ qg_tool_path_from() {
     IFS=: read -ra dirs <<<"$1"
     for tool in pnpm node php composer docker hugo; do
         for dir in "${dirs[@]}"; do
-            [ "${dir:0:1}" = / ] && [ -f "${dir}/${tool}" ] && [ -x "${dir}/${tool}" ] || continue
-            real="$(cd -P "$dir" 2>/dev/null && pwd -P)" || continue
+            [ -f "${dir}/${tool}" ] && [ -x "${dir}/${tool}" ] || continue
+            # A folder the engine would drop is skipped for the next one holding the tool; a tool
+            # found first in a system folder needs no entry, since the clean PATH starts there.
+            real="$(qg_tool_path_check "$dir")" || continue
+            [[ ":${QG_SYSTEM_PATH}:" != *":${real}:"* ]] || break
             [ -z "${seen[$real]:-}" ] && { seen[$real]=1; printf '%s\n' "$real"; }
             break
         done

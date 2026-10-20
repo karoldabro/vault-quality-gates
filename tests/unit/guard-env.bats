@@ -279,6 +279,21 @@ record_all() {
     [ "$(git rev-parse HEAD)" = "$head" ]
 }
 
+@test "the skip reason is refused when an ancestor process holds an agent marker the commit no longer carries" {
+    install_hooks
+    printf 'BAD\n' > app/a.php; git add app/a.php
+    local head; head="$(git rev-parse HEAD)"
+    local inner="QG_SKIP_REASON='stripped' git commit -q -m skipped; echo rc=\$?"
+    # `; true` keeps the marked bash alive as an ancestor, as Claude Code stays alive above its shells;
+    # a lone command would let bash exec it in place, and the marker would leave the process tree.
+    run at_tty "CLAUDECODE=1 bash -c $(printf '%q' "env -u CLAUDECODE bash -c $(printf '%q' "$inner"); true")"
+    [[ "$output" == *'rc=1'* ]] || { printf '%s\n' "$output"; return 1; }
+    [ "$(git rev-parse HEAD)" = "$head" ]
+    run at_tty "AI_AGENT=1 bash -c $(printf '%q' "env -i HOME=$HOME PATH=$SYSTEM_PATH TERM=dumb bash -c $(printf '%q' "$inner"); true")"
+    [[ "$output" == *'rc=1'* ]]
+    [ "$(git rev-parse HEAD)" = "$head" ]
+}
+
 @test "pre-push still reads every ref on stdin after the clean restart" {
     stub_plugin
     fake_path

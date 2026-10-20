@@ -313,3 +313,47 @@ foreign() {
     bash_case deny  'qg hooks install --claude --user'
     no_bad
 }
+
+@test "hooks install --claude --user writes no target and no tool-path file when one target is invalid" {
+    user_setup
+    printf '%s\n' "$FOREIGN" > "$HOME/.claude/settings.json"
+    cp "$HOME/.claude/settings.json" "$WORK/before"
+    mkdir -p "$WORK/factory"
+    printf '[1, 2\n' > "$WORK/factory/settings.json"
+    run "$QG" hooks install --claude --user --config-dir "$WORK/factory"
+    [ "$status" -eq 2 ]
+    cmp "$WORK/before" "$HOME/.claude/settings.json"
+    [ ! -e "$WORK/plugin/.git/qg-tool-path" ]
+}
+
+@test "hooks install --claude --user skips a tool folder the engine would drop" {
+    user_setup
+    mkdir -p "$WORK/repo/tools" "$WORK/good"
+    printf '#!/bin/sh\n' > "$WORK/repo/tools/pnpm"; cp "$WORK/repo/tools/pnpm" "$WORK/good/pnpm"; cp "$WORK/repo/tools/pnpm" "$WORK/good/node"
+    chmod +x "$WORK/repo/tools/pnpm" "$WORK/good/pnpm" "$WORK/good/node"
+    PATH="$WORK/repo/tools:/usr/bin:$WORK/good:$PATH" run "$QG" hooks install --claude --user
+    [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
+    [ "$(cat "$WORK/plugin/.git/qg-tool-path")" = "$WORK/good" ]
+}
+
+@test "a preset QG_CLEAN_ENV never lets an exported QG_CALLER_PATH name the tool folders" {
+    user_setup
+    mkdir -p "$WORK/real" "$WORK/forged"
+    printf '#!/bin/sh\n' > "$WORK/real/pnpm"; cp "$WORK/real/pnpm" "$WORK/forged/pnpm"
+    chmod +x "$WORK/real/pnpm" "$WORK/forged/pnpm"
+    QG_CLEAN_ENV=1 QG_CALLER_PATH="$WORK/forged" PATH="$WORK/real:$PATH" run "$QG" hooks install --claude --user
+    [ "$status" -eq 2 ]
+    [ ! -e "$WORK/plugin/.git/qg-tool-path" ]
+    run env -i HOME="$HOME" PATH=/usr/local/bin:/usr/bin:/bin QG_CLEAN_ENV=1 "$QG" hooks install --claude --user
+    [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
+    [ ! -s "$WORK/plugin/.git/qg-tool-path" ]
+}
+
+@test "bare qg hooks is allowed for an agent" {
+    CLAUDECODE=1 run /code/bin/qg hooks
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'pre-commit'* ]]
+    BAD=''
+    bash_case allow 'qg hooks'
+    no_bad
+}

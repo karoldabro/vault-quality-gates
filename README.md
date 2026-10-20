@@ -150,6 +150,9 @@ Once per machine, from the main worktree of this checkout, run
 Claude Code config folders and writes the machine tool-path file from your `PATH`. Run it again after
 installing pnpm, node, php, composer, docker or hugo somewhere new.
 
+After every update of this plugin, run `qg hooks install` again in each gated repo: the installed
+git hooks are copies, and `qg doctor` fails until they match the templates.
+
 ## Known limits
 
 - **A commit made without the commit hooks has no pass record**: `cherry-pick`, `revert`, `rebase`,

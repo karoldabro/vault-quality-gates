@@ -120,6 +120,11 @@ worktrees share, and records every local commit not on any remote, so the existi
 Each hook, `bin/guard.sh` and `bin/qg` starts from a clean environment:
 `vault/architecture/guard-environment.md`.
 
+**An installed hook is a copy.** After the plugin changes, a human runs `qg hooks install` in each
+gated repo, or the old body keeps running. `qg doctor` fails naming every hook that differs from its
+template. The engine keeps the verdicts of the `43d7082` bodies (`tests/unit/qg-old-hooks.bats`),
+so a repo is never unguarded in between.
+
 | hook | does |
 |---|---|
 | `pre-commit`, `pre-merge-commit`, `pre-applypatch` | run `guard.sh commit`; exit 1 on its exit 1 or 2, or when `guard.sh` is missing or not executable; write the pass record on a pass |
@@ -162,6 +167,8 @@ hook never sees it, and the commit is refused.
 
 **`QG_SKIP_REASON` conditions.** `lib/guard-override.sh` honours it when the reason has a non-blank
 character, `/dev/tty` opens, and neither `CLAUDECODE` nor `AI_AGENT` is set, even to an empty string.
+Neither may appear in `/proc/<pid>/environ` of any ancestor process below init either. An unreadable
+ancestor environment refuses, so an agent that starts a command with a fresh environment still fails.
 
 **The token.** `qg override` checks the same conditions, then writes `<git-common-dir>/qg-override`.
 The file holds the reason, the user, the time, `commit` or `push`, and a binding:

@@ -17,6 +17,25 @@ guard_override_allowed() {
     [ -z "${CLAUDECODE+set}" ] || return 1
     [ -z "${AI_AGENT+set}" ] || return 1
     { : < /dev/tty; } 2>/dev/null || return 1
+    guard_override_ancestors_clean
+}
+
+# guard_override_ancestors_clean -> 1 when this process or any ancestor below init holds
+# CLAUDECODE or AI_AGENT in /proc/<pid>/environ, or when one of those files cannot be read. An agent
+# that starts a command with a fresh environment (env -i, a launcher, tmux) is still its ancestor.
+# Builtins only: the hook's PATH is no help here.
+guard_override_ancestors_clean() {
+    local pid="$$" kv k v ppid
+    while [ "$pid" -gt 1 ]; do
+        [ -r "/proc/${pid}/environ" ] || return 1
+        while IFS= read -r -d '' kv; do
+            case "$kv" in CLAUDECODE=*|AI_AGENT=*) return 1 ;; esac
+        done < "/proc/${pid}/environ" || return 1
+        ppid=''
+        while read -r k v; do [ "$k" = PPid: ] && { ppid="$v"; break; }; done < "/proc/${pid}/status" || return 1
+        case "$ppid" in ''|*[!0-9]*) return 1 ;; esac
+        pid="$ppid"
+    done
     return 0
 }
 

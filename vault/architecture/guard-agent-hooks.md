@@ -37,7 +37,16 @@ The `--user` forms run in `bin/qg` itself, because only `qg` holds the caller's 
 ## What the guards deny
 
 **Plugin files.** Both hooks protect the main worktree of the checkout they run from. Any linked
-worktree of the plugin stays editable, the one the hooks run from included.
+worktree of the plugin stays editable, the one the hooks run from included. A git command other than
+a read is denied when its work tree lies in the main worktree. The checked paths are the tracked cwd,
+`-C`, `--work-tree`, `--git-dir`, an assigned or exported `GIT_WORK_TREE` or `GIT_DIR`,
+`checkout-index --prefix` and the folder of `worktree add`, each resolved with `realpath`.
+
+**Launchers.** `script`, `exec -c`, `systemd-run`, `at`, `batch`, `screen` and the tmux subcommands
+that run a command (`new-session`, `new-window`, `split-window`, `send-keys`, `respawn-*`,
+`run-shell`) are denied. Each can start a command without the agent markers. The override does not
+rely on this list alone: `lib/guard-override.sh` refuses when any ancestor process below init holds
+`CLAUDECODE` or `AI_AGENT` in `/proc/<pid>/environ`, or when one of those files cannot be read.
 
 **Global write denials.** Both hooks deny a write or an edit under these paths, compared by the
 spelled and the resolved path (`write_denials.py`):
@@ -50,22 +59,31 @@ spelled and the resolved path (`write_denials.py`):
 - every folder in the machine tool-path file.
 
 `guard-bash.sh` also matches these paths in interpreter code (`-c`, `-e`, heredocs, script files),
-spelled with `~`, `$HOME`, `${HOME}` or absolutely. It also checks write targets: `tar -C`,
+spelled with `~`, `$HOME`, `${HOME}` or absolutely, when the code writes a file or starts a program.
+Code that only reads them passes, and a shebang line never counts. It also checks write targets: `tar -C`,
 `--directory=`, `unzip -d`, `curl -o`, `--output`, `--output-dir`, `wget -O`, `--output-document`,
 `-P`, `dd of=` and the folder of `git clone <url> <dir>`. A bare `cd` moves the checked cwd to `HOME`.
 
-**Denied names.** `guard-bash.sh` denies assigning, exporting, declaring or passing through `env`
-any of `BASH_ENV`, `SHELLOPTS`, `BASHOPTS`, `BASH_FUNC_*`, `GIT_REPLACE_REF_BASE`,
-`GIT_NO_REPLACE_OBJECTS`, `GIT_ALTERNATE_OBJECT_DIRECTORIES`, `GIT_OBJECT_DIRECTORY`,
-`GIT_EXTERNAL_DIFF`, `LD_PRELOAD`, `LD_LIBRARY_PATH` and `LD_AUDIT`. It denies any name that is no
-plain identifier, and any change to `CLAUDECODE` or `AI_AGENT`. `env` is checked for every word
-holding `=` before its program. `export -f` and `declare` or `typeset` with both `-f` and `-x` are
-denied; `declare -f`, `declare -F` and `declare +x -f` are allowed.
+**Names always denied.** `guard-bash.sh` denies assigning, exporting, declaring or passing through
+`env` any `BASH_FUNC_*` name and any name `env` sets that is no plain identifier. It denies `export -f`,
+and `declare` or `typeset` with both `-f` and `-x`. It denies any change to `CLAUDECODE` or `AI_AGENT`.
+`env` is checked for every word holding `=` before its program. `declare -f`, `declare -F` and
+`declare +x -f` are allowed.
 
-**Narrowed checks.** Code patterns that can run git or rewrite files (`RISKY_CODE`) and words holding
-`claudecode` or `ai_agent` deny only when the same input also names git, `.git`, a hook or the
-plugin. The input includes every script it runs or sources. `RISKY_CODE` is advisory, because a
-script file the agent writes is never scanned for it.
+**Narrowed checks.** These deny only when the same input also names git, `.git`, a hook, `qg`,
+`guard.sh` or the plugin; the input includes every script it runs or sources:
+
+- assigning, exporting or declaring `BASH_ENV`, `SHELLOPTS`, `BASHOPTS`, `GIT_REPLACE_REF_BASE`,
+  `GIT_NO_REPLACE_OBJECTS`, `GIT_ALTERNATE_OBJECT_DIRECTORIES`, `GIT_OBJECT_DIRECTORY`,
+  `GIT_EXTERNAL_DIFF`, `LD_PRELOAD`, `LD_LIBRARY_PATH` or `LD_AUDIT`, or exporting a name that is
+  no plain identifier, such as `export $(xargs < .env)`;
+- interpreter code, inline or in a script file, matching `RISKY_CODE`;
+- a word holding `claudecode` or `ai_agent`.
+
+`RISKY_CODE` is advisory, because a script file the agent writes and runs later is never scanned.
+Inline or heredoc code that starts a program (`exec*`, `subprocess`, `child_process`, `spawn`,
+`os.system`, `popen`) and also changes the environment or opens a pty is always denied. It can
+spell the program's name so that no text check sees it.
 
 **Allowed.** `>&<digit>` and `>&-` duplicate or close a descriptor and are never write targets. An
 installed program, whose real path is under `~/.claude/plugins/cache`, may name the plugin path; its
