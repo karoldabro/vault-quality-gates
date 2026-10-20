@@ -1,9 +1,14 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # vault-guard-start
 # After `git commit --amend`, measures the amended commit against its own parents with
 # `guard.sh verify`, which records a pass only when it passes. Never blocks.
-set -uo pipefail
 GUARD="__GUARD_SH__"
+# The clean start (lib/qg-clean-env.sh): no caller variable, function or PATH entry reaches the gate.
+# shellcheck source=../../lib/qg-clean-env.sh
+. "${GUARD%/bin/guard.sh}/lib/qg-clean-env.sh" 2>/dev/null || { cat >/dev/null; exit 0; }
+qg_clean_env QG_SKIP_REASON -- "$@"
+unset GUARD_CONFIG_REV
+set -uo pipefail
 # shellcheck source=../../lib/guard-hook.sh
 . "$(dirname "$GUARD")/../lib/guard-hook.sh" 2>/dev/null || { cat >/dev/null; exit 0; }
 guard_post_rewrite "${1:-}"

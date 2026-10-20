@@ -130,3 +130,186 @@ no_bad() { [ -z "$BAD" ] || { printf '%s\n' "$BAD" >&2; return 1; }; }
     run bash -c "jq -nc --arg d '$PWD' '{cwd:\$d}' | $HOOKS/guard-stop.sh"
     [ "$status" -eq 0 ]
 }
+
+# --- user-level install: qg hooks install|remove|status --claude --user ------------------------
+#
+# Each case copies the plugin into a writable git checkout ($WORK/plugin, its main worktree) and
+# points HOME at a temp folder, so ~/.claude/settings.json is the test's own.
+
+FOREIGN='{"model":"x","hooks":{"PreToolUse":[{"matcher":"Read","hooks":[{"type":"command","command":"/other.sh"}]}],"Stop":[{"hooks":[{"type":"command","command":"/stop-other.sh"}]}]}}'
+
+user_setup() {
+    export HOME="$WORK/home"
+    mkdir -p "$HOME/.claude" "$WORK/plugin"
+    cp -r /code/bin /code/lib /code/templates /code/drivers /code/extend "$WORK/plugin/"
+    git -C "$WORK/plugin" init -q .
+    git -C "$WORK/plugin" -c user.email=t@e -c user.name=t add -A
+    git -C "$WORK/plugin" -c user.email=t@e -c user.name=t commit -q -m plugin
+    PLUGIN_REAL="$(cd -P "$WORK/plugin" && pwd)"
+    QG="$WORK/plugin/bin/qg"
+}
+
+# guard_entries <file> -> the commands of every guard entry, one per line.
+guard_entries() {
+    jq -r '[(.hooks.PreToolUse[]?, .hooks.Stop[]?) | .hooks[]? | .command | select(test("guard-(bash|edit|stop)\\.sh"))] | .[]' "$1"
+}
+
+# foreign <file> -> every entry that is not a guard, sorted, as JSON.
+foreign() {
+    jq -cS '[(.hooks.PreToolUse[]?, .hooks.Stop[]?) | select(any(.hooks[]?; .command | test("guard-(bash|edit|stop)\\.sh") | not))], del(.hooks)' "$1"
+}
+
+@test "hooks install --claude --user twice leaves three guard entries and keeps other entries" {
+    user_setup
+    printf '%s\n' "$FOREIGN" > "$HOME/.claude/settings.json"
+    local before; before="$(foreign "$HOME/.claude/settings.json")"
+    run "$QG" hooks install --claude --user
+    [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
+    local first; first="$(jq -S . "$HOME/.claude/settings.json")"
+    run "$QG" hooks install --claude --user
+    [ "$status" -eq 0 ]
+    [ "$(jq -S . "$HOME/.claude/settings.json")" = "$first" ]
+    [ "$(guard_entries "$HOME/.claude/settings.json" | wc -l)" -eq 3 ]
+    [ "$(foreign "$HOME/.claude/settings.json")" = "$before" ]
+}
+
+@test "hooks install --claude --user writes the same entries into each --config-dir" {
+    user_setup
+    run "$QG" hooks install --claude --user --config-dir "$WORK/factory" --config-dir "$WORK/other/"
+    [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
+    local want; want="$(guard_entries "$HOME/.claude/settings.json")"
+    [ "$(printf '%s\n' "$want" | wc -l)" -eq 3 ]
+    [ "$(guard_entries "$WORK/factory/settings.json")" = "$want" ]
+    [ "$(guard_entries "$WORK/other/settings.json")" = "$want" ]
+}
+
+@test "hooks install --claude --user writes commands under the main worktree" {
+    user_setup
+    ln -s "$WORK/plugin" "$WORK/plugin-link"
+    run "$WORK/plugin-link/bin/qg" hooks install --claude --user
+    [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
+    [ "$(guard_entries "$HOME/.claude/settings.json")" = "$(printf '%s/templates/claude-hooks/%s\n' "$PLUGIN_REAL" guard-bash.sh "$PLUGIN_REAL" guard-edit.sh "$PLUGIN_REAL" guard-stop.sh)" ]
+}
+
+@test "hooks install --claude --user writes the machine tool-path file from the caller's PATH" {
+    user_setup
+    mkdir -p "$WORK/t1" "$WORK/t2" "$WORK/t3"
+    local t
+    for t in t1/pnpm t1/php t2/node t2/pnpm t3/composer; do printf '#!/bin/sh\n' > "$WORK/$t"; chmod +x "$WORK/$t"; done
+    PATH="$WORK/t1:$WORK/t2:$WORK/t3:$PATH" run "$QG" hooks install --claude --user
+    [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
+    [ "$(cat "$WORK/plugin/.git/qg-tool-path")" = "$(printf '%s\n' "$WORK/t1" "$WORK/t2" "$WORK/t3")" ]
+}
+
+@test "hooks install --claude --user refuses when its own checkout is a linked worktree" {
+    user_setup
+    git -C "$WORK/plugin" worktree add -q "$WORK/plugin-wt" -b side
+    run "$WORK/plugin-wt/bin/qg" hooks install --claude --user
+    [ "$status" -eq 2 ]
+    [[ "$output" == *'linked worktree'* ]]
+    [ ! -e "$HOME/.claude/settings.json" ]
+    [ ! -e "$WORK/plugin/.git/qg-tool-path" ]
+}
+
+@test "hooks remove --claude --user removes exactly the three guard entries" {
+    user_setup
+    printf '%s\n' "$FOREIGN" > "$HOME/.claude/settings.json"
+    mkdir -p "$WORK/factory"
+    printf '{"env":{"A":"1"}}\n' > "$WORK/factory/settings.json"
+    "$QG" hooks install --claude --user --config-dir "$WORK/factory" > /dev/null
+    run "$QG" hooks remove --claude --user --config-dir "$WORK/factory"
+    [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
+    [ "$(jq -S . "$HOME/.claude/settings.json")" = "$(jq -S . <<<"$FOREIGN")" ]
+    [ "$(jq -cS . "$WORK/factory/settings.json")" = '{"env":{"A":"1"}}' ]
+}
+
+@test "hooks remove --claude --user twice leaves settings byte-identical to the first remove" {
+    user_setup
+    printf '%s\n' "$FOREIGN" > "$HOME/.claude/settings.json"
+    "$QG" hooks install --claude --user > /dev/null
+    "$QG" hooks remove --claude --user > /dev/null
+    cp "$HOME/.claude/settings.json" "$WORK/first"
+    run "$QG" hooks remove --claude --user
+    [ "$status" -eq 0 ]
+    cmp "$WORK/first" "$HOME/.claude/settings.json"
+}
+
+@test "hooks install --claude --user leaves an invalid settings.json unchanged and exits 2" {
+    user_setup
+    printf '{"hooks": [not json\n' > "$HOME/.claude/settings.json"
+    cp "$HOME/.claude/settings.json" "$WORK/before"
+    run "$QG" hooks install --claude --user --config-dir "$WORK/factory"
+    [ "$status" -eq 2 ]
+    cmp "$WORK/before" "$HOME/.claude/settings.json"
+    [ ! -e "$WORK/factory/settings.json" ]
+    run "$QG" hooks remove --claude --user
+    [ "$status" -eq 2 ]
+    cmp "$WORK/before" "$HOME/.claude/settings.json"
+}
+
+@test "hooks install --claude --user replaces an older guard entry naming another folder" {
+    user_setup
+    printf '%s\n' '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/old/vault-quality-gates/templates/claude-hooks/guard-bash.sh"}]},{"matcher":"Read","hooks":[{"type":"command","command":"/other.sh"}]}],"Stop":[{"hooks":[{"type":"command","command":"/old/vault-quality-gates/templates/claude-hooks/guard-stop.sh","timeout":30}]}]}}' \
+        > "$HOME/.claude/settings.json"
+    run "$QG" hooks install --claude --user
+    [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
+    [ "$(guard_entries "$HOME/.claude/settings.json" | wc -l)" -eq 3 ]
+    run grep -c '/old/' "$HOME/.claude/settings.json"
+    [ "$output" = 0 ]
+    jq -e '.hooks.PreToolUse[] | select(.matcher == "Read")' "$HOME/.claude/settings.json" > /dev/null
+}
+
+@test "hooks remove --claude removes the three repo-level entries and keeps every other entry and the git hooks" {
+    run /code/bin/qg hooks install --claude
+    [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
+    jq '.hooks.PreToolUse += [{"matcher":"Read","hooks":[{"type":"command","command":"/other.sh"}]}] | .model = "x"' \
+        .claude/settings.json > "$WORK/s" && cat "$WORK/s" > .claude/settings.json
+    run /code/bin/qg hooks remove --claude
+    [ "$status" -eq 0 ]
+    [ -z "$(guard_entries .claude/settings.json)" ]
+    [ "$(jq -cS . .claude/settings.json)" = '{"hooks":{"PreToolUse":[{"hooks":[{"command":"/other.sh","type":"command"}],"matcher":"Read"}]},"model":"x"}' ]
+    grep -q vault-guard-start .git/hooks/pre-commit
+    grep -q vault-guard-start .git/hooks/pre-push
+}
+
+@test "hooks install writes the tool-path from the caller's PATH, never a forged QG_CALLER_PATH" {
+    user_setup
+    mkdir -p "$WORK/real" "$WORK/forged"
+    printf '#!/bin/sh\n' > "$WORK/real/pnpm"; cp "$WORK/real/pnpm" "$WORK/forged/pnpm"
+    chmod +x "$WORK/real/pnpm" "$WORK/forged/pnpm"
+    QG_CALLER_PATH="$WORK/forged" PATH="$WORK/real:$PATH" run "$QG" hooks install --claude --user
+    [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
+    [ "$(cat "$WORK/plugin/.git/qg-tool-path")" = "$WORK/real" ]
+}
+
+@test "hooks status --user reports each guard entry installed or absent per target file" {
+    user_setup
+    run "$QG" hooks status --user --config-dir "$WORK/factory"
+    [ "$status" -eq 0 ]
+    [ "$(grep -c '^absent guard-' <<<"$output")" -eq 6 ]
+    [[ "$output" == *"absent guard-bash.sh $HOME/.claude/settings.json"* ]]
+    [[ "$output" == *"absent guard-stop.sh $WORK/factory/settings.json"* ]]
+    "$QG" hooks install --claude --user > /dev/null
+    run "$QG" hooks status --user --config-dir "$WORK/factory"
+    [ "$(grep -c '^installed guard-' <<<"$output")" -eq 3 ]
+    [[ "$output" == *"installed guard-edit.sh $HOME/.claude/settings.json"* ]]
+    [[ "$output" == *"absent guard-edit.sh $WORK/factory/settings.json"* ]]
+    mkdir -p "$HOME/.claude-factory"
+    run "$QG" hooks status --user
+    [[ "$output" == *"absent guard-bash.sh $HOME/.claude-factory/settings.json"* ]]
+}
+
+@test "hooks status --user is allowed for an agent" {
+    user_setup
+    CLAUDECODE=1 run "$QG" hooks status --user
+    [ "$status" -eq 0 ]
+    [ "$(grep -c '^absent guard-' <<<"$output")" -eq 3 ]
+    AI_AGENT=1 run "$QG" hooks install --claude --user
+    [ "$status" -eq 2 ]
+    [ ! -e "$HOME/.claude/settings.json" ]
+    BAD=''
+    bash_case allow 'qg hooks status --user'
+    bash_case allow "/code/bin/qg hooks status --user --config-dir $WORK/factory"
+    bash_case deny  'qg hooks install --claude --user'
+    no_bad
+}

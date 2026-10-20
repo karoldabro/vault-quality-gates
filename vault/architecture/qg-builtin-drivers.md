@@ -13,7 +13,8 @@ This page lists the `args` keys each one reads, the tool exit codes it treats as
 number it writes as `metric`. A row names a driver in its `driver` cell and its keys in its `args` cell.
 
 Every built-in sources `lib/qg-driver-kit.sh`. Every one declares `needs_tree: true`, so the commit gate
-measures a copy of the staged tree and never the working tree.
+measures a copy of the staged tree and never the working tree. Every one also declares `sandbox` and
+`writes`; `vault/architecture/qg-sandbox.md` lists the values and what a sandboxed tool may do.
 
 Built-in drivers are catalogued per ecosystem, one page each. The Dart and Flutter drivers are in
 `vault/architecture/qg-dart-drivers.md`. Helpers for one language live in `lib/qg-<lang>.sh`, such as
@@ -39,7 +40,9 @@ meanings, a sentinel and a directory list, and a row could not scan two folders 
 makes the row `status: error`, because it could never match an added line and would count 0.
 
 **Constraint: a report left by an earlier run is never read.** `qg_tool` deletes a report file before
-the tool runs; a tool that then writes none is `status: error`.
+the tool runs, and adds the report's folder to the folders the sandboxed tool may write. A tool that
+then writes none is `status: error`. `eslint` keeps no report in the tree: ESLint writes it in the
+sandbox's private folder and prints it on stdout, with its own stdout sent to stderr.
 
 **Rows that share one tool run:** `phpinsights`, `composer-dependency-analyser`, `jscpd` and `eslint`
 without `files=changed` keep their report in `QG_RUN_DIR` for the rest of the run. The key is the

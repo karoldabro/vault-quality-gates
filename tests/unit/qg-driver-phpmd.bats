@@ -5,6 +5,7 @@
 # tests/fixtures/drivers/ or an inline report) and exits $FAKE_RC.
 
 load guard-helpers
+load qg-fakes
 
 DRIVER=/code/drivers/phpmd.sh
 FIX=/code/tests/fixtures/drivers
@@ -12,6 +13,7 @@ FIX=/code/tests/fixtures/drivers
 setup() {
     export LC_ALL=C
     WORK="$(mktemp -d)"
+    fakes_setup
     unset QG_RUNNER QG_ARGS QG_RUN_DIR CLAUDECODE AI_AGENT
     TREE="$WORK/tree"; mkdir -p "$TREE/vendor/bin" "$WORK/out" "$WORK/path"
     fake_bin "$TREE/vendor/bin/phpmd"
@@ -28,6 +30,7 @@ fake_bin() {  # a tool that records its argv, prints $FAKE_OUT and exits $FAKE_R
     printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" >> "${FAKE_ARGV:-/dev/null}"' \
         '[ -r "${FAKE_OUT:-}" ] && cat "$FAKE_OUT"' 'exit "${FAKE_RC:-0}"' > "$1"
     chmod +x "$1"
+    fake_bake "$1"
 }
 
 result() { jq -r "$1" "$QG_OUT/result.json"; }

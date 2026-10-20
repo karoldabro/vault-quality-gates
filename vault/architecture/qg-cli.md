@@ -20,7 +20,7 @@ call; `qg` reads the same committed configuration and explains it. File formats 
 
 **Constraint: an agent may run only the read subcommands.** `templates/claude-hooks/guard_bash.py`
 checks a bare `qg`, or a path whose real path is the plugin's `bin/qg`. It allows the subcommands in
-`QG_READS` and `hooks status`, and denies every other one before it runs:
+`QG_READS` and `hooks status`, `--user` included, and denies every other one before it runs:
 
 ```
 help -h --help list explain last drivers doctor run report verify config   + hooks status
@@ -33,9 +33,11 @@ an agent outside a guarded Claude Code session still meets the second.
 ## Rules every subcommand follows
 
 - `--json` may appear anywhere on the line. `last`, `config` and `override` ignore it.
-- Every subcommand except `help` runs from inside a git repository and exits 2 otherwise.
-- `qg` unsets `GUARD_SKIP`, `GUARD_ONLY`, `GUARD_CONFIG_REV`, `GUARD_CONFIG_AT` and
-  `GUARD_CONFIG_PIN`, so an inherited value never steers the engine.
+- Every subcommand except `help` and the `hooks` forms with `--user` runs from inside a git
+  repository and exits 2 otherwise.
+- `qg` starts from the clean environment in `vault/architecture/guard-environment.md`, so no
+  inherited variable, function or `PATH` entry steers it or the engine. It keeps the caller's `PATH`
+  as `QG_CALLER_PATH`, which only `hooks install --claude --user` reads. Linux only.
 - `list`, `explain` and `drivers` read the configuration committed at `HEAD`, never the working tree.
 - An unknown subcommand prints the help on stderr and exits 2.
 
@@ -55,8 +57,9 @@ an agent outside a guarded Claude Code session still meets the second.
 | `qg override --reason "<why>" [--push <sha>]` | lets the next commit of what is staged now, or the push of `<sha>`, through once within 10 minutes | 0 token written; 1 no terminal or a bad `--push` sha; 2 no reason or an agent | no |
 | `qg init --profile docs\|php\|nuxt\|flutter\|hugo [--force]` | writes `quality/checks.tsv`, `rules.tsv`, `baseline.tsv` and `config` from `templates/init/<profile>.tsv`. `config` protects the five gate files by exact path, plus every tracked `.doc-lint` for docs, which also gets `guard_doc_lint`. An existing `config` is kept, with a warning naming what it lacks. Next: `qg hooks install`, commit, `qg doctor` | 0; 2 on a bad profile or an existing `checks.tsv` without `--force` | no |
 | `qg migrate [--draft]` | rewrites a v1 `checks.tsv` as v2 and writes `quality/config` from the `VAULT.md` keys | 1 without `--draft`, listing rows with no why; 0 with `--draft`; 2 when there is nothing to migrate | no |
-| `qg hooks status` | the installed git hooks and Claude Code entries | from `guard.sh hooks` | yes |
-| `qg hooks install [--claude]`, `qg hooks remove` | installs or removes the hooks | from `guard.sh hooks` | no |
+| `qg hooks status [--user [--config-dir <dir>]...]` | the installed git hooks and repo-level Claude Code entries; with `--user`, one `installed\|absent <entry> <file>` line per guard entry and user-level target | 0 | yes |
+| `qg hooks install [--claude]`, `qg hooks remove [--claude]` | the git hooks; `--claude` adds the three guard entries to `.claude/settings.json`, and `remove --claude` removes only them | 0; 2 on invalid settings JSON | no |
+| `qg hooks install --claude --user [--config-dir <dir>]...`, `qg hooks remove --claude --user [...]` | the three guard entries in `~/.claude/settings.json` and each `<dir>/settings.json`; install also writes the machine tool-path file (`vault/architecture/guard-agent-hooks.md`) | 0; 2 from a linked worktree or on invalid settings JSON | no |
 | `qg report`, `qg verify <range>` | pass through to `guard.sh report` and `guard.sh verify` | from `guard.sh` | yes |
 | `qg baseline`, `qg accept <id> --reason "<why>"` | pass through to `guard.sh baseline` and `guard.sh accept` | from `guard.sh` | no |
 
@@ -127,6 +130,29 @@ A repo driver is listed from `HEAD:quality/drivers/` as `{"name", "summary", "so
 ```
 
 `qg doctor` checks `jq`, `python3`, `git` and `flock`; that `HEAD:quality/checks.tsv` loads; the
-key source; the five git hooks against this plugin's templates; `core.hooksPath`; the three Claude
-Code hooks in `.claude/settings.json`; each driver's `describe`, `explain` and `requires`; that each
-`push:<glob>` matches a branch; and that `qg` is on `PATH`.
+key source; and that `qg` is on `PATH`. It fails when an installed git hook differs from its
+template or `core.hooksPath` is set, naming `qg hooks install`. It fails when
+`$HOME/.claude/settings.json` lacks the three guard entries, or `~/.claude-factory` exists and its
+settings lack them. It also fails when the machine tool-path file is absent or holds a bad entry.
+Both name `qg hooks install --claude --user`. It warns once per guard entry left in the repo's own
+`.claude/settings.json`. It also checks each driver's `describe`, `explain` and `requires`, and
+that each `push:<glob>` matches a branch.
+
+**`qg doctor --all-branches [--json]`** finds the branches that still carry an old gate config. It
+reads every `refs/heads/*` and `refs/remotes/*/*` ref except symbolic ones, through one
+`git cat-file --batch`. It lists each ref whose `quality/checks.tsv` is v1, has an unrecognised
+header, or is v2 without `quality/config`. It never fetches and never writes.
+
+| label | when | exit |
+|---|---|---|
+| `worktree` | the branch is checked out in any worktree, the main one included | 1 |
+| `upstream` | a remote-tracking ref, or a branch whose upstream ref exists locally (for `remote = .`, the local branch) | 1 |
+| `stale` | any other listed branch | 0 when every listed ref is stale |
+
+Labels apply in that order, so a ref gets one line. The source is the v2 ref holding
+`quality/config` with the newest tip committer date; with none, the doctor prints `no v2 source`.
+Under `--json` it prints this object, with the same exit code:
+
+```json
+{"source": "<sha>|null", "refs": [{"ref": "", "sha": "", "state": "worktree|upstream|stale", "version": "v1|v2|unknown", "config": false}]}
+```

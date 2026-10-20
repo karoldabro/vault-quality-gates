@@ -228,3 +228,21 @@ report_fn() {
     [[ "$(result .error)" == *'run flutter pub get'* ]]
     [ "$(dcl_calls)" = 0 ]
 }
+
+@test "dart-code-linter measures through the real kit path under the sandbox" {
+    unset QG_SANDBOX
+    export QG_SANDBOX_WRITES="$("$DRIVER" describe | jq -r '.writes | join(" ")')"
+    # The sandbox hides the test's variables, so this fake has its report and its escape target baked in.
+    { printf '#!/usr/bin/env bash\nFIX=%q\nESC=%q\n' "$FIX/dcl.json" "$WORK/escaped"; cat <<'EOF2'
+if [ "${1:-} ${2:-}" = 'pub get' ]; then exit 0; fi
+for a in "$@"; do case "$a" in --json-path=*) cp "$FIX" "${a#--json-path=}" ;; esac; done
+echo x > "$ESC" 2>/dev/null
+cat "$FIX"
+exit 1
+EOF2
+    } > "$SDK/bin/cache/dart-sdk/bin/dart"
+    measure 'metric=cyclomatic-complexity>20'
+    [ "$(result .status)" = measured ]
+    [ "$(result .metric)" = "$(expected 'cyclomatic-complexity>20')" ]
+    [ ! -e "$WORK/escaped" ]
+}

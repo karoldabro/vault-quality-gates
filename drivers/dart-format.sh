@@ -15,7 +15,7 @@ export LC_ALL=C
 
 case "${1:-}" in
     describe)
-        printf '{"name":"dart-format","summary":"dart format: changed Dart files that are not formatted","requires":["jq","git"],"needs_tree":true}\n' ;;
+        printf '{"name":"dart-format","summary":"dart format: changed Dart files that are not formatted","requires":["jq","git"],"needs_tree":true,"sandbox":true,"writes":[".dart_tool"]}\n' ;;
     explain)
         printf 'Lists changed Dart files dart format would rewrite. Run dart format <file> on each and commit the result.\n'
         printf 'Keys: files=changed (required) include exclude, then -- <argv>.\n' ;;

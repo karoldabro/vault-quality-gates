@@ -10,12 +10,14 @@
 # app/Three.php are committed and unchanged.
 
 load guard-helpers
+load qg-fakes
 
 DRIVER=/code/drivers/jscpd-added.sh
 
 setup() {
     export LC_ALL=C
     WORK="$(mktemp -d)"
+    fakes_setup
     unset QG_RUNNER QG_ARGS QG_RUN_DIR CLAUDECODE AI_AGENT
     export GUARD_LOCK_WAIT=5
     mkdir -p "$WORK/out" "$WORK/path"
@@ -51,6 +53,7 @@ mkdir -p "$out" && cp "$w/jscpd.json" "$out/jscpd-report.json"
 printf '%s|%s|%s\n' "$PWD" "$out" "$(sed -n 's/^registry=//p' .npmrc 2>/dev/null)" >> "$w/seen"
 EOF
     chmod +x "$1"
+    fake_bake "$1"
 }
 
 clone() {  # clone <file> <start> <end> <file> <start> <end> — one duplicate of a jscpd report

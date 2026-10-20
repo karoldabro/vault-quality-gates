@@ -17,7 +17,7 @@ export LC_ALL=C
 
 case "${1:-}" in
     describe)
-        printf '{"name":"cloc","summary":"cloc: comment density (comment lines per code line) or a line count","requires":["jq","cloc"],"needs_tree":true}\n' ;;
+        printf '{"name":"cloc","summary":"cloc: comment density (comment lines per code line) or a line count","requires":["jq","cloc"],"needs_tree":true,"sandbox":true,"writes":[]}\n' ;;
     explain)
         printf 'Counts lines with cloc. comment-ratio is comment lines per code line; a lower ratio than allowed\n'
         printf 'means new code carries too many or too few comments for the row. Keys: metric paths runner bin.\n' ;;

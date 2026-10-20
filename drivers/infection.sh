@@ -18,7 +18,7 @@ export LC_ALL=C
 
 case "${1:-}" in
     describe)
-        printf '{"name":"infection","summary":"Infection: the Mutation Score Indicator","requires":["jq"],"needs_tree":true}\n' ;;
+        printf '{"name":"infection","summary":"Infection: the Mutation Score Indicator","requires":["jq"],"needs_tree":true,"sandbox":false,"writes":[]}\n' ;;
     explain)
         if [ -n "${2:-}" ]; then
             printf 'Infection mutator %s changed this line and no test failed. Add a test that fails on the mutated code.\n' "$2"

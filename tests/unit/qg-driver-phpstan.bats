@@ -5,6 +5,7 @@
 # shape PHPStan produces is fed through the driver and compared with the v1 phpstan-all parser.
 
 load guard-helpers
+load qg-fakes
 
 DRIVER=/code/drivers/phpstan.sh
 V2_HEADER=$'id\ton\tkind\tdriver\targs\tdirection\tthreshold\tgate\twhy'
@@ -12,6 +13,7 @@ V2_HEADER=$'id\ton\tkind\tdriver\targs\tdirection\tthreshold\tgate\twhy'
 setup() {
     export LC_ALL=C
     WORK="$(mktemp -d)"
+    fakes_setup
     unset QG_RUNNER QG_ARGS CLAUDECODE AI_AGENT QG_SKIP_REASON
     export GUARD_LOCK_WAIT=5
     TREE="$WORK/tree"; mkdir -p "$TREE/vendor/bin" "$WORK/out"
@@ -29,6 +31,7 @@ fake_bin() {  # a phpstan that prints $FAKE_JSON (when set and present) and exit
     printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" >> "${FAKE_ARGV:-/dev/null}"' \
         '[ -r "${FAKE_JSON:-}" ] && cat "$FAKE_JSON"' 'echo "phpstan noise on stderr" >&2' 'exit "${FAKE_RC:-0}"' > "$1"
     chmod +x "$1"
+    fake_bake "$1"
 }
 
 metric() { jq -r '.metric' "$QG_OUT/result.json"; }
@@ -85,7 +88,7 @@ parser_value() { /code/lib/guard-parsers/phpstan-all.sh "$FAKE_JSON" 0; }
 
 @test "a runner is called as <runner> <tree> <cache> <bin> analyse ..., with extra argv after --" {
     printf '%s\n' '#!/usr/bin/env bash' 'printf "%s|" "$@" > "$RUNNER_LOG"' 'tree="$1"; shift 2; cd "$tree" && exec "$@"' > "$WORK/runner"
-    chmod +x "$WORK/runner"
+    chmod +x "$WORK/runner"; fake_bake "$WORK/runner"
     printf '%s' '{"totals":{"errors":0,"file_errors":0},"files":[],"errors":[]}' > "$FAKE_JSON"
     RUNNER_LOG="$WORK/runner.log" QG_RUNNER="$WORK/runner" QG_ARGS='runner=quality/bin/in-tree.sh -- --memory-limit=1G' "$DRIVER" run > /dev/null
     [ "$(cat "$WORK/runner.log")" = "${TREE}|${WORK}/cache|vendor/bin/phpstan|analyse|--no-progress|--error-format=json|--memory-limit=1G|" ]
@@ -128,7 +131,8 @@ parser_value() { /code/lib/guard-parsers/phpstan-all.sh "$FAKE_JSON" 0; }
     printf '%s' '{"totals":{"errors":1,"file_errors":0},"files":[],"errors":["Ignored error pattern #x# was not matched in reported errors."]}' > "$FAKE_JSON"
     printf 'x\n' > app/b.php
     git add app/b.php
-    FAKE_RC=1 run bash /code/bin/guard.sh commit
+    export FAKE_RC=1; fake_env_save
+    run bash /code/bin/guard.sh commit
     [ "$status" -eq 1 ]
     [[ "$output" == *'phpstan-new'*'phpstan.fileless'*'was not matched'* ]]
 }

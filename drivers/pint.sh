@@ -16,7 +16,7 @@ export LC_ALL=C
 
 case "${1:-}" in
     describe)
-        printf '{"name":"pint","summary":"Laravel Pint: counts the files whose code style Pint would change","requires":["jq"],"needs_tree":true}\n' ;;
+        printf '{"name":"pint","summary":"Laravel Pint: counts the files whose code style Pint would change","requires":["jq"],"needs_tree":true,"sandbox":false,"writes":[]}\n' ;;
     explain)
         if [ -n "${2:-}" ]; then
             printf 'Pint would reformat this file. Run vendor/bin/pint <file> to apply its fixes, then stage the result.\n'

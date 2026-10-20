@@ -1,7 +1,18 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # qg — the quality-gate command a person or an agent types. bin/guard.sh stays the engine the git
 # hooks call; qg reads the same configuration and explains it. Subcommands, options, exit codes
 # and --json shapes: vault/architecture/qg-cli.md.
+#
+# The clean start (lib/qg-clean-env.sh). QG_CALLER_PATH carries the caller's PATH through it, for
+# `hooks install --claude --user`; a value the caller exported is overwritten. VAULT_FRAMEWORK_PATH
+# tells `qg init` which doc-lint to name; init refuses an agent, so only a human's value is used.
+QG_SELF="$(command -p readlink -f "${BASH_SOURCE[0]}")"
+# shellcheck source=../lib/qg-clean-env.sh
+. "${QG_SELF%/bin/*}/lib/qg-clean-env.sh" || exit 2
+[ -n "${QG_CLEAN_ENV:-}" ] || export QG_CALLER_PATH="${PATH:-}"
+qg_clean_env QG_CALLER_PATH VAULT_FRAMEWORK_PATH -- "$@"
+# A replace ref or graft could swap the commit whose configuration judges this run.
+export GIT_NO_REPLACE_OBJECTS=1
 set -uo pipefail
 export LC_ALL=C
 
@@ -48,12 +59,22 @@ qg_help() {
         explain)  printf 'qg explain <id> [--json]\n  What the row checks, why, when it runs, its limit, its last result and output,\n  how to reproduce it, and how to pass.\n' ;;
         last)     printf 'qg last\n  Prints the last refusal in full, as the commit or push printed it.\n' ;;
         drivers)  printf 'qg drivers [<name>] [--json]\n  The drivers this repo can use (built-in and quality/drivers/), or one driver'"'"'s description.\n' ;;
-        doctor)   printf 'qg doctor [--json]\n  Checks the setup: hooks installed and current, Claude Code hooks listed, config loads,\n  every driver and the tools it needs exist, every push:<glob> matches a branch, qg on PATH.\n  Exit 0 healthy (warnings allowed), 1 something is broken.\n' ;;
+        doctor)   printf 'qg doctor [--json]\n  Checks the setup: git hooks installed and current, the user-level Claude Code guards in\n  ~/.claude (and ~/.claude-factory when it exists), the machine tool-path file, config loads,\n  every driver and the tools it needs exist, every push:<glob> matches a branch, qg on PATH.\n  Exit 0 healthy (warnings allowed), 1 something is broken.\nqg doctor --all-branches [--json]\n  Lists every local branch and remote-tracking ref whose quality/checks.tsv is v1, or v2\n  without quality/config, as worktree, upstream or stale, and prints the newest v2 ref as the\n  source to copy quality/ from. Never fetches or writes.\n  Exit 0 when every listed ref is stale, 1 when one is checked out, remote or has an upstream.\n' ;;
         config)   printf 'qg config get <key>\n  A gate key as committed: quality/config, else VAULT.md.\n' ;;
         override) printf 'qg override --reason "<why>" [--push <sha>]\n  Human only, at a terminal. Lets the next commit of exactly what is staged now (or the push\n  of exactly <sha>, for commits that never passed the commit gate) through once, within 10\n  minutes, and logs it. A worse push metric is fixed in code, never overridden.\n' ;;
         init)     printf 'qg init --profile docs|php|nuxt|flutter|hugo [--force]\n  Human only. Writes quality/checks.tsv, rules.tsv, baseline.tsv and config for a new repo,\n  from templates/init/<profile>.tsv, protecting the gate files by exact path. Then:\n  qg hooks install [--claude], git add quality and commit, then qg doctor.\n' ;;
         migrate)  printf 'qg migrate [--draft]\n  Human only. Rewrites a v1 quality/checks.tsv in the v2 format and writes quality/config\n  from the VAULT.md gate keys. Every row needs a why: without --draft it lists the rows\n  that lack one and writes nothing; with --draft it writes TODO whys, which the gate\n  refuses to commit until each is replaced.\n' ;;
-        hooks)    printf 'qg hooks install [--claude] | remove | status\n  install and remove are human only. status is for anyone.\n' ;;
+        hooks)    printf '%s\n' \
+                      'qg hooks install [--claude] | remove [--claude] | status' \
+                      '  The git hooks of this repo; --claude also the three guard entries of its Claude settings.' \
+                      '  remove --claude removes only those entries and keeps the git hooks.' \
+                      'qg hooks install --claude --user [--config-dir <dir>]...' \
+                      '  The three guard entries in ~/.claude/settings.json and each <dir>/settings.json, pointing' \
+                      '  at the main worktree of this plugin, and the machine tool-path file, written from your' \
+                      '  PATH. Refused from a linked worktree.' \
+                      'qg hooks remove --claude --user [--config-dir <dir>]...' \
+                      'qg hooks status --user [--config-dir <dir>]...' \
+                      '  install and remove are human only. status is for anyone.' ;;
         baseline|accept|report|verify)
                   printf 'qg %s ...\n  Passes through to guard.sh %s. baseline and accept are human only.\n' "$1" "$1" ;;
         *)
@@ -236,6 +257,13 @@ cmd_override() {
 cmd="$1"; shift
 case "$cmd" in
     help|-h|--help) qg_help "${1:-}"; exit 0 ;;
+    # hooks runs in this process, not through guard.sh: --user reads QG_CALLER_PATH, which only qg
+    # holds, and needs no repository.
+    hooks)
+        [ "${1:-}" = status ] || qg_refuse_agent "hooks ${1:-}"
+        [[ " $* " == *' --user '* ]] || qg_repo
+        # shellcheck source=../lib/guard-install.sh
+        . "${GUARD_LIB_DIR}/guard-install.sh"; guard_hooks "$@"; exit $? ;;
 esac
 qg_repo
 case "$cmd" in
@@ -244,14 +272,17 @@ case "$cmd" in
     explain)  . "${GUARD_LIB_DIR}/qg-explain.sh"; qg_explain "${1:-}" ;;
     last)     cat "$(guard_common_dir)/qg-last/REFUSAL.txt" 2>/dev/null || printf 'qg: no refusal recorded in this repo yet\n' ;;
     drivers)  cmd_drivers "$@" ;;
-    doctor)   . "${GUARD_LIB_DIR}/qg-doctor.sh"; qg_doctor ;;
+    doctor)
+        . "${GUARD_LIB_DIR}/qg-doctor.sh"
+        case "${1:-}" in
+            '') qg_doctor ;;
+            --all-branches) [ $# -eq 1 ] || qg_die "doctor: unknown option $2 (qg help doctor)"; qg_doctor_branches ;;
+            *) qg_die "doctor: unknown option $1 (qg help doctor)" ;;
+        esac ;;
     config)   cmd_config "$@" ;;
     override) cmd_override "$@" ;;
     init)     qg_refuse_agent init; . "${GUARD_LIB_DIR}/qg-migrate.sh"; qg_init "$@" ;;
     migrate)  qg_refuse_agent migrate; . "${GUARD_LIB_DIR}/qg-migrate.sh"; qg_migrate "$@" ;;
-    hooks)
-        [ "${1:-}" = status ] || qg_refuse_agent "hooks ${1:-}"
-        exec "$GUARD" hooks "$@" ;;
     baseline|accept) qg_refuse_agent "$cmd"; exec "$GUARD" "$cmd" "$@" ;;
     report|verify)   exec "$GUARD" "$cmd" "$@" ;;
     *) printf 'qg: unknown command "%s"\n\n' "$cmd" >&2; qg_help >&2; exit 2 ;;

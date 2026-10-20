@@ -8,14 +8,15 @@
 #
 # The hooks run against a stub plugin under $WORK/plugin: bin/guard.sh is a stub that logs
 # its call and exits with a chosen status, lib/ links the real libraries, and
-# lib/guard-override.sh is a stub honoured only when STUB_OVERRIDE is set.
+# lib/guard-override.sh is a stub honoured only while $WORK/stub-override exists: a hook restarts
+# under a clean environment, so a test variable never reaches it.
 
 load guard-helpers
 
 setup() {
     export LC_ALL=C
     export GUARD_LIB_DIR=/code/lib
-    unset QG_SKIP_REASON STUB_OVERRIDE
+    unset QG_SKIP_REASON
     # bin/guard.sh sources guard-metrics.sh before guard-install.sh; guard_err comes
     # from the first and is called by the second. Load them in the same order here.
     # shellcheck source=../../lib/guard-metrics.sh
@@ -26,10 +27,10 @@ setup() {
     mkdir -p "$PLUGIN/bin" "$PLUGIN/lib" "$WORK/hooks"
     ln -s /code/lib/* "$PLUGIN/lib/"
     rm -f "$PLUGIN/lib/guard-override.sh"
-    cat > "$PLUGIN/lib/guard-override.sh" <<'EOF'
-guard_override_allowed() { [ -n "${STUB_OVERRIDE:-}" ] && [[ "${QG_SKIP_REASON-}" =~ [^[:space:]] ]]; }
-guard_override_log() { printf 'LOG %s\n' "$*" >> "$(git rev-parse --git-common-dir)/guard-bypass.log"; }
-EOF
+    printf '%s\n' \
+        "guard_override_allowed() { [ -e '$WORK/stub-override' ] && [[ \"\${QG_SKIP_REASON-}\" =~ [^[:space:]] ]]; }" \
+        'guard_override_log() { printf '"'LOG %s\\n'"' "$*" >> "$(git rev-parse --git-common-dir)/guard-bypass.log"; }' \
+        > "$PLUGIN/lib/guard-override.sh"
     stub_guard 0
     local h
     for h in pre-push pre-commit pre-merge-commit pre-applypatch post-rewrite; do
@@ -188,7 +189,7 @@ commit_vault() {
 
 @test "an override passes an unrecorded push, logs it, and prints the log once" {
     c="$(new_commit two)"
-    export QG_SKIP_REASON='hotfix' STUB_OVERRIDE=1
+    export QG_SKIP_REASON='hotfix'; touch "$WORK/stub-override"
     run push_through_hook 1 refs/heads/feature/x "$c"
     [[ "$output" == *'hook=0'* ]]
     [[ "$output" == *'LOG pre-push to origin'* ]]
@@ -199,7 +200,7 @@ commit_vault() {
 @test "a release push still runs the baseline refusal after an override" {
     c="$(new_commit two)"
     stub_guard 1
-    export QG_SKIP_REASON='hotfix' STUB_OVERRIDE=1
+    export QG_SKIP_REASON='hotfix'; touch "$WORK/stub-override"
     run push_through_hook 1 refs/heads/release/1.0.0 "$c"
     [[ "$output" == *'hook=1'* ]]
     grep -q 'STUB release --use-pass refs/heads/release/1.0.0' "$RAN"
@@ -250,21 +251,21 @@ stage_change() { printf 'staged\n' >> file.txt; git add file.txt; }
 @test "an honoured override passes a refused commit with an override record and a log line" {
     stage_change
     stub_guard 1
-    export QG_SKIP_REASON='release blocker' STUB_OVERRIDE=1
+    export QG_SKIP_REASON='release blocker'; touch "$WORK/stub-override"
     for h in pre-commit pre-merge-commit pre-applypatch; do
         run "$WORK/hooks/$h"
         [ "$status" -eq 0 ]
         [ "$(record_of_index)" = 'override release blocker' ]
     done
     [ "$(bypass_log | wc -l)" -eq 3 ]
-    unset STUB_OVERRIDE
+    rm -f "$WORK/stub-override"
     run "$WORK/hooks/pre-commit"
     [ "$status" -eq 1 ]
 }
 
 @test "a reason on a clean commit writes no log line and an ok record" {
     stage_change
-    export QG_SKIP_REASON='not needed' STUB_OVERRIDE=1
+    export QG_SKIP_REASON='not needed'; touch "$WORK/stub-override"
     run "$WORK/hooks/pre-commit"
     [ "$status" -eq 0 ]
     [ "$(record_of_index)" = ok ]
@@ -385,4 +386,29 @@ stage_change() { printf 'staged\n' >> file.txt; git add file.txt; }
     [ "$status" -eq 1 ]
     [ "$(grep -c '^STUB release' "$RAN")" -eq 2 ]
     grep -q "GUARD_SHA=${BAD} GUARD_BASE=" "$RAN"
+}
+
+# --- the clean start keeps what git hands a hook --------------------------------------------
+
+@test "a partial commit's temporary index is what the gate measures after the restart" {
+    printf 'other\n' > other.txt; commit_all other
+    record "$(git rev-parse HEAD)"
+    printf '#!/usr/bin/env bash\ngit diff --cached --name-only >> %s\n' "$RAN" > "$PLUGIN/bin/guard.sh"
+    printf 'staged\n' >> file.txt; git add file.txt
+    printf 'partial\n' >> other.txt
+    run env LEAK_PROBE=1 NODE_OPTIONS=--no-warnings git -c core.hooksPath="$WORK/hooks" commit -q -m partial other.txt
+    [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
+    [ "$(cat "$RAN")" = other.txt ]
+    [ "$(git diff --cached --name-only)" = file.txt ]
+}
+
+@test "post-rewrite after commit --amend with extra names set still verifies the amended commit" {
+    c="$(new_commit two)"
+    record "$c"
+    printf 'amended\n' >> file.txt; git add file.txt
+    run env LEAK_PROBE=1 'BASH_FUNC_f%%=() { :; }' BASH_ENV=/dev/null git -c core.hooksPath="$WORK/hooks" commit -q --amend -m amended
+    [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
+    new="$(git rev-parse HEAD)"
+    [ "$new" != "$c" ]
+    grep -qx "STUB verify ${new}^! GUARD_SHA=unset" "$RAN"
 }

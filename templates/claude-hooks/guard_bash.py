@@ -1,11 +1,36 @@
 """Rules for guard-bash.sh: raises Deny for every form that skips, disables or forges the commit gate."""
 import glob, json, os, re, subprocess, sys
 
-from shell_lexer import Lexer
+# python3 -I leaves the script's folder off sys.path, so a planted module in the cwd never loads;
+# the tokeniser beside this file is put back explicitly, after the standard library is imported.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+try:
+    from shell_lexer import Lexer, Word
+    import write_denials
+except Exception as e:  # exit 1 would let the command run; a hook that cannot load denies
+    sys.stderr.write(f'guard-bash: denied: cannot load the rules ({type(e).__name__}: {e})\n')
+    sys.exit(2)
 
 RAW_PLUGIN = sys.argv[1].rstrip('/') or '/'
 PLUGIN = os.path.realpath(RAW_PLUGIN)
 HOME = os.path.expanduser('~')
+
+
+def main_worktree(plugin):
+    """The main worktree of the checkout the hooks run from; the checkout itself when git cannot say."""
+    try:
+        out = subprocess.run(['git', '-C', plugin, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+                             capture_output=True, text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return plugin
+    return os.path.realpath(os.path.dirname(out)) if os.path.basename(out) == '.git' else plugin
+
+
+# The hooks protect the main worktree of the checkout they run from, which the user-level install
+# names; any linked worktree of the plugin stays editable, the one the hooks run from included.
+MAIN = main_worktree(PLUGIN)
+PLUGIN_ROOTS = {MAIN}
+PLUGIN_SPELLINGS = PLUGIN_ROOTS | ({RAW_PLUGIN} if PLUGIN == MAIN else set())
 # Code Claude Code installed as plugins. guard-edit and the write checks below deny agents every write
 # there, so a script under it runs as installed and is not scanned.
 INSTALLED = os.path.realpath(os.path.join(HOME, '.claude', 'plugins', 'cache'))
@@ -24,7 +49,21 @@ QG_READS = {'help', '-h', '--help', 'list', 'explain', 'last', 'drivers', 'docto
 GATE_FILES = ('quality/drivers', 'quality/config')
 # The gate reads these from its environment; a value an agent sets would steer which rows run or which config judges.
 GATE_VAR = re.compile(r'(GUARD|QG)_\w*\Z')
-PLUGIN_RE = re.compile('(%s)(/|\\Z)' % '|'.join(re.escape(p.lower()) for p in {PLUGIN, RAW_PLUGIN}))
+PLUGIN_RE = re.compile('(%s)(/|\\Z)' % '|'.join(re.escape(p.lower()) for p in PLUGIN_SPELLINGS))
+# Needles that only count when the same command also names git, .git, a hook or the plugin: a file
+# called ai_agent.py is ordinary, an agent marker cleared beside a commit is not.
+SOFT_NEEDLES = ('claudecode', 'ai_agent')
+NAMES_GIT = re.compile(r'\bgit\b|\.git|hook|husky|' + '|'.join(re.escape(p) for p in PLUGIN_SPELLINGS if len(p) > 1), re.I)
+# What a command scanned so far: every text read (the input, scripts, inline code) and the soft
+# findings that turn into a denial once that text names git.
+SEEN, DEFERRED = [], []
+MARKERS = {'CLAUDECODE', 'AI_AGENT'}
+# Names that change what bash, git or the loader runs, whatever the command beside them.
+DENIED_NAMES = {'BASH_ENV', 'SHELLOPTS', 'BASHOPTS', 'GIT_REPLACE_REF_BASE', 'GIT_NO_REPLACE_OBJECTS',
+                'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_OBJECT_DIRECTORY', 'GIT_EXTERNAL_DIFF',
+                'LD_PRELOAD', 'LD_LIBRARY_PATH', 'LD_AUDIT'}
+IDENT = re.compile(r'[A-Za-z_]\w*\Z')
+DECLARE = {'export', 'declare', 'typeset', 'readonly', 'local'}
 ENV_REDIRECT = {'HOME', 'XDG_CONFIG_HOME', 'PATH'}
 WRITERS = {'rm', 'mv', 'cp', 'ln', 'chmod', 'chown', 'chgrp', 'touch', 'tee', 'truncate', 'unlink', 'rmdir', 'install', 'rsync', 'shred', 'dd', 'mkdir', 'mkfifo', 'setfacl', 'chattr'}
 DEST_ONLY = {'cp', 'ln', 'install'}
@@ -85,17 +124,25 @@ def base(w):
     return os.path.basename(w)
 
 
-def needle(word):
+def needle(word, plugin=True):
+    """The first needle in word other than a soft one, then the plugin path when plugin."""
     t = re.sub(r'/+', '/', word.lower()).replace('/./', '/').replace('--no-verify-signatures', '')
-    hit = next((n for n in NEEDLES if n in t), None)
-    return hit or (m.group(1) if (m := PLUGIN_RE.search(t)) else None)
+    hit = next((n for n in NEEDLES if n in t and n not in SOFT_NEEDLES), None)
+    return hit or (m.group(1) if plugin and (m := PLUGIN_RE.search(t)) else None)
 
 
-def check_needles(words, what):
+def check_needles(words, what, plugin=True):
     for w in words:
-        hit = needle(w)
+        hit = needle(w, plugin=plugin)
         if hit:
             raise Deny(f'{what} names {hit}, which only a read may mention')
+        soft = next((n for n in SOFT_NEEDLES if n in w.lower()), None)
+        if soft:
+            DEFERRED.append(f'{what} names {soft} in a command that also names git, a hook or the plugin')
+
+
+def in_plugin(p):
+    return any(p == r or p.startswith(r + '/') for r in PLUGIN_ROOTS)
 
 
 def in_tmp_elsewhere(p, ctx):
@@ -111,7 +158,9 @@ def protected(tok, ctx):
         return True
     for c in glob.glob(os.path.join(ctx.cwd, tok)) if re.search(r'[*?[]', tok) else [tok]:
         p = os.path.realpath(os.path.join(ctx.cwd, c))
-        if needle(p) or p == PLUGIN or p.startswith(PLUGIN + '/') or p.startswith(INSTALLED + '/'):
+        if needle(p) or in_plugin(p) or p.startswith(INSTALLED + '/'):
+            return True
+        if write_denials.denial(os.path.normpath(os.path.join(ctx.cwd, c)), PLUGIN):
             return True
         # The git dir and common dir of the current repo and of the repo the target sits in, wherever
         # they live; then any path through a .git directory, except a scratch repo under the temp dir.
@@ -155,7 +204,19 @@ def git_dirs(ctx):
     return ctx.gitdirs
 
 
+def check_name(name):
+    """A name no agent may assign, export or pass through env: it changes what bash, git or the
+    loader runs, or it is the agent marker the gate reads."""
+    if not IDENT.match(name):
+        raise Deny(f'{name} is no plain identifier; only env can set it, and bash would import it')
+    if name in DENIED_NAMES or name.startswith('BASH_FUNC_'):
+        raise Deny(f'{name} changes what bash, git or the loader runs; an agent may not set it')
+    if name in MARKERS:
+        raise Deny(f'{name} is the agent marker the commit gate reads; an agent may not change or clear it')
+
+
 def check_var(name, value, ctx):
+    check_name(name)
     if GATE_VAR.match(name):
         raise Deny(f'{name} is read by the commit gate; an agent may not set it')
     if name == 'HUSKY' and value == '0':
@@ -215,6 +276,18 @@ def check_ref_writers(sub, rest, ctx, cwd):
         raise Deny('git commit --allow-empty is not an agent task')
     if sub == 'clone':
         ctx.flags.add('clone')
+        vals = {'-b', '--branch', '-o', '--origin', '--depth', '--reference', '--reference-if-able', '-c', '--config',
+                '--template', '-u', '--upload-pack', '-j', '--jobs', '--filter', '--separate-git-dir',
+                '--shallow-since', '--shallow-exclude', '--server-option', '--bundle-uri', '--ref-format'}
+        pos, skip = [], False
+        for t in rest:
+            if skip or t == '--':
+                skip = False
+            elif t.startswith('-'):
+                skip = t in vals
+            else:
+                pos.append(t)
+        check_targets('git clone', pos[1:2], ctx)
     if sub == 'push':
         ctx.flags.add('push')
         for t in rest:
@@ -392,7 +465,9 @@ def run_file(path, ctx, depth, shell):
     if shell or re.match(r'#!.*\b(ba|z|da|k)?sh\b', text):
         scan_script(text, ctx, depth + 1)
     else:
+        SEEN.append(text)
         check_needles([text], f'the script {path}')
+        check_text_roots(text, f'the script {path}')
 
 
 def is_read_only(cmd, args):
@@ -427,6 +502,13 @@ def unwrap(cmd, w, ctx):
             i += 1
         i += 1
     i += w[i:i + 1] == ['--']
+    if cmd == 'env':
+        # env sets every word holding = before the program, identifier or not; each is checked here,
+        # and the identifiers again as assignments of the command they precede.
+        j = i
+        while j < len(w) and '=' in w[j]:
+            check_name(w[j].split('=', 1)[0])
+            j += 1
     if cmd in FIRST_POSITIONAL and i < len(w):
         i += 1
     return w[i:], cwd
@@ -465,7 +547,11 @@ def scan_program(w, ctx, depth, remote):
         return scan_qg(args)
     if cmd in ('cd', 'pushd'):
         ctx.cwd = os.path.join(ctx.cwd, args[0]) if args and not args[0].startswith(('-', '+')) else ctx.cwd
+        ctx.cwd = HOME if cmd == 'cd' and not args else ctx.cwd
         return
+    # An installed plugin program may take the plugin path as an argument (a vault command naming
+    # this repo); its redirects and the commands chained to it are still checked.
+    installed = '/' in w[0] and installed_script(w[0], ctx)
     if is_read_only(cmd, args):
         exempt = set(range(len(w)))
     elif cmd == 'git':
@@ -477,7 +563,7 @@ def scan_program(w, ctx, depth, remote):
         exempt -= {len(w) - 1} if len(w) > 2 else set()
     else:
         exempt = set()
-    check_needles([t for j, t in enumerate(w) if j not in exempt], cmd)
+    check_needles([t for j, t in enumerate(w) if j not in exempt], cmd, plugin=not installed)
     scan_command(cmd, w, args, ctx, depth, remote)
 
 
@@ -486,11 +572,8 @@ def scan_command(cmd, w, args, ctx, depth, remote):
         check_git(args, ctx, ctx.cwd)
     elif cmd == 'gh':
         check_gh(args)
-    elif cmd in ('unset', 'export', 'declare', 'typeset', 'readonly', 'local'):
-        for t in args:
-            m = re.match(r'([A-Za-z_]\w*)=(.*)\Z', t, re.S)
-            if m:
-                check_var(m.group(1), m.group(2), ctx)
+    elif cmd in DECLARE or cmd in ('unset', 'read') or (cmd == 'printf' and '-v' in args):
+        check_declare(cmd, args, ctx)
     elif cmd == 'eval':
         scan_script(' '.join(args), ctx, depth + 1)
     elif cmd in SHELLS:
@@ -508,9 +591,54 @@ def scan_command(cmd, w, args, ctx, depth, remote):
         check_targets('sort', targets, ctx)
     elif '/' in w[0] and not remote and cmd != 'git' and script_header(w[0], ctx) == b'#!':
         run_file(w[0], ctx, depth, False)
+    check_targets(cmd, write_form_targets(cmd, args), ctx)
     if cmd in WRITERS or (cmd in ('sed', 'perl') and any(re.match(r'(-[a-zA-Z]*i|--in-place)', t) for t in args)):
         drop = source_operands(args) if cmd in DEST_ONLY else script_operand(cmd, args)
         check_targets(cmd, [t for j, t in enumerate(args) if not t.startswith('-') and j not in drop], ctx)
+
+
+def write_form_targets(cmd, args):
+    """The folders and files tar, unzip, curl, wget and dd write into, from their options."""
+    opts = {'tar': ('-C', '--directory'), 'bsdtar': ('-C', '--directory'), 'unzip': ('-d',),
+            'curl': ('-o', '--output', '--output-dir'), 'wget': ('-O', '--output-document', '-P', '--directory-prefix')}.get(cmd, ())
+    out = [(t, t[3:]) for t in args if cmd == 'dd' and t.startswith('of=')]
+    for j, t in enumerate(args):
+        if t in opts and j + 1 < len(args):
+            out.append((args[j + 1], args[j + 1]))
+        elif t.startswith('--') and t.split('=', 1)[0] in opts and '=' in t:
+            out.append((t, t.split('=', 1)[1]))
+        elif not t.startswith('--') and t[:2] in opts and len(t) > 2:
+            out.append((t, t[2:]))
+    words = []
+    for src, value in out:
+        if value and value != '-':
+            w = Word(value)
+            w.quoted, w.dynamic = src.quoted, src.dynamic
+            words.append(w)
+    return words
+
+
+def check_declare(cmd, args, ctx):
+    """export, declare, typeset, readonly, local, unset, read and printf -v: the names they set."""
+    minus = ''.join(t[1:] for t in args if re.match(r'-[A-Za-z]', t))
+    if cmd == 'export' and 'f' in minus:
+        raise Deny('export -f hands a shell function to every bash the commit gate starts')
+    if cmd in ('declare', 'typeset') and 'f' in minus and 'x' in minus:
+        raise Deny(f'{cmd} -f -x hands a shell function to every bash the commit gate starts')
+    if cmd in ('unset', 'read', 'printf'):
+        names = [args[j + 1] for j, t in enumerate(args[:-1]) if t == '-v'] if cmd == 'printf' else args
+        hit = next((t for t in names if t in MARKERS), None)
+        if hit:
+            raise Deny(f'{cmd} {hit} clears the agent marker the commit gate reads')
+        return
+    for t in args:
+        if not t.startswith(('-', '+')):
+            name, eq, value = t.partition('=')
+            name = name[:-1] if eq and name.endswith('+') else name
+            if eq:
+                check_var(name, value, ctx)
+            else:
+                check_name(name)
 
 
 def script_operand(cmd, args):
@@ -590,7 +718,7 @@ def scan_wrapper(cmd, w, ctx, depth, remote):
 
 
 def scan_guard(args):
-    ok = (args[:1] == ['verify'] and len(args) == 2) or args == ['report'] or args == ['hooks', 'status']
+    ok = (args[:1] == ['verify'] and len(args) == 2) or args == ['report'] or args[:2] == ['hooks', 'status']
     if not ok:
         raise Deny('guard.sh ' + ' '.join(args) + ' changes the gate; an agent may run only verify <range>, report and hooks status')
 
@@ -634,10 +762,18 @@ def stdin_script(cmd, ctx, depth, shell):
 
 
 def check_code(cmd, code):
+    SEEN.append(code)
     check_needles([code], f'{cmd} code')
+    check_text_roots(code, f'{cmd} code')
     m = RISKY_CODE.search(code)
     if m:
-        raise Deny(f'{cmd} inline code uses {m.group(0)}, which can run git or rewrite files')
+        DEFERRED.append(f'{cmd} inline code uses {m.group(0)}, which can run git or rewrite files, in a command that names git, a hook or the plugin')
+
+
+def check_text_roots(text, what):
+    hit = write_denials.text_denial(text, PLUGIN)
+    if hit:
+        raise Deny(f'{what} names {hit[0]}: {hit[1]}')
 
 
 def scan_interpreter(cmd, args, w, ctx, depth, remote):
@@ -650,7 +786,7 @@ def scan_interpreter(cmd, args, w, ctx, depth, remote):
             return check_code(cmd, args[j + 1])
         if t == '-m' and j + 1 < len(args):
             if RISKY_CODE.search(args[j + 1]):
-                raise Deny(f'{cmd} -m {args[j + 1]} can run git or rewrite files')
+                DEFERRED.append(f'{cmd} -m {args[j + 1]} can run git or rewrite files, in a command that names git, a hook or the plugin')
             return
         if t == '-f' and cmd.startswith('php') and j + 1 < len(args):
             return None if remote else run_file(args[j + 1], ctx, depth, False)
@@ -679,12 +815,15 @@ def scan_find(args, ctx, depth):
         return
     for s in starts:
         p = os.path.realpath(os.path.join(ctx.cwd, s))
-        if protected(s, ctx) or os.path.lexists(os.path.join(p, '.git')) or PLUGIN.startswith(p + '/'):
+        if protected(s, ctx) or os.path.lexists(os.path.join(p, '.git')) or any(r.startswith(p + '/') for r in PLUGIN_ROOTS):
             raise Deny(f'find {s} with -delete or -exec reaches the git directory or the plugin; start it in a subdirectory')
 
 
 def scan_seg(seg, ctx, depth):
     for o, t in seg['redirs']:
+        # >&2 and >&- duplicate or close a descriptor; >&<file> writes a file like &> does.
+        if o == '>&' and re.match(r'(\d+|-)\Z', t) and not t.dynamic:
+            continue
         if o not in ('<', '<<', '<<-', '<<<', '<&') and t:
             check_targets('a redirect', [t], ctx)
     ctx.seg = seg
@@ -694,6 +833,7 @@ def scan_seg(seg, ctx, depth):
 def scan_script(text, ctx, depth=0):
     if depth > 8:
         raise Deny('shell nesting deeper than 8 levels')
+    SEEN.append(text)
     lx = Lexer(text)
     segs = lx.parse()
     if lx.error:
@@ -716,6 +856,8 @@ def main():
                 raise Deny('HOME, XDG_CONFIG_HOME or PATH changed in a command that runs qg')
             if {'clone', 'push'} <= ctx.flags:
                 raise Deny('git clone and git push in one command push from a copy that has no hooks')
+            if DEFERRED and any(NAMES_GIT.search(t) for t in SEEN):
+                raise Deny(DEFERRED[0])
     except Deny as d:
         sys.stderr.write(f'guard-bash: denied: {d}. Fix what the commit gate reports instead; only the human at a terminal may override it.\n')
         sys.exit(2)

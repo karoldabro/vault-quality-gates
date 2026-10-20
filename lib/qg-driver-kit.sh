@@ -12,6 +12,8 @@
 
 # shellcheck source=qg-row.sh
 . "$(dirname "${BASH_SOURCE[0]}")/qg-row.sh"
+# shellcheck source=qg-sandbox.sh
+. "$(dirname "${BASH_SOURCE[0]}")/qg-sandbox.sh"
 QG_KIT_BIN="$(cd "$(dirname "${BASH_SOURCE[0]}")/../bin" && pwd)"
 QG_KIT_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -57,29 +59,45 @@ qg_paths() {
 
 # qg_tool <report or -> <ok exit codes, space-separated> <argv...>
 # Deletes <report> (a path relative to QG_TREE) so a crash never leaves the last run's report to
-# be read, runs <argv> through QG_RUNNER, else in QG_TOOL_DIR (default QG_TREE), and keeps stdout
-# and stderr in QG_OUT.
-# Returns 1 with QG_ERROR set when the exit code is not an ok one or <report> was not written.
+# be read, then runs <argv> through qg_sandbox_run (lib/qg-sandbox.sh), in QG_TOOL_DIR (default
+# QG_TREE). With QG_RUNNER the committed runner runs outside the sandbox and is handed the sandboxed
+# argv, so it may prepare the tree; only the tool it starts is confined. The folder of <report> joins the declared writes. stdout and stderr
+# land in QG_OUT through descriptors this shell opened; the tool itself can never write QG_OUT.
+# argv[0] is a program, never a shell function: a function would run outside the sandbox.
+# Returns 1 with QG_ERROR set when the exit code is not an ok one, <report> was not written, or the
+# sandbox refused to start the tool.
 qg_tool() {
-    local report="$1" ok="$2" a rc=0
+    local report="$1" ok="$2" a rc=0 denied name
+    local QG_SANDBOX_WRITES="${QG_SANDBOX_WRITES:-}"
     shift 2
     QG_ERROR=''
     for a in "$@"; do
         case "$a" in *"${QG_OUT}"*) QG_ERROR="qg_tool: the argv names ${a}, which is outside the measured tree"; return 1 ;; esac
     done
-    [ "$report" = - ] || rm -f "${QG_TREE}/${report}"
-    if [ -n "${QG_RUNNER:-}" ]; then "$QG_RUNNER" "$QG_TREE" "${QG_CACHE:-/tmp}" "$@" > "${QG_OUT}/stdout" 2> "${QG_OUT}/stderr" || rc=$?
-    else ( cd "${QG_TOOL_DIR:-$QG_TREE}" && "$@" ) > "${QG_OUT}/stdout" 2> "${QG_OUT}/stderr" || rc=$?; fi
+    [ "$(type -t "$1")" != function ] || { QG_ERROR="qg_tool: $1 is a shell function; pass the program and its argv"; return 1; }
+    # A `/bin/sh -c <script> <name> ...` wrapper is named by its $0.
+    name="$(basename "$1")"
+    [ "$1 ${2:-}" != '/bin/sh -c' ] || name="${4:-sh}"
+    if [ "$report" != - ]; then
+        rm -f "${QG_TREE}/${report}"
+        [ "$(dirname "$report")" = . ] || QG_SANDBOX_WRITES+=" $(dirname "$report")"
+    fi
+    if [ -n "${QG_RUNNER:-}" ]; then qg_sandbox_run --runner "$QG_RUNNER" "$QG_TREE" "${QG_CACHE:-/tmp}" -- "$@" > "${QG_OUT}/stdout" 2> "${QG_OUT}/stderr" || rc=$?
+    else qg_sandbox_run --cwd "${QG_TOOL_DIR:-$QG_TREE}" -- "$@" > "${QG_OUT}/stdout" 2> "${QG_OUT}/stderr" || rc=$?; fi
     QG_RC="$rc"
     # The tool's own error lines are what a person needs; never the report itself.
     cat "${QG_OUT}/stderr"
+    if [ -n "$QG_SANDBOX_ERROR" ]; then QG_ERROR="$QG_SANDBOX_ERROR"; return 1; fi
     if [[ " $ok " != *" $rc "* ]]; then
         tail -20 "${QG_OUT}/stdout"
-        QG_ERROR="$(basename "$1") exited ${rc}"; return 1
+        QG_ERROR="${name} exited ${rc}"
+        denied="$(qg_sandbox_denied "${QG_OUT}/stderr")"
+        [ -z "$denied" ] || [ -z "$QG_SANDBOX_ARMED" ] || QG_ERROR+="; the sandbox refused: ${denied}"
+        return 1
     fi
     if [ "$report" != - ] && [ ! -s "${QG_TREE}/${report}" ]; then
         tail -20 "${QG_OUT}/stdout"
-        QG_ERROR="$(basename "$1") exited ${rc} and wrote no report ${report}"; return 1
+        QG_ERROR="${name} exited ${rc} and wrote no report ${report}"; return 1
     fi
     return 0
 }

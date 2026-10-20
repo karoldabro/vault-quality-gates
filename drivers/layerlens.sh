@@ -19,7 +19,7 @@ export LC_ALL=C
 
 case "${1:-}" in
     describe)
-        printf '{"name":"layerlens","summary":"layerlens: dependency cycles between folders","requires":["jq","git"],"needs_tree":true}\n' ;;
+        printf '{"name":"layerlens","summary":"layerlens: dependency cycles between folders","requires":["jq","git"],"needs_tree":true,"sandbox":true,"writes":[".dart_tool"]}\n' ;;
     explain)
         printf 'Counts the cycle edges (--!--) layerlens draws in each folder'"'"'s DEPS.md. Open the DEPS.md the finding\n'
         printf 'names and remove one import of the cycle. Keys: package (required) only paths version.\n' ;;

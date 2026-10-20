@@ -18,7 +18,7 @@ export LC_ALL=C
 
 case "${1:-}" in
     describe)
-        printf '{"name":"depcruise","summary":"dependency-cruiser: counts imports that break a dependency rule","requires":["jq"],"needs_tree":true}\n' ;;
+        printf '{"name":"depcruise","summary":"dependency-cruiser: counts imports that break a dependency rule","requires":["jq"],"needs_tree":true,"sandbox":true,"writes":[]}\n' ;;
     explain)
         if [ -n "${2:-}" ]; then
             printf 'dependency-cruiser rule %s. Its comment in the dependency-cruiser config says which layer may\n' "${2#depcruise.}"

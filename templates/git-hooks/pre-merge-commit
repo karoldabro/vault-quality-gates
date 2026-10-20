@@ -1,10 +1,15 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # vault-guard-start
 # Runs the commit gate (guard.sh commit) on the index git is about to commit and refuses the
 # commit when a row is worse or unmeasurable. A pass writes the pass record pre-push checks.
 # Only a human at a terminal may override, with QG_SKIP_REASON; the override is logged.
-set -uo pipefail
 GUARD="__GUARD_SH__"
+# The clean start (lib/qg-clean-env.sh): no caller variable, function or PATH entry reaches the gate.
+# shellcheck source=../../lib/qg-clean-env.sh
+. "${GUARD%/bin/guard.sh}/lib/qg-clean-env.sh" || { printf 'vault-guard: plugin lib missing; commit refused\n' >&2; exit 1; }
+qg_clean_env QG_SKIP_REASON -- "$@"
+unset GUARD_CONFIG_REV
+set -uo pipefail
 # shellcheck source=../../lib/guard-hook.sh
 . "$(dirname "$GUARD")/../lib/guard-hook.sh" || { printf 'vault-guard: plugin lib missing; commit refused\n' >&2; exit 1; }
 guard_commit_hook pre-merge-commit || exit 1

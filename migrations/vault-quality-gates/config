@@ -1,0 +1,3 @@
+# Gate keys for vault-quality-gates (lib/qg-config.sh). Once this file is committed, VAULT.md's gate keys are no longer read.
+guard_doc_lint: /home/kdabrow/workspace/vault/bin/doc-lint.sh
+guard_protected_paths: quality/checks.tsv quality/baseline.tsv quality/rules.tsv quality/config quality/drivers

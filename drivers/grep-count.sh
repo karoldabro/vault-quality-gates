@@ -27,7 +27,7 @@ count_lines() {
 
 case "${1:-}" in
     describe)
-        printf '{"name":"grep-count","summary":"counts files or lines a pattern matches, or lines an awk script prints","requires":["grep","awk","find","jq"],"needs_tree":true}\n' ;;
+        printf '{"name":"grep-count","summary":"counts files or lines a pattern matches, or lines an awk script prints","requires":["grep","awk","find","jq"],"needs_tree":true,"sandbox":true,"writes":[]}\n' ;;
     explain)
         printf 'Counts what a pattern or an awk script finds in fixed paths. Each finding names the file and line;\n'
         printf 'change the code so the pattern no longer matches. The row'"'"'s why says what the pattern guards.\n'

@@ -12,6 +12,7 @@
 # $FAKE_DEST inside the tree when both are set, and exits $FAKE_RC.
 
 load guard-helpers
+load qg-fakes
 
 DRIVER=/code/drivers/vitest.sh
 JUNIT=quality-reports/junit.xml
@@ -20,6 +21,7 @@ CLOVER=coverage/clover.xml
 setup() {
     export LC_ALL=C
     WORK="$(mktemp -d)"
+    fakes_setup
     unset QG_RUNNER QG_ARGS QG_RUN_DIR CLAUDECODE AI_AGENT FAKE_REPORT FAKE_DEST PROBE
     TREE="$WORK/tree"; mkdir -p "$TREE/node_modules/.bin" "$TREE/quality-reports" "$TREE/coverage" "$WORK/out"
     fake_bin "$TREE/node_modules/.bin/vitest"
@@ -41,6 +43,7 @@ if [ -n "${FAKE_REPORT:-}" ] && [ -n "${FAKE_DEST:-}" ]; then mkdir -p "$(dirnam
 exit "${FAKE_RC:-0}"
 EOF
     chmod +x "$1"
+    fake_bake "$1"
 }
 
 result() { jq -r "$1" "$QG_OUT/result.json"; }

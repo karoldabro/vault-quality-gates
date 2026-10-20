@@ -3,6 +3,7 @@
 #
 #   qg_cases <suite> "<case>" ... [-- <suite> "<case>" ...]
 #
+# A case reported `ok` with a `# skip` or `# TODO` directive is failing.
 # Exit 0 every case passes, 1 a case is failing or absent, 2 a suite could not run (no Docker),
 # so "could not run" never reads as "no".
 set -uo pipefail
@@ -28,7 +29,9 @@ qg_cases() {
             continue
         fi
         c="$1"; shift; total=$((total + 1))
-        if grep -F 'not ok' <<<"${outputs[$suite]}" | grep -qF -- "$c"; then
+        # A skipped or TODO case never ran its assertions, so it counts as failing.
+        if grep -F 'not ok' <<<"${outputs[$suite]}" | grep -qF -- "$c" \
+            || grep -E '^ok ' <<<"${outputs[$suite]}" | grep -F -- "$c" | grep -qiE '# (skip|todo)'; then
             printf '  FAILING  %s: %s\n' "$suite" "$c"; failed=$((failed + 1))
         elif ! grep -qF -- "$c" <<<"${outputs[$suite]}"; then
             printf '  ABSENT   %s: %s\n' "$suite" "$c"; missing=$((missing + 1))

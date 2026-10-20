@@ -21,7 +21,7 @@ export LC_ALL=C
 
 case "${1:-}" in
     describe)
-        printf '{"name":"fallow","summary":"fallow: duplicated lines, boundary violations or complexity excess","requires":["jq"],"needs_tree":true}\n' ;;
+        printf '{"name":"fallow","summary":"fallow: duplicated lines, boundary violations or complexity excess","requires":["jq"],"needs_tree":true,"sandbox":true,"writes":[]}\n' ;;
     explain)
         case "${2:-}" in
             fallow.dupes)

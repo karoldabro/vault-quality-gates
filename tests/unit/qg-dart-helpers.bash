@@ -19,6 +19,21 @@ fake_sdk() {  # fake_sdk <root>
     mkdir -p "$1/bin/cache/dart-sdk/bin"
     cat > "$1/bin/cache/dart-sdk/bin/dart" <<'EOF'
 #!/usr/bin/env bash
+own_env="$(env | sort)"
+if [ -z "${CALLS:-}" ]; then
+    # qg_sandbox_run starts a tool from an empty environment: take the test's names from the
+    # nearest ancestor process that has them. Works only unsandboxed, as dart_setup runs.
+    p=$PPID
+    while [ "${p:-0}" -gt 1 ]; do
+        if tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | grep -q '^CALLS='; then
+            while IFS= read -r -d '' kv; do
+                case "$kv" in CALLS=*|ARGV=*|PUB_ENV=*|PUB_CWD=*|TOOL_ENV=*|FAKE_*) export "${kv?}" ;; esac
+            done < "/proc/$p/environ"
+            break
+        fi
+        p="$(awk '{ print $4 }' "/proc/$p/stat" 2>/dev/null)"
+    done
+fi
 printf 'dart %s\n' "$*" >> "${CALLS:-/dev/null}"
 if [ "${1:-} ${2:-}" = 'pub get' ]; then
     env | sort > "${PUB_ENV:-/dev/null}"; pwd > "${PUB_CWD:-/dev/null}"
@@ -26,7 +41,7 @@ if [ "${1:-} ${2:-}" = 'pub get' ]; then
     exit "${FAKE_PUB_RC:-0}"
 fi
 if [ "${1:-} ${2:-} ${3:-}" = 'pub global list' ]; then printf '%s\n' "${FAKE_GLOBAL-layerlens 3.1.0}"; exit 0; fi
-env | sort > "${TOOL_ENV:-/dev/null}"
+printf "%s\n" "$own_env" > "${TOOL_ENV:-/dev/null}"
 printf '%s\n' "$@" > "${ARGV:-/dev/null}"
 for w in ${FAKE_WRITE:-}; do mkdir -p "$(dirname "${w%%=*}")"; cp "${w#*=}" "${w%%=*}"; done
 [ -z "${FAKE_OUT:-}" ] || cat "$FAKE_OUT"
@@ -53,6 +68,9 @@ dart_setup() {
     export QG_REPO="$REPO" QG_CONFIG_REV QG_TREE="$TREE" QG_OUT="$WORK/out" QG_CACHE="$WORK/cache" \
         QG_ROW=dart-row QG_FILES=/dev/null QG_TARGET=:index
     QG_CONFIG_REV="$(git -C "$REPO" rev-parse HEAD)"
+    # Driver cases run unsandboxed so the fakes can record; qg-dart.bats and the sandbox cases of the
+    # driver suites run the sandbox itself.
+    export QG_SANDBOX=0
     export CALLS="$WORK/calls" ARGV="$WORK/argv" PUB_ENV="$WORK/pub.env" PUB_CWD="$WORK/pub.cwd" TOOL_ENV="$WORK/tool.env"
     export PATH="$SDK/bin:$PATH"
 }

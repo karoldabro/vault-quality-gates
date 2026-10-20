@@ -29,6 +29,9 @@ Decision: `vault/decisions/ADR-001-driver-contract.md`. Row format: `vault/archi
 judges the run (`lib/qg-config.sh`). The engine copies the committed driver into a temporary file
 and makes it executable. An uncommitted or staged driver is never run.
 
+**Constraint: a repo driver runs whole inside the sandbox,** writing only `QG_OUT` and `QG_PRIVATE`,
+whatever its `describe` says.
+
 **Constraint: only a human changes a repo driver.** A commit that changes a path under
 `quality/drivers` fails the built-in check `gate-config-changed`. Only a human override passes it
 (`vault/architecture/guard-commit-gate.md`). The agent guards deny an agent any write there.
@@ -37,7 +40,7 @@ and makes it executable. An uncommitted or staged driver is never run.
 
 | call | prints | exit |
 |---|---|---|
-| `<driver> describe` | one JSON object: `{"name", "summary", "requires": [...], "needs_tree": true\|false}` | 0 |
+| `<driver> describe` | one JSON object: `{"name", "summary", "requires": [...], "needs_tree": true\|false, "sandbox": true\|false, "writes": [...]}` | 0 |
 | `<driver> explain [<ruleId>]` | plain text: what the driver measures, or what one rule means and how to fix it | 0 |
 | `<driver> run` | the tool's own output; writes `$QG_OUT/result.json` | 0 when `result.json` was written |
 | anything else | usage on stderr | 2 |
@@ -45,7 +48,9 @@ and makes it executable. An uncommitted or staged driver is never run.
 **`describe` fields.** `name` is the driver name. `summary` is one line for `qg drivers` and
 `qg explain`. `requires` lists the commands the driver needs on `PATH`; `qg doctor` fails each one
 that is missing. `needs_tree: true` makes the commit gate measure a copy of the staged tree. A
-`describe` the engine cannot read counts as `needs_tree: true`.
+`describe` the engine cannot read counts as `needs_tree: true`. A built-in's `sandbox: false` runs its
+tools unconfined; `writes` lists the `QG_TREE` folders its sandboxed tools may write
+(`vault/architecture/qg-sandbox.md`).
 
 `qg doctor` fails a driver whose `describe` is not JSON with a `name`, or whose `explain` prints
 nothing.
@@ -67,6 +72,7 @@ nothing.
 | `QG_RUNNER` | the path of a copy of the committed runner; set only when `args` holds `runner=` |
 | `QG_RUN_DIR` | a directory the engine creates for one invocation and deletes at exit, for reports rows share |
 | `QG_CONFIG_REV` | the commit whose configuration judges this run; read a config key there with `git show`, never from the working tree |
+| `QG_PRIVATE` | set only inside a sandboxed process: its private 0700 folder, also its `HOME` and `TMPDIR`, removed after the run |
 
 **`QG_TREE` is the only directory a driver measures.** Under `commit` it is
 `<git-common-dir>/guard-tree` when the gate prepared the staged-tree copy. Otherwise it is the
@@ -140,12 +146,6 @@ makes the row unmeasurable:
 `quality/checks.tsv` from loading. Every row is then unmeasurable.
 
 A measured `kind: repo` row with no baseline row is recorded and not judged.
-
-## Exit codes
-
-- `run` exits 0 whenever it wrote `result.json`, including a result with `status: error`.
-- A non-zero exit from `run` makes the row unmeasurable, whatever `result.json` says.
-- `describe` and `explain` exit 0. An unknown subcommand exits 2 and prints usage on stderr.
 
 ## Output the engine keeps
 

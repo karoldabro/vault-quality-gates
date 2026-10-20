@@ -20,9 +20,6 @@ export LC_ALL=C
 
 REPORT=quality-reports/dcl.json
 
-# dart_code_linter <argv...> -> the metrics run, its stdout copy of the report dropped.
-dart_code_linter() { "$QG_DART" run dart_code_linter:metrics analyze "$@" > /dev/null; }
-
 produce() {
     local ignore extra=()
     qg_dart_env && qg_dart_packages || return 1
@@ -30,14 +27,15 @@ produce() {
     ignore="$(qg_kv ignore)" && extra=("--exclude=${ignore}")
     mkdir -p "${QG_TREE}/quality-reports"
     # dart_code_linter exits 1 when it reports issues; the report decides the value.
-    qg_tool "$REPORT" '0 1' dart_code_linter "${QG_PATH_LIST[@]}" --reporter=json "--json-path=${REPORT}" \
-        "${extra[@]}" --no-congratulate || return 1
+    # The tool's stdout copy of the report is dropped inside the sandbox, which may write /dev/null.
+    qg_tool "$REPORT" '0 1' /bin/sh -c 'exec "$@" > /dev/null' dart-code-linter "$QG_DART" run dart_code_linter:metrics \
+        analyze "${QG_PATH_LIST[@]}" --reporter=json "--json-path=${REPORT}" "${extra[@]}" --no-congratulate || return 1
     cp "${QG_TREE}/${REPORT}" "${QG_OUT}/dart-code-linter"
 }
 
 case "${1:-}" in
     describe)
-        printf '{"name":"dart-code-linter","summary":"dart_code_linter: functions or classes over a metric limit, or issues of one rule","requires":["jq","git"],"needs_tree":true}\n' ;;
+        printf '{"name":"dart-code-linter","summary":"dart_code_linter: functions or classes over a metric limit, or issues of one rule","requires":["jq","git"],"needs_tree":true,"sandbox":true,"writes":[".dart_tool"]}\n' ;;
     explain)
         printf 'Counts functions or classes over a dart_code_linter metric limit, or the issues of one rule.\n'
         printf 'Split the function or class the finding names until its metric is under the limit.\n'

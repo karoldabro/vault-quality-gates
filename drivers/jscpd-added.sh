@@ -18,7 +18,7 @@ export LC_ALL=C
 
 case "${1:-}" in
     describe)
-        printf '{"name":"jscpd-added","summary":"jscpd: duplicated blocks that cover lines the commit adds","requires":["jq","pnpm"],"needs_tree":true}\n' ;;
+        printf '{"name":"jscpd-added","summary":"jscpd: duplicated blocks that cover lines the commit adds","requires":["jq","pnpm"],"needs_tree":true,"sandbox":false,"writes":[]}\n' ;;
     explain)
         printf 'Finds copied blocks with jscpd and counts each copy that covers a line this commit adds. Extract the\n'
         printf 'shared code into one method, trait or class. Keys: paths version bin config min-lines min-tokens format\n'

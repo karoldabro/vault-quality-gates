@@ -21,7 +21,7 @@ export LC_ALL=C
 
 case "${1:-}" in
     describe)
-        printf '{"name":"dart-analyze","summary":"dart analyze: analyzer errors, warnings and lints, as flutter analyze reports them","requires":["jq","git"],"needs_tree":true}\n' ;;
+        printf '{"name":"dart-analyze","summary":"dart analyze: analyzer errors, warnings and lints, as flutter analyze reports them","requires":["jq","git"],"needs_tree":true,"sandbox":true,"writes":[".dart_tool"]}\n' ;;
     explain)
         if [ -n "${2:-}" ]; then
             printf 'Analyzer diagnostic %s. Fix the code the message names; https://dart.dev/tools/diagnostics/%s explains it.\n' "$2" "$2"

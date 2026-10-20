@@ -18,7 +18,7 @@ export LC_ALL=C
 
 case "${1:-}" in
     describe)
-        printf '{"name":"stryker","summary":"StrykerJS: the mutation score","requires":["jq"],"needs_tree":true}\n' ;;
+        printf '{"name":"stryker","summary":"StrykerJS: the mutation score","requires":["jq"],"needs_tree":true,"sandbox":true,"writes":[".stryker-tmp","reports",".nuxt","node_modules/.vite","node_modules/.cache"]}\n' ;;
     explain)
         if [ -n "${2:-}" ]; then
             printf 'Stryker mutator %s changed this line and no test failed. Add a test that fails on the mutated code.\n' "$2"

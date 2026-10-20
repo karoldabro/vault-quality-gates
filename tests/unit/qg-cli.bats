@@ -4,6 +4,7 @@
 # change the gate refuse an agent.
 
 load guard-helpers
+load qg-doctor-helpers
 
 QG=/code/bin/qg
 V2_HEADER=$'id\ton\tkind\tdriver\targs\tdirection\tthreshold\tgate\twhy'
@@ -125,11 +126,108 @@ teardown() {
     [ "$status" -eq 1 ]
     [[ "$output" == *'pre-commit hook is not installed'* ]]
     [[ "$output" == *'push:refs/heads/release/* matches no local or remote branch'* ]]
-    ( export GUARD_LIB_DIR=/code/lib; . /code/lib/guard-metrics.sh; . /code/lib/guard-install.sh; guard_hooks_install >/dev/null )
+    healthy_setup
     git branch release/1.0
     run "$QG" doctor --json
     [ "$(jq -r '.fails' <<<"$output")" = 0 ]
     [ "$(jq -r '[.checks[] | select(.text | test("matches a branch"))] | length' <<<"$output")" = 1 ]
+}
+
+
+@test "doctor fails naming qg hooks install --claude --user when ~/.claude/settings.json lacks the three entries" {
+    healthy_setup
+    run "$QG" doctor
+    [ "$status" -eq 0 ]
+    user_settings "$HOME/.claude" guard-stop.sh
+    run "$QG" doctor
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"fail  ${HOME}/.claude/settings.json lacks the Stop entry guard-stop.sh (a human runs qg hooks install --claude --user)"* ]]
+    rm "$HOME/.claude/settings.json"
+    run "$QG" doctor
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"fail  ${HOME}/.claude/settings.json is missing or not JSON"*'qg hooks install --claude --user'* ]]
+}
+
+@test "doctor fails on ~/.claude-factory settings lacking the entries only when that folder exists" {
+    healthy_setup
+    run "$QG" doctor
+    [ "$status" -eq 0 ]
+    [[ "$output" != *'.claude-factory'* ]]
+    mkdir -p "$HOME/.claude-factory"
+    run "$QG" doctor
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"fail  ${HOME}/.claude-factory/settings.json is missing or not JSON"* ]]
+    user_settings "$HOME/.claude-factory" guard-bash.sh
+    run "$QG" doctor
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"fail  ${HOME}/.claude-factory/settings.json lacks the PreToolUse entry guard-bash.sh"* ]]
+    user_settings "$HOME/.claude-factory"
+    run "$QG" doctor
+    [ "$status" -eq 0 ]
+}
+
+@test "doctor fails naming qg hooks install when a git hook copy differs from its template" {
+    healthy_setup
+    printf '# a local edit\n' >> .git/hooks/pre-push
+    run "$QG" doctor
+    [ "$status" -eq 1 ]
+    [[ "$output" == *'fail  pre-push hook differs from the template (a human runs qg hooks install)'* ]]
+}
+
+@test "doctor fails naming qg hooks install --claude --user when the tool-path file is absent" {
+    healthy_setup
+    rm "$PLUGIN/.git/qg-tool-path"
+    run "$QG" doctor
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"fail  the machine tool-path file ${PLUGIN}/.git/qg-tool-path is absent"*'(a human runs qg hooks install --claude --user)'* ]]
+}
+
+@test "doctor fails when core.hooksPath is set" {
+    healthy_setup
+    git config core.hooksPath "$WORK/elsewhere"
+    run "$QG" doctor
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"fail  core.hooksPath is set to ${WORK}/elsewhere"* ]]
+}
+
+@test "doctor warns once per per-repo guard entry and still exits 0" {
+    healthy_setup
+    mkdir -p .claude
+    jq -n '{hooks: {PreToolUse: [{matcher: "Bash", hooks: [{type: "command", command: "/old/plugin/templates/claude-hooks/guard-bash.sh"}]},
+                                 {matcher: "Edit", hooks: [{type: "command", command: "/old/plugin/templates/claude-hooks/guard-edit.sh"},
+                                                           {type: "command", command: "/usr/bin/true"}]}]}}' > .claude/settings.json
+    run "$QG" doctor
+    [ "$status" -eq 0 ]
+    [ "$(grep -c 'warn  .*/.claude/settings.json lists the guard ' <<<"$output")" = 2 ]
+    [[ "$output" == *'lists the guard /old/plugin/templates/claude-hooks/guard-bash.sh'*'qg hooks remove --claude'* ]]
+    [[ "$output" == *'lists the guard /old/plugin/templates/claude-hooks/guard-edit.sh'* ]]
+}
+
+@test "doctor exits 0 on a fully installed setup and --json counts match the text" {
+    healthy_setup
+    run "$QG" doctor
+    [ "$status" -eq 0 ]
+    summary="$(grep '^qg doctor: ' <<<"$output")"
+    run "$QG" doctor --json
+    [ "$status" -eq 0 ]
+    [ "$summary" = "$(jq -r '"qg doctor: \(.fails) broken, \(.warnings) warnings, \([.checks[] | select(.level == "ok")] | length) fine"' <<<"$output")" ]
+    [ "$(jq -r '.fails' <<<"$output")" = 0 ]
+    [ "$(jq -r '[.checks[] | select(.level == "warn")] | length' <<<"$output")" = "$(jq -r '.warnings' <<<"$output")" ]
+}
+
+@test "qg doctor fails naming each bad tool-path entry" {
+    healthy_setup
+    : > "$WORK/afile"
+    mkdir -p "$WORK/repo/sub"
+    printf '%s\n' "$WORK/tools" relative/bin '' "$WORK/missing" "$WORK/afile" "$WORK/repo/sub" > "$PLUGIN/.git/qg-tool-path"
+    run "$QG" doctor
+    [ "$status" -eq 1 ]
+    local e
+    for e in relative/bin "$WORK/missing" "$WORK/afile" "$WORK/repo/sub" 'an empty line'; do
+        [[ "$output" == *"fail  the machine tool-path file ${PLUGIN}/.git/qg-tool-path lists ${e} ("*"), which the engine drops from PATH"* ]] \
+            || { echo "not named: $e"; return 1; }
+    done
+    [[ "$output" != *"lists ${WORK}/tools ("* ]]
 }
 
 @test "the commands that change the gate refuse an agent; read commands do not" {

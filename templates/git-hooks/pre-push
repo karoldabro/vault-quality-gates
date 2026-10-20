@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # vault-guard-start
 # Two checks, in order:
 #   1. Every pushed commit not yet on any remote must carry a pass record, written when the
@@ -19,11 +19,19 @@
 # GUARD_SHA is exported so guard.sh measures a detached worktree of the commit
 # being pushed, not the working directory. Uncommitted edits cannot move the gate.
 
-set -uo pipefail
-# The gate reads these from its environment; a value inherited from the pusher must not steer it.
-unset GUARD_SKIP GUARD_CONFIG_REV GUARD_CONFIG_AT GUARD_CONFIG_PIN
-
 GUARD="__GUARD_SH__"
+# The clean start (lib/qg-clean-env.sh): no caller variable, function or PATH entry reaches the
+# gate. Stdin passes through the restart, so every ref line is still read below.
+# shellcheck source=../../lib/qg-clean-env.sh
+. "${GUARD%/bin/guard.sh}/lib/qg-clean-env.sh" 2>/dev/null || {
+    cat >/dev/null
+    printf 'vault-guard: %s has no lib/qg-clean-env.sh beside it; push refused rather than passed unchecked\n' "$GUARD" >&2
+    exit 1
+}
+qg_clean_env QG_SKIP_REASON -- "$@"
+unset GUARD_CONFIG_REV
+set -uo pipefail
+
 REMOTE_NAME="${1:-}"
 ZERO='0000000000000000000000000000000000000000'
 

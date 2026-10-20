@@ -22,7 +22,7 @@ attr() { xmllint --xpath "string(/testsuites/@$1)" "$2" 2>/dev/null; }
 
 case "${1:-}" in
     describe)
-        printf '{"name":"vitest","summary":"Vitest: failing tests (JUnit) or statement coverage (Clover)","requires":["jq","xmllint"],"needs_tree":true}\n' ;;
+        printf '{"name":"vitest","summary":"Vitest: failing tests (JUnit) or statement coverage (Clover)","requires":["jq","xmllint"],"needs_tree":true,"sandbox":true,"writes":["coverage","quality-reports",".nuxt","node_modules/.vite","node_modules/.cache"]}\n' ;;
     explain)
         if [ "${2:-}" = vitest.failure ]; then
             printf 'A test failed or errored. Run it alone with vitest run <file> -t <name>, then fix the code or the test.\n'

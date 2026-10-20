@@ -48,7 +48,7 @@ show() { git -C "${QG_REPO:-.}" show "${1}:${2}" 2>/dev/null; }
 
 case "${1:-}" in
     describe)
-        printf '{"name":"dart-lock","summary":"pubspec.lock: changes to the packages that judge the code, and new path or git packages","requires":["jq","git","awk"],"needs_tree":false}\n' ;;
+        printf '{"name":"dart-lock","summary":"pubspec.lock: changes to the packages that judge the code, and new path or git packages","requires":["jq","git","awk"],"needs_tree":false,"sandbox":true,"writes":[]}\n' ;;
     explain)
         printf 'Refuses a commit that changes the locked version, source or url of a package that judges the code,\n'
         printf 'turns any package into a path or git package, or changes pubspec.yaml dependency_overrides. Undo\n'

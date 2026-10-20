@@ -22,7 +22,7 @@ attr() { xmllint --xpath "string($2/@$1)" "$3" 2>/dev/null; }
 
 case "${1:-}" in
     describe)
-        printf '{"name":"phpunit","summary":"PHPUnit: failing tests (JUnit) or line coverage (Clover)","requires":["jq","xmllint"],"needs_tree":true}\n' ;;
+        printf '{"name":"phpunit","summary":"PHPUnit: failing tests (JUnit) or line coverage (Clover)","requires":["jq","xmllint"],"needs_tree":true,"sandbox":false,"writes":[]}\n' ;;
     explain)
         if [ "${2:-}" = phpunit.failure ]; then
             printf 'A test failed or errored. Run it alone with vendor/bin/phpunit --filter <name>, then fix the code or the test.\n'

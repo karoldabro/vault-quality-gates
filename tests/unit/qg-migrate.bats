@@ -3,6 +3,7 @@
 # verdicts, and `qg init` gates a new repo from a profile. Neither commits.
 
 load guard-helpers
+load qg-doctor-helpers
 
 QG=/code/bin/qg
 
@@ -165,6 +166,7 @@ framework() { mkdir -p "$1/bin" "$1/lib"; printf '#!/bin/sh\nexit 0\n' > "$1/bin
     framework "$WORK/fw"
     new_repo "$WORK/repo"
     printf 'notes\n' > README.md && commit_all first
+    healthy_setup
     VAULT_FRAMEWORK_PATH="$WORK/fw" "$QG" init --profile docs >/dev/null 2>&1
     "$QG" hooks install >/dev/null
     run "$QG" doctor
@@ -177,6 +179,7 @@ framework() { mkdir -p "$1/bin" "$1/lib"; printf '#!/bin/sh\nexit 0\n' > "$1/bin
 @test "init --profile hugo: qg doctor exits 0 after the init commit" {
     new_repo "$WORK/repo"
     printf 'site\n' > README.md && commit_all first
+    healthy_setup
     "$QG" init --profile hugo >/dev/null 2>&1
     "$QG" hooks install >/dev/null
     git add quality && git -c core.hooksPath=/dev/null commit -q -m 'gate the site build'

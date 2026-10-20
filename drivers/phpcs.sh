@@ -16,7 +16,7 @@ export LC_ALL=C
 
 case "${1:-}" in
     describe)
-        printf '{"name":"phpcs","summary":"PHP_CodeSniffer: counts every error and warning","requires":["jq"],"needs_tree":true}\n' ;;
+        printf '{"name":"phpcs","summary":"PHP_CodeSniffer: counts every error and warning","requires":["jq"],"needs_tree":true,"sandbox":false,"writes":[]}\n' ;;
     explain)
         if [ -n "${2:-}" ]; then
             printf 'PHP_CodeSniffer sniff %s. Fix the code at the reported line; vendor/bin/phpcbf fixes the\n' "$2"

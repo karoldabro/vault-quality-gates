@@ -10,25 +10,37 @@
 # qg_dart_config_key <key> -> the key's value at QG_CONFIG_REV (qg_kit_config_key in the kit).
 qg_dart_config_key() { qg_kit_config_key "$1"; }
 
-# qg_dart_env -> sets QG_FLUTTER and QG_DART to the SDK named by guard_flutter_root, by absolute path,
-# exports FLUTTER_ROOT to it, and unsets the caller's PUB_CACHE and XDG_CACHE_HOME. Returns 1 with
-# QG_ERROR set when the key is absent, the folder is not a Flutter SDK, or the `flutter` on PATH is
-# another file: a planted earlier PATH entry must never judge the push.
+# qg_dart_env -> sets QG_DART to the SDK named by guard_flutter_root, by absolute path, and QG_FLUTTER
+# to a private `flutter` shim that runs the SDK's tool snapshot. It puts the shim's folder first on
+# PATH, exports FLUTTER_ROOT and QG_SANDBOX_SDK to the SDK, and unsets the caller's PUB_CACHE and
+# XDG_CACHE_HOME. The shim exists because <sdk>/bin/flutter rewrites SDK files on every call, which
+# the sandbox refuses. Returns 1 with QG_ERROR set when the key is absent, the folder is not a
+# Flutter SDK, or the `flutter` on PATH is another file: a planted earlier PATH entry must never
+# judge the push.
 qg_dart_env() {
-    local root on_path
+    local root on_path shim
     QG_ERROR=''
-    unset PUB_CACHE XDG_CACHE_HOME FLUTTER_ROOT
+    unset PUB_CACHE XDG_CACHE_HOME FLUTTER_ROOT QG_SANDBOX_SDK
     [ -z "${QG_RUNNER:-}" ] || { QG_ERROR='a Dart driver runs the pinned SDK itself; runner= is not allowed'; return 1; }
     root="$(qg_dart_config_key guard_flutter_root)" && [ -n "$root" ] \
         || { QG_ERROR='guard_flutter_root is not set in quality/config at the config revision'; return 1; }
-    QG_FLUTTER="${root}/bin/flutter" QG_DART="${root}/bin/cache/dart-sdk/bin/dart"
-    [ -x "$QG_FLUTTER" ] && [ -x "$QG_DART" ] \
+    QG_DART="${root}/bin/cache/dart-sdk/bin/dart"
+    [ -x "${root}/bin/flutter" ] && [ -x "$QG_DART" ] \
         || { QG_ERROR="guard_flutter_root ${root} is not a Flutter SDK: no bin/flutter or bin/cache/dart-sdk/bin/dart"; return 1; }
     if on_path="$(command -v flutter)"; then
-        [ "$(readlink -f "$on_path")" = "$(readlink -f "$QG_FLUTTER")" ] \
-            || { QG_ERROR="flutter on PATH is ${on_path}, not ${QG_FLUTTER} from guard_flutter_root"; return 1; }
+        [ "$(readlink -f "$on_path")" = "$(readlink -f "${root}/bin/flutter")" ] \
+            || { QG_ERROR="flutter on PATH is ${on_path}, not ${root}/bin/flutter from guard_flutter_root"; return 1; }
     fi
-    export FLUTTER_ROOT="$root"
+    # One shim folder per SDK, inside the run's folder, or the gate cache when a driver runs alone.
+    shim="${QG_RUN_DIR:-${QG_CACHE:?}}/qg-flutter-$(printf '%s' "$root" | cksum | cut -d' ' -f1)"
+    mkdir -p "$shim" || { QG_ERROR="cannot create the flutter shim folder ${shim}"; return 1; }
+    printf '#!/bin/bash\nexec %q --disable-dart-dev --packages=%q %q "$@"\n' "$QG_DART" \
+        "${root}/packages/flutter_tools/.dart_tool/package_config.json" "${root}/bin/cache/flutter_tools.snapshot" \
+        > "${shim}/flutter.$$" && chmod +x "${shim}/flutter.$$" && mv "${shim}/flutter.$$" "${shim}/flutter" \
+        || { QG_ERROR="cannot write the flutter shim in ${shim}"; return 1; }
+    QG_FLUTTER="${shim}/flutter"
+    case ":${PATH}:" in *":${shim}:"*) ;; *) PATH="${shim}:${PATH}" ;; esac
+    export FLUTTER_ROOT="$root" QG_SANDBOX_SDK="$root" PATH
 }
 
 # qg_dart_packages -> resolves the measured tree's packages with `dart pub get --offline` inside
@@ -57,21 +69,14 @@ qg_dart_prepare() {
     return 1
 }
 
-# qg_isolated <private dir> <argv...> -> runs argv for a tool that runs code the commit wrote (tests,
-# mutation runs): in its own session, with only HOME, PATH, LANG, FLUTTER_ROOT and TMPDIR=<private dir>
-# in its environment. Its process group is killed before the caller reads its output; a process that
-# starts its own session is not reached. It runs as the operator's user, so it can still read the
-# gate's processes under /proc and write the pub cache, the SDK and the gate cache: only an OS sandbox
-# closes that (owner: S6). Returns argv's exit code.
+# qg_isolated <argv...> -> runs argv, a tool that runs code the commit wrote (tests, mutation runs),
+# in QG_TREE through qg_sandbox_run (lib/qg-sandbox.sh): its own session, the child environment of
+# the driver contract, writes only to the declared paths and its private folder QG_PRIVATE, and its
+# process group killed after it exits. A process that starts its own session is not reached.
+# Returns argv's exit code, or 1 with QG_ERROR set when the sandbox never started it.
 qg_isolated() {
-    local dir="$1" pid rc=0
-    shift
-    set +m
-    env -i HOME="$HOME" PATH="$PATH" LANG="${LANG:-C.UTF-8}" FLUTTER_ROOT="${FLUTTER_ROOT:-}" TMPDIR="$dir" \
-        setsid "$@" &
-    pid=$!
-    wait "$pid" || rc=$?
-    # Without job control setsid runs in place, so the pid names the group it leads.
-    kill -KILL -- "-${pid}" 2>/dev/null
+    local rc=0
+    qg_sandbox_run --cwd "$QG_TREE" -- "$@" || rc=$?
+    [ -z "$QG_SANDBOX_ERROR" ] || { QG_ERROR="$QG_SANDBOX_ERROR"; return 1; }
     return "$rc"
 }

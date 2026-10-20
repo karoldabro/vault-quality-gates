@@ -17,6 +17,7 @@
 #   dash quality/bin/tree-report.sh typecheck (nuxt) + guard-added-lines.sh --checkstyle       3
 
 load guard-helpers
+load qg-fakes
 
 DRIVER=/code/drivers/nuxt-typecheck.sh
 FIX=/code/tests/fixtures/drivers
@@ -24,6 +25,7 @@ FIX=/code/tests/fixtures/drivers
 setup() {
     export LC_ALL=C
     WORK="$(mktemp -d)"
+    fakes_setup
     unset QG_RUNNER QG_ARGS QG_RUN_DIR QG_REPO QG_BASES QG_TARGET CLAUDECODE AI_AGENT
     export GUARD_LOCK_WAIT=5
     TREE="$WORK/tree"; mkdir -p "$TREE/node_modules/.bin" "$WORK/out"
@@ -44,6 +46,7 @@ fake_tool() {  # a tool that records "<name> <argv>", prints $FAKE_STDOUT and $F
         '[ -r "${FAKE_STDOUT:-}" ] && cat "$FAKE_STDOUT"' '[ -r "${FAKE_STDERR:-}" ] && cat "$FAKE_STDERR" >&2' \
         'exit "${FAKE_RC:-0}"' > "$1"
     chmod +x "$1"
+    fake_bake "$1"
 }
 
 result() { jq -r "$1" "$QG_OUT/result.json"; }
@@ -199,7 +202,7 @@ tree="$1"; shift 2
 printf '%s\n' "$@" > "$RUNNER_LOG"
 cd "$tree" && exec "$@"
 EOF
-    chmod +x "$WORK/runner"
+    chmod +x "$WORK/runner"; fake_bake "$WORK/runner"
     RUNNER_LOG="$WORK/runner.log" QG_RUNNER="$WORK/runner" QG_ARGS='runner=quality/bin/in-node.sh' "$DRIVER" run > /dev/null
     [ "$(result .metric)" = 45 ]
     [ "$(grep -c '^/' "$WORK/runner.log")" = 0 ]

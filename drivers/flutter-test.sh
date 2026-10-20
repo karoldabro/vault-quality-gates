@@ -8,10 +8,10 @@
 #                 load included. coverage: LH over LF of the lcov blocks kept, two decimals
 #   include       coverage keeps blocks whose tree-relative path matches; exclude drops them
 #
-# The suite is code the commit wrote, so it runs through qg_isolated (lib/qg-dart.sh): its own session,
-# a minimal environment, every leftover process killed. Its stream and lcov file go to a 0700 folder
-# outside the measured tree. Coverage counts only the libraries some test loads, as v1 does. A run with no `done` event, no visible
-# test, an exit code other than 0 or 1, or exit 1 with no failure is an error, never a pass.
+# The suite is code the commit wrote, so it runs through qg_isolated (lib/qg-dart.sh), in the sandbox:
+# writes only to .dart_tool, build and its private folder, every leftover process killed. The stream
+# and the lcov file it emits are kept in a 0700 folder outside the measured tree. Coverage counts only
+# the libraries some test loads, as v1 does. A run with no `done` event, no visible test, an exit code other than 0 or 1, or exit 1 with no failure is an error, never a pass.
 set -uo pipefail
 export LC_ALL=C
 # shellcheck source=../lib/qg-driver-kit.sh
@@ -21,17 +21,21 @@ export LC_ALL=C
 
 # produce -> $QG_OUT/flutter-test holds {failed, tests, done, rc, lh, lf, findings}.
 produce() {
-    local d tmp rc=0 conc inc exc argv=()
+    local d rc=0 conc inc exc argv=()
     qg_dart_env && qg_dart_packages || return 1
     conc="$(qg_kv concurrency)" && argv+=("--concurrency=${conc}")
     inc="$(qg_kv include)" || inc=''
     exc="$(qg_kv exclude)" || exc=''
     d="$(mktemp -d)" && chmod 700 "$d" || { QG_ERROR='cannot create a private folder for the test stream'; return 1; }
-    tmp="$(mktemp -d)" || { QG_ERROR='cannot create a private temp folder for the suite'; rm -rf "$d"; return 1; }
-    ( cd "$QG_TREE" && qg_isolated "$tmp" "$QG_FLUTTER" test --no-pub --coverage --coverage-path "${d}/lcov.info" \
-        --machine "${argv[@]}" ) > "${d}/stream" 2> "${d}/stderr" || rc=$?
-    rm -rf "$tmp"
+    # lcov.info is written in the sandbox's private folder and follows the stream on stdout, after
+    # a marker line: the only way out of the sandbox is descriptors 1 and 2.
+    qg_isolated /bin/sh -c '"$@" --coverage-path "$QG_PRIVATE/lcov.info"; rc=$?; printf "\n%s\n" "#qg-lcov"
+        [ ! -r "$QG_PRIVATE/lcov.info" ] || cat "$QG_PRIVATE/lcov.info"; exit "$rc"' flutter-test \
+        "$QG_FLUTTER" test --no-pub --coverage --machine "${argv[@]}" > "${d}/out" 2> "${d}/stderr" || rc=$?
     tail -20 "${d}/stderr"
+    if [ -n "$QG_SANDBOX_ERROR" ]; then QG_ERROR="$QG_SANDBOX_ERROR"; rm -rf "$d"; return 1; fi
+    awk '$0 == "#qg-lcov" { f = 1; next } !f' "${d}/out" > "${d}/stream"
+    awk 'f; $0 == "#qg-lcov" { f = 1 }' "${d}/out" > "${d}/lcov.info"
     if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then
         QG_ERROR="flutter test exited ${rc}"; rm -rf "$d"; return 1
     fi
@@ -67,7 +71,7 @@ produce() {
 
 case "${1:-}" in
     describe)
-        printf '{"name":"flutter-test","summary":"flutter test: failing tests or line coverage of one suite run","requires":["jq","git","awk"],"needs_tree":true}\n' ;;
+        printf '{"name":"flutter-test","summary":"flutter test: failing tests or line coverage of one suite run","requires":["jq","git","awk"],"needs_tree":true,"sandbox":true,"writes":[".dart_tool","build"]}\n' ;;
     explain)
         if [ "${2:-}" = flutter-test.failure ]; then
             printf 'A test failed, errored or did not load. Run it alone with flutter test <file>, then fix the code or the test.\n'

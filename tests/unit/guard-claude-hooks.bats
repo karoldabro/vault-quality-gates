@@ -516,3 +516,273 @@ no_bad() {
     bash_case allow 'PATH=/tmp/shim:$PATH ls'
     no_bad
 }
+
+# plugin_copy <dir> — a writable git checkout of the plugin, so a test can hold the machine
+# tool-path file or a linked worktree; /code is read-only in the test image.
+plugin_copy() {
+    mkdir -p "$1"
+    cp -r /code/bin /code/lib /code/templates "$1/"
+    git -C "$1" init -q .
+    git -C "$1" -c user.email=t@e -c user.name=t add -A
+    git -C "$1" -c user.email=t@e -c user.name=t commit -q -m plugin
+}
+
+@test "BASH_ENV, SHELLOPTS, BASHOPTS and BASH_FUNC_ assignments or exports are denied beside any command" {
+    local c
+    for c in 'BASH_ENV=/tmp/e ls' 'BASH_ENV=/tmp/e' 'export BASH_ENV=/tmp/e' 'export BASH_ENV' 'declare -x BASH_ENV=/tmp/e' \
+             'SHELLOPTS=xtrace make' 'export SHELLOPTS' 'BASHOPTS=extdebug ls' 'readonly BASHOPTS=x' \
+             "env 'BASH_FUNC_git%%=() { :; }' ls" "env BASH_FUNC_ls=x ls" "bash -c 'BASH_ENV=/tmp/e true'" \
+             'typeset -x BASH_ENV=/tmp/e; npm test'; do
+        bash_case deny "$c"
+    done
+    no_bad
+}
+
+@test "GIT_REPLACE_REF_BASE, GIT_NO_REPLACE_OBJECTS, GIT_ALTERNATE_OBJECT_DIRECTORIES, GIT_OBJECT_DIRECTORY and GIT_EXTERNAL_DIFF are denied" {
+    local c
+    for c in 'GIT_REPLACE_REF_BASE=refs/x/ git log' 'GIT_NO_REPLACE_OBJECTS=0 git show HEAD' \
+             'GIT_ALTERNATE_OBJECT_DIRECTORIES=/tmp/o git status' 'GIT_OBJECT_DIRECTORY=/tmp/o git log' \
+             'GIT_EXTERNAL_DIFF=/tmp/d git diff' 'env GIT_EXTERNAL_DIFF=/tmp/d git diff' 'export GIT_OBJECT_DIRECTORY=/tmp/o'; do
+        bash_case deny "$c"
+    done
+    bash_case allow 'git log -1'
+    no_bad
+}
+
+@test "env with a name that is no plain identifier is denied and the command after it is still checked" {
+    bash_case deny  "env 'X%=1' true"
+    bash_case deny  "env FOO=1 'X%=1' BAR=2 git commit -n -m x"
+    bash_case deny  'env FOO=1 BAR=2 git commit -n -m x'
+    bash_case deny  "env -C /tmp 'a-b=1' ls"
+    bash_case allow 'env FOO=1 BAR=2 ls'
+    no_bad
+}
+
+@test "export -f, declare -fx and typeset -fx are denied" {
+    local c
+    for c in 'export -f f' 'declare -fx f' 'declare -f -x f' 'typeset -xf f' 'builtin export -f f' 'command declare -x -f f' \
+             'f() { :; }; export -f f; npm test'; do
+        bash_case deny "$c"
+    done
+    no_bad
+}
+
+@test "names that only resemble a denied name, and declare without both -f and -x, are allowed" {
+    local c
+    for c in 'MY_BASH_ENV=1 ls' 'echo BASH_ENV=x' 'echo $BASH_ENV' 'declare -f' 'declare -F' 'declare +x -f f' \
+             'declare -x MY_OPTS=1' 'BASH_ENVIRONMENT=1 ls' 'export NODE_ENV=test'; do
+        bash_case allow "$c"
+    done
+    no_bad
+}
+
+@test "writes and edits under .pub-cache, a Flutter SDK or a copydetect venv folder are denied" {
+    mkdir -p "$HOME/.pub-cache/hosted" "$WORK/sdk/bin/internal" "$WORK/sdk/packages/flutter_tools" \
+             "$HOME/.cache/qg-copydetect/copydetect-0.5" "$HOME/.cache/other"
+    : > "$WORK/sdk/bin/internal/engine.version"
+    local c
+    for c in 'touch ~/.pub-cache/x' 'rm -rf $HOME/.pub-cache/hosted' "cp /tmp/x $WORK/sdk/bin/flutter" \
+             "echo x > $WORK/sdk/packages/flutter_tools/a.dart" 'rm -rf ~/.cache/qg-copydetect/copydetect-0.5' \
+             'touch ~/.cache/qg-copydetect/x'; do
+        bash_case deny "$c"
+    done
+    bash_case allow 'cat ~/.pub-cache/x'
+    bash_case allow 'touch ~/.cache/other/x'
+    bash_case allow "touch $WORK/elsewhere.txt"
+    edit_case deny  "$HOME/.pub-cache/hosted/pkg/lib/a.dart" Write
+    edit_case deny  "$WORK/sdk/packages/flutter_tools/lib/x.dart"
+    edit_case deny  "$HOME/.cache/qg-copydetect/copydetect-0.5/lib/x.py"
+    edit_case allow "$HOME/.cache/other/x"
+    rm -rf "$HOME/.pub-cache" "$HOME/.cache"
+    no_bad
+}
+
+@test "writes and edits to a shell startup file are denied" {
+    local c f
+    for c in 'echo x >> ~/.bashrc' 'cp /tmp/x ~/.profile' 'sed -i s/a/b/ ~/.zshrc' 'printf x | tee -a $HOME/.bash_profile' \
+             'touch ~/.bash_login ~/.zshenv ~/.zprofile'; do
+        bash_case deny "$c"
+    done
+    for f in .bashrc .bash_profile .bash_login .profile .zshrc .zshenv .zprofile; do
+        edit_case deny "$HOME/$f" Write
+    done
+    bash_case allow 'cat ~/.bashrc'
+    edit_case allow "$HOME/.bashrc.d/aliases"
+    no_bad
+}
+
+@test "writes under a PATH folder before /usr/bin or a tool-path folder are denied" {
+    mkdir -p "$WORK/early" "$WORK/late" "$WORK/tools"
+    ln -s "$WORK/early" "$WORK/early-link"
+    ln -s "$WORK/tools" "$WORK/tools-link"
+    PATH="$WORK/early:$PATH:$WORK/late" bash_case deny "touch $WORK/early/git"
+    PATH="$WORK/early:$PATH:$WORK/late" bash_case deny "cp /tmp/x $WORK/early-link/node"
+    PATH="$WORK/early:$PATH:$WORK/late" bash_case allow "touch $WORK/late/x"
+    PATH="relative/bin:$PATH" bash_case allow "touch $WORK/repo/relative/bin/x"
+    PATH="$WORK/early:$PATH" edit_case deny "$WORK/early/pnpm" Write
+    plugin_copy "$WORK/plugin"
+    printf '%s\n' "$WORK/tools" > "$WORK/plugin/.git/qg-tool-path"
+    HOOKS="$WORK/plugin/templates/claude-hooks"
+    bash_case deny  "touch $WORK/tools/pnpm"
+    bash_case deny  "cp /tmp/x $WORK/tools-link/node"
+    edit_case deny  "$WORK/tools/php" Write
+    edit_case deny  "$WORK/tools-link/php" Write
+    bash_case allow "touch $WORK/elsewhere"
+    no_bad
+}
+
+@test "a denied root named inside python code or as a tar, unzip, curl, wget or git clone target is denied" {
+    printf "open('%s/.bashrc', 'a').write('x')\n" "$HOME" > "$WORK/w.py"
+    local c
+    for c in "python3 -c \"open('$HOME/.bashrc','a').write('x')\"" \
+             "python3 -c \"open(__import__('os').path.expanduser('~/.pub-cache/x'),'w')\"" \
+             "node -e 'require(\"fs\").writeFileSync(\"\${HOME}/.profile\",\"x\")'" \
+             "perl -e 'open(F, \">\$HOME/.zshrc\")'" \
+             $'python3 <<\'EOF\'\nopen("~/.bash_profile", "a")\nEOF' \
+             "python3 $WORK/w.py" \
+             'tar -xzf x.tgz -C ~/.pub-cache' 'tar --directory=$HOME/.pub-cache -xf x.tar' 'tar -xf x.tar -C$HOME/.pub-cache' \
+             'unzip x.zip -d ~/.pub-cache/x' 'curl -o ~/.bashrc https://example.invalid/x' \
+             'curl --output-dir ~/.pub-cache -O https://example.invalid/x' 'curl --output=$HOME/.profile https://example.invalid/x' \
+             'wget -O ~/.profile https://example.invalid/x' 'wget -P ~/.pub-cache https://example.invalid/x' \
+             'wget --output-document=$HOME/.zshrc https://example.invalid/x' 'dd if=/tmp/x of=$HOME/.bashrc' \
+             'git clone https://example.invalid/y ~/.pub-cache/hosted/y'; do
+        bash_case deny "$c"
+    done
+    for c in "python3 -c \"print('hello')\"" 'curl -o /tmp/x https://example.invalid/x' 'tar -xzf x.tgz -C /tmp/out' \
+             'wget -O - https://example.invalid/x' 'git clone https://example.invalid/y /tmp/y' 'unzip x.zip -d out'; do
+        bash_case allow "$c"
+    done
+    no_bad
+}
+
+@test "a planted json.py in the cwd does not change any hook's verdict" {
+    local m
+    for m in json subprocess shell_lexer write_denials fnmatch; do
+        printf 'open("%s/planted", "w").close()\nimport sys\nsys.exit(0)\n' "$WORK" > "$m.py"
+    done
+    python3 -c 'import json' || true
+    [ -e "$WORK/planted" ]
+    rm -f "$WORK/planted"
+    bash_case deny 'git commit -n -m x'
+    bash_case deny 'rm .git/hooks/pre-commit'
+    edit_case deny "$PWD/.git/config"
+    edit_case deny '/code/bin/guard.sh'
+    [ ! -e "$WORK/planted" ] || BAD+=$'\n''a planted module ran inside a hook'
+    no_bad
+}
+
+@test "a file in a worktree of the plugin stays editable while the hook checkout is denied" {
+    plugin_copy "$WORK/plugin"
+    git -C "$WORK/plugin" worktree add -q "$WORK/plugin-wt" -b side
+    ln -s "$WORK/plugin/lib" "$WORK/lib-link"
+    local h
+    for h in "$WORK/plugin/templates/claude-hooks" "$WORK/plugin-wt/templates/claude-hooks"; do
+        HOOKS="$h"
+        edit_case allow "$WORK/plugin-wt/lib/qg-config.sh"
+        bash_case allow "touch $WORK/plugin-wt/lib/new.sh"
+        bash_case allow "cd $WORK/plugin-wt && sed -i s/a/b/ lib/qg-config.sh"
+        edit_case deny  "$WORK/plugin/lib/qg-config.sh"
+        edit_case deny  "$WORK/plugin/.git/config"
+        edit_case deny  "$WORK/lib-link/qg-config.sh"
+        bash_case deny  "touch $WORK/plugin/lib/new.sh"
+        bash_case deny  "touch $WORK/lib-link/new.sh"
+    done
+    no_bad
+}
+
+@test "in a repo with no quality folder an fd duplication, python backticks and an installed program naming the plugin path are allowed" {
+    [ ! -e quality ]
+    local inst="$HOME/.claude/plugins/cache/demo/1.0/bin"
+    mkdir -p "$inst"
+    printf '#!/usr/bin/env bash\necho "$@"\n' > "$inst/gate.sh"
+    chmod +x "$inst/gate.sh"
+    bash_case allow 'make test 2>&1 | tail -5'
+    bash_case allow "python3 -c 'x = \"\`\"; print(x)'"
+    bash_case allow "$inst/gate.sh verdict --repo /code"
+    cd /code || return 1
+    bash_case allow 'ls 2>&1'
+    bash_case allow 'echo x >&2'
+    bash_case allow 'ls 2>&-'
+    bash_case deny  'echo x >&/code/x'
+    bash_case deny  'echo x &>/code/x'
+    bash_case deny  'echo x > /code/x'
+    cd "$WORK/repo" || return 1
+    rm -rf "$HOME/.claude/plugins/cache/demo"
+    no_bad
+}
+
+@test "cd with no argument moves the checked cwd to HOME before a startup-file write" {
+    bash_case deny  'cd && echo x >> .bashrc'
+    bash_case deny  'cd; printf x | tee -a .profile'
+    bash_case allow 'cd /tmp && echo x >> .bashrc'
+    no_bad
+}
+
+@test "inline code or a cleared agent marker beside git, .git, a hook path or the plugin is still denied" {
+    local c
+    for c in "python3 -c 'import subprocess' && git status" "python3 -c 'x = \"\`\"'; git log -1" \
+             "node -e 'require(\"child_process\")' .git" "python3 -c 'import shutil' && ls .husky" \
+             "python3 -c 'import os; os.remove(\"x\")' /code" "python3 -c 'import os; os.environ.pop(\"CLAUDECODE\")'; git commit -m x" \
+             'unset CLAUDECODE' 'CLAUDECODE= ls' 'AI_AGENT= git status' "printf -v AI_AGENT ''" 'read CLAUDECODE <<< x' \
+             'export -n AI_AGENT; git push'; do
+        bash_case deny "$c"
+    done
+    no_bad
+}
+
+@test "a program naming the plugin path is allowed only when its real path is installed, and never for its redirects or chained commands" {
+    local inst="$HOME/.claude/plugins/cache/demo/1.0/bin"
+    mkdir -p "$inst" "$WORK/bin"
+    printf '#!/usr/bin/env bash\necho "$@"\n' > "$inst/gate.sh"
+    cp "$inst/gate.sh" "$WORK/bin/real-gate.sh"
+    chmod +x "$inst/gate.sh" "$WORK/bin/real-gate.sh"
+    ln -s "$inst/gate.sh" "$WORK/bin/gate"
+    bash_case allow "$inst/gate.sh verdict /code"
+    bash_case allow "$WORK/bin/gate verdict /code"
+    bash_case deny  "$WORK/bin/real-gate.sh verdict /code"
+    bash_case deny  "$HOME/.claude/plugins/cache/demo/1.0/bin/../../../../../../..$WORK/bin/real-gate.sh /code"
+    bash_case deny  "$inst/gate.sh verdict /code > /code/out"
+    bash_case deny  "$inst/gate.sh verdict /code && rm /code/bin/guard.sh"
+    bash_case deny  "$inst/gate.sh verdict /code; touch /code/x"
+    bash_case deny  "$inst/gate.sh verdict /code/.git/hooks"
+    rm -rf "$HOME/.claude/plugins/cache/demo"
+    no_bad
+}
+
+@test "python one-liners using re.compile or os.path and a file name holding ai_agent are allowed" {
+    printf 'print(1)\n' > ai_agent.py
+    local c
+    for c in "python3 -c 'import re; print(re.compile(\"a+\").match(\"aa\"))'" \
+             "python3 -c 'import os; print(os.path.join(\"a\", \"b\"))'" \
+             'python3 ai_agent.py' 'touch ai_agent_notes.md' 'cp ai_agent.py lib/ai_agent.py' \
+             "python3 -c 'import sys; print(sys.argv)' --name claudecode-report"; do
+        bash_case allow "$c"
+    done
+    edit_case allow "$PWD/src/ai_agent.py" Write
+    no_bad
+}
+
+@test "in a repo with no quality folder every git, qg and write denial still holds" {
+    [ ! -e quality ]
+    local c
+    for c in 'git commit -n -m x' 'git push --force' 'git config core.hooksPath /dev/null' 'qg override --reason x' \
+             'qg baseline' 'qg hooks install --claude --user' 'qg hooks remove --claude --user' 'qg hooks remove --claude' \
+             'rm .git/hooks/pre-commit' 'echo x > .git/qg-override' 'touch /code/bin/guard.sh' 'GUARD_SKIP=. git push'; do
+        bash_case deny "$c"
+    done
+    edit_case deny "$PWD/.git/config"
+    edit_case deny "$PWD/.claude/settings.json"
+    bash_case allow 'qg hooks status --user'
+    bash_case allow '/code/bin/guard.sh hooks status --user'
+    no_bad
+}
+
+@test "assigning LD_PRELOAD, LD_LIBRARY_PATH or LD_AUDIT is denied" {
+    local c
+    for c in 'LD_PRELOAD=/tmp/x.so ls' 'export LD_LIBRARY_PATH=/tmp' 'env LD_AUDIT=/tmp/a.so true' \
+             'LD_PRELOAD=/tmp/x.so git status' 'declare -x LD_PRELOAD=/tmp/x.so'; do
+        bash_case deny "$c"
+    done
+    bash_case allow 'echo $LD_LIBRARY_PATH'
+    no_bad
+}

@@ -1,0 +1,11 @@
+id	on	kind	driver	args	direction	threshold	gate	why
+# Columns, the `on` grammar and driver keys: vault/architecture/guard-file-formats.md and
+# vault/architecture/qg-builtin-drivers.md. Empty cells are `-`.
+#
+# This repo is bash and markdown: no container, no vendor folder and no suite that costs minutes.
+# comment-density runs on every commit and on pushes to release branches, as the v1 `both` scope did.
+# doc-lint runs on commits only: the driver measures the gate's staged-tree copy and refuses any other tree.
+# rule-count is deliberately absent: bin/rule-count.sh --assert already exits 1 on main, so a row
+# for it would refuse every push from the day it was written.
+comment-density	commit,push:refs/heads/release/*	repo	shell	parser=cloc artifact=quality-reports/cloc.json -- mkdir -p quality-reports && cloc --json --quiet bin lib templates > quality-reports/cloc.json	down	0.02	refuse	the engine scripts keep their comments as they grow, because a reader of bash needs the reason beside the code
+doc-lint	commit	diff	doc-lint	-	down	0	refuse	changed documents follow the document standard, so a later reader can act on them

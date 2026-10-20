@@ -1,14 +1,33 @@
 #!/usr/bin/env bash
 # Claude Code PreToolUse hook (matcher Edit|Write|MultiEdit|NotebookEdit): exits 2 with the reason
 # on stderr when the target is inside a .git directory or the git common dir, a Claude settings
-# file, a git config file, or the plugin checkout (this file's grandparent directory).
+# file, a git config file, the main worktree of the plugin checkout (this file's grandparent
+# directory), or a global write denial (write_denials.py). A linked worktree of the plugin is editable.
 SELF="$(realpath "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")"
-PLUGIN="$(cd "$(dirname "$SELF")/../.." 2>/dev/null && pwd -P)"
+HERE="$(dirname "$SELF")"
+PLUGIN="$(cd "$HERE/../.." 2>/dev/null && pwd -P)"
 command -v python3 >/dev/null 2>&1 || { echo "guard-edit: python3 is missing, so every edit is denied until it is installed" >&2; exit 2; }
 IFS= read -r -d '' SRC <<'PY'
 import fnmatch, json, os, subprocess, sys
+sys.path.insert(0, sys.argv[2])
+try:
+    import write_denials
+except Exception as e:
+    sys.stderr.write(f'guard-edit: denied: cannot load write_denials.py ({type(e).__name__}: {e})\n')
+    sys.exit(2)
 PLUGIN = os.path.realpath(sys.argv[1])
 INSTALLED = os.path.realpath(os.path.expanduser('~/.claude/plugins/cache'))
+
+def main_worktree(plugin):
+    try:
+        out = subprocess.run(['git', '-C', plugin, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+                             capture_output=True, text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return plugin
+    return os.path.realpath(os.path.dirname(out)) if os.path.basename(out) == '.git' else plugin
+
+# The main worktree of the checkout these hooks run from; a linked worktree of the plugin stays editable.
+ROOTS = {main_worktree(PLUGIN)}
 
 def git_dirs(start):
     while start and not os.path.isdir(start):
@@ -32,10 +51,13 @@ def reason(path, cwd):
             return 'it is a git config file'
         if '.husky' in parts or parts[-1] == '.huskyrc' or '/.config/husky/' in p + '/':
             return 'it is a husky hook file, which git runs as a commit hook'
-        if p == PLUGIN or p.startswith(PLUGIN + '/'):
+        if any(p == r or p.startswith(r + '/') for r in ROOTS):
             return 'it is inside the vault-quality-gates plugin checkout'
         if p.startswith(INSTALLED + '/'):
             return 'it is installed Claude Code plugin code, which runs without being scanned'
+    why = write_denials.denial(ab, PLUGIN)
+    if why:
+        return why
     real = os.path.realpath(ab)
     for d in set(git_dirs(cwd) + git_dirs(os.path.dirname(ab))):
         if real == d or real.startswith(d + '/'):
@@ -68,4 +90,5 @@ if why:
     sys.stderr.write(f'guard-edit: denied editing {target}: {why}. The commit gate forbids agents from changing it.\n')
     sys.exit(2)
 PY
-exec python3 -c "$SRC" "$PLUGIN"
+# -I: no PYTHON* variable, user site folder or planted module in the cwd changes the verdict.
+exec python3 -I -c "$SRC" "$PLUGIN" "$HERE"

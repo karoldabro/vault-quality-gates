@@ -33,6 +33,8 @@ setup() {
     VENV="$HOME/.cache/qg-tools/copydetect-$(req_hash)"
     stub_python "$VENV/bin/python"
     : > "$WORK/clones"
+    # Cases run unsandboxed so the stub can record; the sandbox case below runs it.
+    export QG_SANDBOX=0
 }
 
 teardown() {
@@ -57,8 +59,11 @@ class CopyDetector:
         if os.path.exists(os.path.join(W, "raise")):
             raise RuntimeError("boom")
     def get_copied_code_list(self):
-        with open(os.path.join(W, "seen.json"), "w") as s:
-            json.dump({"kw": self.kw, "files": self.files}, s)
+        try:  # the sandbox case cannot record
+            with open(os.path.join(W, "seen.json"), "w") as s:
+                json.dump({"kw": self.kw, "files": self.files}, s)
+        except OSError:
+            pass
         out = []
         with open(os.path.join(W, "clones")) as c:
             for line in c:
@@ -155,7 +160,7 @@ measure() { QG_ARGS="requirements=${REQ}${1:+ $1}" "$DRIVER" run > /dev/null 2>&
     [ "$(cat "$WORK/py.flags")" = '-I -c' ]
     [ "$(cat "$WORK/py.pwd")" = "$QG_TREE" ]
     [ "$(cat "$WORK/py.xdg")" = unset ]
-    [ "$(cat "$WORK/py.args")" = 'dart 0.8 600 25 25' ]
+    [[ "$(cat "$WORK/py.args")" == 'dart 0.8 600 25 25 /'* ]]
     [ "$(jq -c '.kw' "$WORK/seen.json")" = '{"extensions":["dart"],"noise_t":25,"guarantee_t":25,"display_t":0.8,"silent":true,"autoopen":false}' ]
 }
 
@@ -223,4 +228,14 @@ EOF
     printf 'z\n' > lib/z/z.dart; printf 'y\n' > lib/y.dart; printf 'm\n' > lib/m.dart
     measure
     [ "$(jq -r '.files | join(",")' "$WORK/seen.json")" = 'lib/a.dart,lib/m.dart,lib/ui/b.dart,lib/y.dart,lib/z/z.dart' ]
+}
+
+@test "copydetect runs sandboxed from the venv under the real HOME and cannot write outside its private folder" {
+    unset QG_SANDBOX
+    printf '0.92 0.88 lib/c.dart lib/d.dart 700\n' > "$WORK/clones"
+    measure
+    [ "$(result .status)" = measured ]
+    [ "$(result .metric)" = 1 ]
+    # The stub's records and the module's seen.json are writes outside the sandbox's grants.
+    [ ! -e "$WORK/py.flags" ] && [ ! -e "$WORK/seen.json" ]
 }

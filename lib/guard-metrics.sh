@@ -246,15 +246,18 @@ guard_parse_row() {
 }
 
 # guard_run_shell <row> <base> <files> <tmp> -> value on stdout, or exit 2 with the reason on
-# stderr. The command runs in this shell, under guard.sh's `set -uo pipefail` and LC_ALL=C;
-# its output goes to <tmp>/output.
+# stderr. The command runs in its own bash under `set -uo pipefail`, through qg_sandbox_run with
+# QG_SANDBOX=0: unconfined, but with the child environment every tool gets and stdin from
+# /dev/null (vault/architecture/qg-sandbox.md). Its output goes to <tmp>/output.
 guard_run_shell() {
     local row="$1" base="$2" files="$3" tmp="$4" command parser artifact status=0 source
     command="$(guard_row_field "$row" command)" parser="$(guard_row_field "$row" parser)"
     artifact="$(guard_substitute "$(guard_row_field "$row" artifact)" "$base" "$files")"
-    # Its own subshell: a `cd` or an `exit` in the command must not move the artifact path or
+    # Its own process: a `cd` or an `exit` in the command must not move the artifact path or
     # skip the parser, as it never did.
-    ( eval "$(guard_substitute "$command" "$base" "$files")" ) > "$tmp/output" 2>&1 || status=$?
+    # shellcheck disable=SC2016  # $1 is expanded by the child bash
+    QG_SANDBOX=0 qg_sandbox_run -- /bin/bash -c 'set -uo pipefail; eval "$1"' qg-shell-row \
+        "$(guard_substitute "$command" "$base" "$files")" > "$tmp/output" 2>&1 || status=$?
     # parser '-' means the command's own output is the float; every other parser reads the
     # artifact. Passing the artifact cell to '-' records the literal '-'.
     # $(cat) drops trailing newlines first, as the captured output always did, so a command

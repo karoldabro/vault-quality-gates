@@ -11,7 +11,8 @@
 #   min-similarity  default 0.8, both files of a pair; min-tokens default 600; noise, guarantee 25
 #
 # copydetect fingerprints each file after replacing identifiers and literals, so a copy with renamed
-# variables still matches. The interpreter never comes from PATH or the caller's XDG_CACHE_HOME.
+# variables still matches. The interpreter never comes from PATH or the caller's XDG_CACHE_HOME. It runs
+# in the sandbox through qg_tool, whose stdin is /dev/null, so the file list reaches it as a path.
 set -uo pipefail
 export LC_ALL=C
 # shellcheck source=../lib/qg-driver-kit.sh
@@ -21,7 +22,7 @@ DETECT='
 import sys
 from copydetect import CopyDetector
 ext, min_sim, min_tok, noise, guarantee = sys.argv[1], float(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
-files = [f for f in sys.stdin.read().split("\0") if f]
+files = [f for f in open(sys.argv[6], encoding="utf-8").read().split("\0") if f]
 if not files:
     print("no source file to compare", file=sys.stderr)
     sys.exit(2)
@@ -37,7 +38,7 @@ for sim_a, sim_b, a, b, _, _, tokens in detector.get_copied_code_list():
 
 case "${1:-}" in
     describe)
-        printf '{"name":"copydetect","summary":"copydetect: file pairs that are the same code under different names","requires":["jq","sha256sum","find"],"needs_tree":true}\n' ;;
+        printf '{"name":"copydetect","summary":"copydetect: file pairs that are the same code under different names","requires":["jq","sha256sum","find"],"needs_tree":true,"sandbox":true,"writes":[]}\n' ;;
     explain)
         printf 'Lists pairs of files that are copies of each other once names and literals are ignored. Merge the two\n'
         printf 'into one shared widget, function or class. Keys: requirements (required) venv-root paths ext exclude\n'
@@ -58,12 +59,15 @@ case "${1:-}" in
         qg_paths lib
         (cd "$QG_TREE" && find "${QG_PATH_LIST[@]}" -type f -name "*.${ext}" -print | sort) > "${QG_OUT}/all" \
             || { qg_fail copydetect pairs "cannot list ${QG_PATH_LIST[*]}"; exit 0; }
-        while IFS= read -r f; do [[ "$f" =~ $exclude ]] || printf '%s\0' "$f"; done < "${QG_OUT}/all" > "${QG_OUT}/files"
-        rc=0
-        (cd "$QG_TREE" && env -u XDG_CACHE_HOME "$py" -I -c "$DETECT" "$ext" "$(qg_kv min-similarity || printf 0.8)" \
-            "$(qg_kv min-tokens || printf 600)" "$(qg_kv noise || printf 25)" "$(qg_kv guarantee || printf 25)") \
-            < "${QG_OUT}/files" > "${QG_OUT}/pairs" 2> "${QG_OUT}/stderr" || rc=$?
-        [ "$rc" = 0 ] || { tail -20 "${QG_OUT}/stderr"; qg_fail copydetect pairs "copydetect exited ${rc}"; exit 0; }
+        # The list sits outside QG_OUT, which qg_tool keeps out of the argv; the sandbox reads it.
+        list="$(mktemp)" || { qg_fail copydetect pairs 'cannot create the file list'; exit 0; }
+        while IFS= read -r f; do [[ "$f" =~ $exclude ]] || printf '%s\0' "$f"; done < "${QG_OUT}/all" > "$list"
+        # The venv path is resolved here, under the real HOME; the sandboxed child's HOME is private.
+        qg_tool - 0 "$py" -I -c "$DETECT" "$ext" "$(qg_kv min-similarity || printf 0.8)" \
+            "$(qg_kv min-tokens || printf 600)" "$(qg_kv noise || printf 25)" "$(qg_kv guarantee || printf 25)" "$list" \
+            || { rm -f "$list"; qg_fail copydetect pairs "${QG_ERROR/#python /copydetect }"; exit 0; }
+        rm -f "$list"
+        mv "${QG_OUT}/stdout" "${QG_OUT}/pairs"
         n="$(grep -c . "${QG_OUT}/pairs")"
         head -200 "${QG_OUT}/pairs" | jq -R -s -c '[split("\n")[] | select(length > 0) | split(" ")
             | {ruleId: "copydetect.clone", file: .[3], line: null, level: "error",

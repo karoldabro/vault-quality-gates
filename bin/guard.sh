@@ -1,4 +1,13 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
+# The clean start (lib/qg-clean-env.sh). GUARD_CONFIG_REV is the agent factory's config pin;
+# GUARD_SHA and GUARD_BASE are how the pre-push hook and qg name the commit to measure.
+GUARD_SELF="$(command -p readlink -f "${BASH_SOURCE[0]}")"
+# shellcheck source=../lib/qg-clean-env.sh
+. "${GUARD_SELF%/bin/*}/lib/qg-clean-env.sh" || exit 2
+qg_clean_env GUARD_CONFIG_REV GUARD_SHA GUARD_BASE -- "$@"
+# A replace ref or graft could swap the commit whose configuration judges this run.
+export GIT_NO_REPLACE_OBJECTS=1
+
 # Per-repo code-quality runner. Reads quality/checks.tsv, runs the rows a subcommand
 # selects, compares each number against quality/baseline.tsv, writes the report.
 #
@@ -20,7 +29,8 @@
 #                                lines, and writes nothing when one yields no number.
 #   guard.sh report              re-render from quality-reports/
 #   guard.sh accept <id> --reason "<why>"
-#   guard.sh hooks install [--claude]|remove|status
+#   guard.sh hooks install [--claude]|remove [--claude]|status
+#                                --user forms run through qg, which holds the caller's PATH
 #
 # Exit 0 measured and acceptable, 1 measured and worse, 2 could not measure.
 #

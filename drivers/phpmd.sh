@@ -17,7 +17,7 @@ export LC_ALL=C
 
 case "${1:-}" in
     describe)
-        printf '{"name":"phpmd","summary":"PHPMD: counts every rule violation","requires":["jq"],"needs_tree":true}\n' ;;
+        printf '{"name":"phpmd","summary":"PHPMD: counts every rule violation","requires":["jq"],"needs_tree":true,"sandbox":false,"writes":[]}\n' ;;
     explain)
         if [ -n "${2:-}" ]; then
             printf 'PHPMD rule %s. Change the code so the rule holds; https://phpmd.org/rules/ explains each rule.\n' "$2"

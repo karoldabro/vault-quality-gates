@@ -11,12 +11,14 @@
 # directory they are given. pnpm runs with an empty environment, so its fake finds $WORK beside itself.
 
 load guard-helpers
+load qg-fakes
 
 DRIVER=/code/drivers/jscpd.sh
 
 setup() {
     export LC_ALL=C
     WORK="$(mktemp -d)"
+    fakes_setup
     unset QG_RUNNER QG_ARGS QG_RUN_DIR CLAUDECODE AI_AGENT
     TREE="$WORK/tree"; mkdir -p "$TREE/node_modules/.bin" "$TREE/quality" "$WORK/out" "$WORK/path"
     fake_jscpd "$WORK/path/pnpm"
@@ -44,6 +46,7 @@ while [ $# -gt 0 ]; do [ "$1" = --output ] && out="$2"; shift; done
 mkdir -p "$out" && cp "$w/jscpd.json" "$out/jscpd-report.json"
 EOF
     chmod +x "$1"
+    fake_bake "$1"
 }
 
 fake_runner() {  # fake_runner <file> — called as <runner> <tree> <cache> <argv...>; runs nothing
@@ -56,6 +59,7 @@ while [ $# -gt 0 ]; do [ "$1" = --output ] && out="$2"; shift; done
 mkdir -p "$tree/$out" && cp "$FAKE_WORK/jscpd.json" "$tree/$out/jscpd-report.json"
 EOF
     chmod +x "$1"
+    fake_bake "$1"
 }
 
 real_report() {  # statistics.total and the first clone of app.givore.com quality-reports/jscpd/jscpd-report.json

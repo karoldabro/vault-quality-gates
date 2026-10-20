@@ -19,7 +19,7 @@ export LC_ALL=C
 
 case "${1:-}" in
     describe)
-        printf '{"name":"nuxt-typecheck","summary":"nuxt typecheck or vue-tsc: counts TypeScript errors","requires":["jq"],"needs_tree":true}\n' ;;
+        printf '{"name":"nuxt-typecheck","summary":"nuxt typecheck or vue-tsc: counts TypeScript errors","requires":["jq"],"needs_tree":true,"sandbox":true,"writes":[".nuxt","node_modules/.cache"]}\n' ;;
     explain)
         if [ -n "${2:-}" ]; then
             printf 'TypeScript error %s. Fix the type at the reported line.\n' "$2"

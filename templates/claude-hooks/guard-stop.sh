@@ -14,7 +14,8 @@ set -uo pipefail
 command -v python3 >/dev/null 2>&1 || exit 0
 
 input="$(cat)"
-mapfile -t fields < <(printf '%s' "$input" | python3 -c '
+# -I: a planted json.py in the cwd, or a PYTHONPATH, cannot answer for the json module.
+mapfile -t fields < <(printf '%s' "$input" | python3 -I -c '
 import json, sys
 try: e = json.load(sys.stdin)
 except Exception: e = {}

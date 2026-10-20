@@ -31,7 +31,7 @@ qg_cases \
     "guard_run_driver exports QG_SANDBOX and QG_SANDBOX_WRITES from describe" \
     "a repo driver's run executes inside the sandbox with QG_OUT writable" \
     -- qg-driver-kit.bats \
-    "qg_tool runs a sandboxed driver's runner inside the sandbox" \
+    "qg_tool runs a sandboxed driver's runner outside the sandbox and the tool it starts inside" \
     "qg_tool refuses a shell function as the program" \
     -- qg-dart.bats \
     "qg_isolated runs the SDK snapshot inside the sandbox with FLUTTER_ALREADY_LOCKED" \

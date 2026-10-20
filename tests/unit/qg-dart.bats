@@ -80,10 +80,13 @@ commit_config() {  # commit_config <quality/config text> -> QG_CONFIG_REV is the
 @test "qg_dart_env pins QG_FLUTTER and QG_DART by absolute path, exports FLUTTER_ROOT and drops PUB_CACHE and XDG_CACHE_HOME" {
     export PUB_CACHE="$WORK/caller-pub" XDG_CACHE_HOME="$WORK/caller-xdg" FLUTTER_ROOT="$WORK/caller-flutter"
     qg_dart_env
-    [ "$QG_FLUTTER" = "$SDK/bin/flutter" ]
+    # QG_FLUTTER is the private shim: first on PATH, outside the tree, running the SDK's own dart.
+    [[ "$QG_FLUTTER" == "$QG_CACHE"/qg-flutter-*/flutter ]] && [ -x "$QG_FLUTTER" ]
+    [ "$(command -v flutter)" = "$QG_FLUTTER" ]
+    grep -qF "$SDK/bin/cache/flutter_tools.snapshot" "$QG_FLUTTER"
     [ "$QG_DART" = "$SDK/bin/cache/dart-sdk/bin/dart" ]
     [ "$FLUTTER_ROOT" = "$SDK" ]
-    [ "$(bash -c 'printf %s "$FLUTTER_ROOT"')" = "$SDK" ]
+    [ "$(bash -c 'printf %s "$FLUTTER_ROOT|$QG_SANDBOX_SDK"')" = "$SDK|$SDK" ]
     [ -z "${PUB_CACHE+set}" ]
     [ -z "${XDG_CACHE_HOME+set}" ]
     [ -z "$QG_ERROR" ]
@@ -203,25 +206,27 @@ commit_config() {  # commit_config <quality/config text> -> QG_CONFIG_REV is the
     export FAKE_OUT="$FIX/lakos.json"
     "$ROOT/drivers/lakos.sh" run > /dev/null
     [ "$(result .status)" = measured ]
-    ! grep -q '^PUB_CACHE=' "$TOOL_ENV" || return 1
+    # The child's PUB_CACHE is always the real home's, never the caller's.
+    grep -qx "PUB_CACHE=$HOME/.pub-cache" "$TOOL_ENV"
     ! grep -q '^XDG_CACHE_HOME=' "$TOOL_ENV" || return 1
     grep -qx "FLUTTER_ROOT=$SDK" "$TOOL_ENV"
 }
 
-@test "qg_isolated gives the tool only HOME, PATH, LANG, FLUTTER_ROOT and TMPDIR" {
-    export SECRET_TOKEN=leak FLUTTER_ROOT="$SDK" LANG=C.UTF-8
-    mkdir -p "$WORK/private"
-    run qg_isolated "$WORK/private" env
+@test "qg_isolated gives the tool only the sandbox child environment" {
+    export SECRET_TOKEN=leak LANG=C.UTF-8
+    qg_dart_env
+    run qg_isolated env
     [ "$status" -eq 0 ]
-    [ "$(printf '%s\n' "$output" | cut -d= -f1 | sort | tr '\n' ' ')" = 'FLUTTER_ROOT HOME LANG PATH TMPDIR ' ]
-    [[ "$output" == *"TMPDIR=$WORK/private"* ]]
+    [ "$(printf '%s\n' "$output" | cut -d= -f1 | grep -v '^QG_' | sort | tr '\n' ' ')" = \
+        'FLUTTER_ALREADY_LOCKED FLUTTER_ROOT HOME LANG LC_ALL PATH PUB_CACHE TMPDIR ' ]
     [[ "$output" == *"FLUTTER_ROOT=$SDK"* ]]
+    [[ "$output" != *"TMPDIR=$TREE"* ]]
 }
 
 @test "qg_isolated returns the tool's exit code" {
-    run qg_isolated "$WORK" bash -c 'exit 7'
+    run qg_isolated bash -c 'exit 7'
     [ "$status" -eq 7 ]
-    run qg_isolated "$WORK" true
+    run qg_isolated true
     [ "$status" -eq 0 ]
 }
 
@@ -233,7 +238,7 @@ printf '%s' "\$!" > '$WORK/child.pid'
 exit 0
 EOF
     chmod +x "$WORK/tool"
-    qg_isolated "$WORK" "$WORK/tool"
+    qg_isolated "$WORK/tool"
     local pid state i
     pid="$(cat "$WORK/child.pid")"
     for i in $(seq 1 40); do
@@ -243,4 +248,40 @@ EOF
     done
     kill -KILL "$pid" 2>/dev/null || true
     [ -z "$state" ] || [ "$state" = Z ]
+}
+
+# snapshot_sdk — the fake SDK gains the tool snapshot files, and its dart prints what it was asked
+# to run, its lock and root variables, and whether it could write outside its grants.
+snapshot_sdk() {
+    mkdir -p "$SDK/packages/flutter_tools/.dart_tool"
+    : > "$SDK/packages/flutter_tools/.dart_tool/package_config.json"; : > "$SDK/bin/cache/flutter_tools.snapshot"
+    : > "$SDK/bin/cache/engine.stamp"
+    { printf '#!/usr/bin/env bash\n'
+      printf 'echo "argv: $*"\necho "locked=${FLUTTER_ALREADY_LOCKED-unset} root=${FLUTTER_ROOT-unset}"\n'
+      printf 'echo x > %q 2>/dev/null && echo "escape written" || echo "escape refused"\n' "$WORK/escape"
+      printf 'echo x >> "$FLUTTER_ROOT/bin/cache/engine.stamp" && echo "stamp written"\n'
+    } > "$SDK/bin/cache/dart-sdk/bin/dart"
+    printf '#!/usr/bin/env bash\necho "REAL BIN FLUTTER"\n' > "$SDK/bin/flutter"
+}
+
+@test "qg_isolated runs the SDK snapshot inside the sandbox with FLUTTER_ALREADY_LOCKED" {
+    unset QG_SANDBOX
+    snapshot_sdk
+    qg_dart_env
+    run qg_isolated "$QG_FLUTTER" test --machine
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"argv: --disable-dart-dev --packages=$SDK/packages/flutter_tools/.dart_tool/package_config.json $SDK/bin/cache/flutter_tools.snapshot test --machine"* ]]
+    [[ "$output" == *"locked=true root=$SDK"* ]]
+    [[ "$output" == *'escape refused'* ]] && [[ "$output" == *'stamp written'* ]]
+    [ ! -e "$WORK/escape" ]
+}
+
+@test "the private flutter shim on PATH runs the snapshot, never bin/flutter" {
+    unset QG_SANDBOX
+    snapshot_sdk
+    qg_dart_env
+    run qg_isolated sh -c 'flutter test'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"$SDK/bin/cache/flutter_tools.snapshot test"* ]]
+    [[ "$output" != *'REAL BIN FLUTTER'* ]]
 }

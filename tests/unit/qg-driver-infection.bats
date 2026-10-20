@@ -6,6 +6,7 @@
 # are set, and exits $FAKE_RC.
 
 load guard-helpers
+load qg-fakes
 
 DRIVER=/code/drivers/infection.sh
 SUMMARY=build/infection-summary.json
@@ -13,6 +14,7 @@ SUMMARY=build/infection-summary.json
 setup() {
     export LC_ALL=C
     WORK="$(mktemp -d)"
+    fakes_setup
     unset QG_RUNNER QG_ARGS QG_RUN_DIR CLAUDECODE AI_AGENT FAKE_SUMMARY FAKE_DEST
     TREE="$WORK/tree"; mkdir -p "$TREE/vendor/bin" "$TREE/build" "$WORK/out"
     fake_bin "$TREE/vendor/bin/infection"
@@ -33,6 +35,7 @@ if [ -n "${FAKE_SUMMARY:-}" ] && [ -n "${FAKE_DEST:-}" ]; then cp "$FAKE_SUMMARY
 exit "${FAKE_RC:-0}"
 EOF
     chmod +x "$1"
+    fake_bake "$1"
 }
 
 result() { jq -r "$1" "$QG_OUT/result.json"; }

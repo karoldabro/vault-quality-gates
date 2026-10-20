@@ -308,7 +308,7 @@ dl_run() {
 
 case "${1:-}" in
     describe)
-        printf '{"name":"doc-lint","summary":"document-standard findings a commit adds to its markdown files","requires":["jq","git","awk","grep"],"needs_tree":true}\n' ;;
+        printf '{"name":"doc-lint","summary":"document-standard findings a commit adds to its markdown files","requires":["jq","git","awk","grep"],"needs_tree":true,"sandbox":false,"writes":[]}\n' ;;
     explain)
         case "${2:-}" in
             doc-lint.SKIPFILE)

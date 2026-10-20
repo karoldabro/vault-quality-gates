@@ -11,7 +11,7 @@ set -uo pipefail
 
 case "${1:-}" in
     describe)
-        printf '{"name":"shell","summary":"any command; the number is its last output line or what a parser reads from its artifact","requires":[],"needs_tree":false}\n' ;;
+        printf '{"name":"shell","summary":"any command; the number is its last output line or what a parser reads from its artifact","requires":[],"needs_tree":false,"sandbox":false,"writes":[]}\n' ;;
     explain)
         printf 'Runs the row'"'"'s command. The number it compares is the command'"'"'s last output line, or what the\n'
         printf 'named parser reads from the artifact. Run the reproduce line to see the command'"'"'s own output.\n' ;;

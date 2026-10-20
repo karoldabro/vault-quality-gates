@@ -117,6 +117,8 @@ warnings from <ids> are not printed` instead.
 
 `bin/guard.sh hooks install` writes five hooks into `git rev-parse --git-path hooks`, which linked
 worktrees share, and records every local commit not on any remote, so the existing history passes.
+Each hook, `bin/guard.sh` and `bin/qg` starts from a clean environment:
+`vault/architecture/guard-environment.md`.
 
 | hook | does |
 |---|---|
@@ -180,16 +182,5 @@ log line. The next `pre-push` prints the log lines it has not printed before.
 
 ## Claude Code hooks
 
-`bin/guard.sh hooks install --claude` also merges two `PreToolUse` entries into
-`<repo>/.claude/settings.json` with `jq`: matcher `Bash` runs `templates/claude-hooks/guard-bash.sh`
-and matcher `Edit|Write|MultiEdit|NotebookEdit` runs `templates/claude-hooks/guard-edit.sh`, both by
-absolute path from the plugin checkout. An entry already naming the same command is kept, not
-duplicated; foreign entries are never removed. `hooks status` reports the five git hooks and both
-entries. `hooks remove` removes the git hooks only; delete the two entries by hand.
-
-`guard-bash.sh` reads every script a command runs or sources and scans it like the command. Two kinds
-run unscanned: a committed, unmodified script under `guard_protected_paths`, and code installed under
-`~/.claude/plugins/cache/`. Both hooks deny an agent any write or edit there, which is what makes
-that code safe to run as installed.
-
-The `qg` subcommands `guard-bash.sh` lets an agent run are listed in `vault/architecture/qg-cli.md`.
+The agent guards, their user-level install and their write denials are in
+`vault/architecture/guard-agent-hooks.md`.

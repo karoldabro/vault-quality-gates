@@ -31,6 +31,8 @@ setup() {
     fake_eslint "$TREE"
     export QG_TREE="$TREE" QG_OUT="$WORK/out" QG_CACHE="$WORK/cache" QG_ROW=lint-row QG_FILES=/dev/null
     export FAKE_JSON="$FIX/eslint-app.json" FAKE_RC=1 FAKE_ARGV="$WORK/argv" FAKE_CALLS="$WORK/calls"
+    # Cases run unsandboxed so the fake can record; the sandbox case below runs it.
+    export QG_SANDBOX=0
 }
 
 teardown() {
@@ -42,6 +44,18 @@ fake_eslint() {  # fake_eslint <tree> — node_modules/.bin/eslint in <tree>
     mkdir -p "$1/node_modules/.bin"
     cat > "$1/node_modules/.bin/eslint" <<'EOF'
 #!/usr/bin/env bash
+if [ -z "${FAKE_CALLS:-}" ]; then
+    # qg_sandbox_run starts the tool from an empty environment: take the test's FAKE_* names from the
+    # nearest ancestor process that has them. Works only unsandboxed, as setup runs.
+    p=$PPID
+    while [ "${p:-0}" -gt 1 ]; do
+        if tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | grep -q '^FAKE_CALLS='; then
+            while IFS= read -r -d '' kv; do case "$kv" in FAKE_*) export "${kv?}" ;; esac; done < "/proc/$p/environ"
+            break
+        fi
+        p="$(awk '{ print $4 }' "/proc/$p/stat" 2>/dev/null)"
+    done
+fi
 echo call >> "${FAKE_CALLS:-/dev/null}"
 : > "${FAKE_ARGV:-/dev/null}"; printf '%s\0' "$@" >> "${FAKE_ARGV:-/dev/null}"
 out=''
@@ -54,7 +68,8 @@ EOF
     chmod +x "$1/node_modules/.bin/eslint"
 }
 
-argv() { tr '\0' ' ' < "$FAKE_ARGV" | sed 's/ $//'; }
+# argv — the fake's argv without the leading `-o <private folder>/eslint.json` the driver adds.
+argv() { tr '\0' ' ' < "$FAKE_ARGV" | sed 's/ $//; s#^-o [^ ]*/eslint\.json ##'; }
 result() { jq -r "$1" "$QG_OUT/result.json"; }
 calls() { [ -e "$FAKE_CALLS" ] && wc -l < "$FAKE_CALLS" | tr -d ' ' || echo 0; }
 
@@ -134,11 +149,10 @@ commit_repo() {
     done
 }
 
-@test "a report left in the tree by an earlier run is deleted first, never read" {
+@test "a report left in the tree by an earlier run is never read" {
     cp "$FAKE_JSON" "$TREE/.qg-eslint-lint-row.json"
     FAKE_JSON=/nonexistent FAKE_RC=1 "$DRIVER" run > /dev/null
     [ "$(result .status)" = error ] && [ "$(result .metric)" = null ]
-    [ ! -e "$TREE/.qg-eslint-lint-row.json" ]
 }
 
 @test "a whole-repo run that lints no file is status error" {
@@ -162,12 +176,34 @@ commit_repo() {
     [ "$(result .status)" = error ] && [ "$(result .metric)" = null ]
 }
 
-@test "argv is -c <config> -f json -o <tree-relative report> -- <paths>; the report leaves the tree" {
+@test "argv is -o <private report> -c <config> -f json -- <paths>; the report is written outside the tree" {
     "$DRIVER" run > /dev/null
-    [ "$(argv)" = '-c eslint.config.mjs -f json -o .qg-eslint-lint-row.json -- .' ]
-    [ ! -e "$TREE/.qg-eslint-lint-row.json" ]
+    [ "$(argv)" = '-c eslint.config.mjs -f json -- .' ]
+    local out
+    out="$(tr '\0' '\n' < "$FAKE_ARGV" | sed -n 2p)"
+    [ "$(tr '\0' '\n' < "$FAKE_ARGV" | sed -n 1p)" = -o ]
+    [[ "$out" == */eslint.json ]] && [[ "$out" != "$TREE"* ]] && [ ! -e "$out" ]
+    [ -z "$(find "$TREE" -name '*.json' -newer "$FAKE_ARGV")" ]
     QG_ARGS='config=quality/eslint.config.mjs paths=app,server -- --max-warnings 0' "$DRIVER" run > /dev/null
-    [ "$(argv)" = '-c quality/eslint.config.mjs -f json -o .qg-eslint-lint-row.json --max-warnings 0 -- app server' ]
+    [ "$(argv)" = '-c quality/eslint.config.mjs -f json --max-warnings 0 -- app server' ]
+}
+
+@test "eslint runs sandboxed: its report reaches the driver and nothing in the tree is written" {
+    unset QG_SANDBOX
+    # The sandbox hides the test's variables, so this fake has its report and its targets baked in.
+    { printf '#!/usr/bin/env bash\nJSON=%q\nESC=%q\n' "$FAKE_JSON" "$WORK/escaped"; cat <<'EOF'
+out=''
+while [ $# -gt 0 ]; do [ "$1" = -o ] && out="$2"; shift; done
+sed "s#/home/kdabrow/workspace/app.givore.com#$(pwd -P)#g" "$JSON" > "$out"
+echo 'console output of a config file'
+echo x > "$ESC" 2>/dev/null
+echo x > planted.json 2>/dev/null
+exit 1
+EOF
+    } > "$TREE/node_modules/.bin/eslint"
+    QG_ARGS='metric=problems' "$DRIVER" run > /dev/null
+    [ "$(result .status)" = measured ] && [ "$(result .metric)" = 18 ]
+    [ ! -e "$WORK/escaped" ] && [ ! -e "$TREE/planted.json" ]
 }
 
 @test "a tree eslint.config.js exporting [] changes neither argv nor metric" {
@@ -187,18 +223,21 @@ commit_repo() {
 }
 
 @test "through a runner, no argv word names a path outside the tree" {
-    cat > "$WORK/runner" <<'EOF'
-#!/usr/bin/env bash
+    { printf '#!/usr/bin/env bash\nRUNNER_LOG=%q\n' "$WORK/runner.log"; cat <<'EOF'
 tree="$1"; shift 2
-printf '%s\n' "$@" > "$RUNNER_LOG"
+printf '%s\0' "$@" > "$RUNNER_LOG"
 cd "$tree" && exec "$@"
 EOF
+    } > "$WORK/runner"
     chmod +x "$WORK/runner"
-    RUNNER_LOG="$WORK/runner.log" QG_RUNNER="$WORK/runner" QG_ARGS='runner=quality/bin/in-node.sh metric=problems' \
-        "$DRIVER" run > /dev/null
+    QG_RUNNER="$WORK/runner" QG_ARGS='runner=quality/bin/in-node.sh metric=problems' "$DRIVER" run > /dev/null
     [ "$(result .metric)" = 18 ]
-    [ "$(grep -c '^/' "$WORK/runner.log")" = 0 ]
-    [ "$(grep -cF "$WORK" "$WORK/runner.log")" = 0 ]
+    # The runner gets the child-environment prefix first; the tool argv starts at the /bin/sh that
+    # names the report inside the private folder, the one absolute word it may hold.
+    tr '\0' '\n' < "$WORK/runner.log" | awk '$0 == "/bin/sh" { f = 1 } f' > "$WORK/tool.argv"
+    [ -s "$WORK/tool.argv" ]
+    [ "$(grep -v '^/bin/sh$' "$WORK/tool.argv" | grep -c '^/')" = 0 ]
+    [ "$(grep -cF "$WORK" "$WORK/tool.argv")" = 0 ]
 }
 
 @test "with QG_RUN_DIR, lint-errors and mess rows run eslint once" {
@@ -239,7 +278,7 @@ EOF
     printf '[]\n' > "$WORK/empty.json"
     FAKE_JSON="$WORK/empty.json" FAKE_RC=0 QG_FILES="$WORK/files" QG_ARGS='files=changed' "$DRIVER" run > /dev/null
     [ "$(calls)" = 1 ]
-    [ "$(argv)" = '-c eslint.config.mjs -f json -o .qg-eslint-lint-row.json --no-warn-ignored -- ecosystem.config.cjs' ]
+    [ "$(argv)" = '-c eslint.config.mjs -f json --no-warn-ignored -- ecosystem.config.cjs' ]
     [ "$(result .status)" = measured ] && [ "$(result .metric)" = 0 ]
 }
 

@@ -4,8 +4,8 @@
 #
 # The test image has no Dart: a fake SDK under $WORK/sdk is named by guard_flutter_root in the
 # committed quality/config and its bin/ is first on PATH. `dart pub get` is recorded and succeeds.
-# `dart run mutation_test` runs through qg_isolated with an emptied environment, so the fake reads its
-# setup from files under $WORK baked into it: out (printed) and rc (its exit code). It appends its
+# `dart run mutation_test` runs through qg_tool and qg_sandbox_run with an emptied environment, so
+# the fake reads its setup from files under $WORK baked into it: out (printed) and rc (its exit code). It appends its
 # argv to dart.argv and dumps its env to dart.env. The summary follows mutation_test 1.8.0
 # lib/src/reports/command_line_report.dart, with the percent from asPercentString (two decimals).
 
@@ -31,6 +31,8 @@ setup() {
     export QG_OUT="$WORK/out" QG_CACHE="$WORK/cache" QG_ROW=mutation-row QG_FILES=/dev/null
     report 9 3 33.33 > "$WORK/out.txt"
     printf '255\n' > "$WORK/rc"
+    # Cases run unsandboxed so the fake can record; the sandbox case below runs it.
+    export QG_SANDBOX=0
 }
 
 teardown() {
@@ -154,11 +156,32 @@ measure() { QG_ARGS="$1" "$DRIVER" run > /dev/null 2>&1; }
     [ "$(result .metric)" = 75.00 ]
 }
 
-@test "the mutated suite sees no QG_* or GUARD_* variable and a private TMPDIR outside the tree that is removed" {
+@test "mutation-test measures through the real kit path under the sandbox" {
+    unset QG_SANDBOX
+    export QG_SANDBOX_WRITES="$("$DRIVER" describe | jq -r '.writes | join(" ")')"
+    # The fake also mutates lib/a.dart, as mutation_test does, and tries a write outside the tree.
+    { printf '#!/usr/bin/env bash\nW=%q\n' "$WORK"; cat <<'EOF'
+if [ "${1:-}" = pub ]; then printf '%s\n' "$*" >> "$W/pub.argv"; exit 0; fi
+printf '%s\n' "$*" >> "$W/dart.argv" 2>/dev/null
+echo 'int a() => 2;' > lib/a.dart
+echo x > "$W/escaped" 2>/dev/null
+cat "$W/out.txt"
+exit "$(cat "$W/rc")"
+EOF
+    } > "$WORK/sdk/bin/cache/dart-sdk/bin/dart"
+    measure rules=quality/mutation.xml
+    [ "$(result .status)" = measured ]
+    [ "$(result .metric)" = 66.67 ]
+    [ "$(cat lib/a.dart)" = 'int a() => 2;' ]
+    [ ! -e "$WORK/escaped" ] && [ ! -e "$WORK/dart.argv" ]
+}
+
+@test "the mutated suite sees no GUARD_* or other QG_* variable and a private TMPDIR outside the tree that is removed" {
     export GUARD_PROBE=1 QG_PROBE=1 PUB_CACHE="$WORK/pub"
     measure rules=quality/mutation.xml
     [ "$(result .status)" = measured ]
-    [ -z "$(grep -E '^(QG_|GUARD_|PUB_CACHE=)' "$WORK/dart.env")" ]
+    [ -z "$(grep -E '^(QG_PROBE|QG_SANDBOX|GUARD_)' "$WORK/dart.env")" ]
+    grep -qx "PUB_CACHE=$HOME/.pub-cache" "$WORK/dart.env"
     local tmp
     tmp="$(sed -n 's/^TMPDIR=//p' "$WORK/dart.env")"
     [ -n "$tmp" ]

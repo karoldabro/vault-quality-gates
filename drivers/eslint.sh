@@ -21,18 +21,20 @@ export LC_ALL=C
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/qg-driver-kit.sh"
 
 # The producer of the shared report: runs ESLint over the targets and leaves its JSON in
-# $QG_OUT/eslint.json. The report is written inside the tree, so a runner needs no other path.
+# $QG_OUT/eslint.json. ESLint writes the report in the sandbox's private folder QG_PRIVATE and its
+# own stdout goes to stderr, so stdout carries the report alone out of the sandbox.
 eslint_report() {
-    local report=".qg-eslint-${QG_ROW:-row}.json" rc=0
-    qg_tool "$report" '0 1' "$bin" -c "$config" -f json -o "$report" "${opts[@]}" "${argv[@]}" -- "${targets[@]}" || rc=1
-    [ "$rc" -ne 0 ] || cp "${QG_TREE}/${report}" "${QG_OUT}/eslint.json"
-    rm -f "${QG_TREE:?}/${report}"
-    return "$rc"
+    # shellcheck disable=SC2016  # expanded by the sh inside the sandbox
+    qg_tool - '0 1' /bin/sh -c 'b="$1"; shift; "$b" -o "$QG_PRIVATE/eslint.json" "$@" >&2; rc=$?
+        [ ! -s "$QG_PRIVATE/eslint.json" ] || cat "$QG_PRIVATE/eslint.json"; exit "$rc"' eslint \
+        "$bin" -c "$config" -f json "${opts[@]}" "${argv[@]}" -- "${targets[@]}" || return 1
+    [ -s "${QG_OUT}/stdout" ] || { QG_ERROR="eslint exited ${QG_RC} and wrote no report"; return 1; }
+    cp "${QG_OUT}/stdout" "${QG_OUT}/eslint.json"
 }
 
 case "${1:-}" in
     describe)
-        printf '{"name":"eslint","summary":"ESLint: counts errors, all problems or the messages of listed rules","requires":["jq"],"needs_tree":true}\n' ;;
+        printf '{"name":"eslint","summary":"ESLint: counts errors, all problems or the messages of listed rules","requires":["jq"],"needs_tree":true,"sandbox":true,"writes":[]}\n' ;;
     explain)
         if [ -n "${2:-}" ]; then
             printf 'ESLint rule %s. Fix the code at the reported line; eslint --fix fixes the fixable ones.\n' "$2"

@@ -81,8 +81,11 @@ a release date or it is not made.
 - The configuration that judges a commit is its parent's. `GUARD_CONFIG_REV=<sha>` pins it outside
   an agent session; the agent factory uses the pin so a build cannot loosen its own gate.
 - Every override is logged to `<git-common-dir>/guard-bypass.log` and printed at the next push.
-- `qg hooks install --claude` adds two Claude Code `PreToolUse` hooks that deny an agent the
-  commands and edits that would skip, disable or loosen the gate. It also adds a `Stop` hook
+- Every git hook, `guard.sh` and `qg` restart under `env -i` with a fixed `PATH`, so no caller
+  variable, exported function or planted program changes a verdict
+  (`vault/architecture/guard-environment.md`). The gate runs on Linux only.
+- `qg hooks install --claude --user` adds, once per machine, two Claude Code `PreToolUse` hooks that
+  deny an agent the commands and edits that would skip, disable or loosen the gate. It also adds a `Stop` hook
   (`guard-stop.sh`) that blocks the end of a turn once while HEAD carries commits on no remote, so
   the push gate runs while the agent can still fix the result. On the default branch, `development`,
   `develop` or a detached HEAD it asks for a new branch instead. It gives up after 5 blocks on the
@@ -113,19 +116,22 @@ people bypass it. Slow rows carry `on: push:<glob>` or `on: baseline`.
 | `lib/guard-baseline-neon.awk`, `lib/guard-baseline-phpmd.awk` | baseline entry keys, and the generator-shape check that makes a hand-edited baseline unmeasurable |
 | `lib/guard-hook.sh`, `lib/guard-override.sh` | the hook bodies; the human-only override, its token and its log |
 | `lib/guard-report.sh`, `lib/guard-status.jq` | `status.json` under six fixed category keys, `REPORT.md` under four headings |
-| `lib/guard-install.sh` | `hooks install [--claude] remove status`, marker-guarded |
+| `lib/guard-install.sh` | `hooks install`, `remove` and `status`, with `--claude` and `--user`; git hooks marker-guarded |
+| `lib/qg-clean-env.sh`, `lib/qg-toolpath.sh` | the clean restart of every entry; the machine tool-path file and the clean `PATH` |
 | `lib/guard-parsers/*.sh` | the `shell` driver's parsers: clover, junit, infection, jscpd, insights, phpstan, phpstan-all, phpmd, cda, cloc, diffcover, exitcode |
 | `templates/init/*.tsv` | starter `checks.tsv` rows per profile: `docs`, `php`, `nuxt`, `flutter`, `hugo` |
 | `templates/git-hooks/*` | `pre-commit`, `pre-merge-commit`, `pre-applypatch`, `pre-push`, `post-rewrite` |
-| `templates/claude-hooks/*` | the `PreToolUse` guards `guard-bash.sh` and `guard-edit.sh`, the `Stop` hook `guard-stop.sh` |
+| `templates/claude-hooks/*` | the `PreToolUse` guards `guard-bash.sh` and `guard-edit.sh`, the `Stop` hook `guard-stop.sh`, and `write_denials.py`, the paths no agent writes |
 | `extend/` | the framework extension points: `init` scaffolds a repo, `dod-keys` declares its keys |
 
 **The git hooks are written into `.git/hooks/`.** An agent sees a refusal because it ran
-`git commit` or `git push` and read stderr. The Claude Code hooks run from this checkout, by
-absolute path, and are listed in the target repo's `.claude/settings.json`.
+`git commit` or `git push` and read stderr. The Claude Code hooks run from the main worktree of this
+checkout, by absolute path, and are listed in `~/.claude/settings.json` and each `--config-dir`.
 
 Contracts: `vault/architecture/guard-file-formats.md` (files, tokens, keys, generated files),
 `vault/architecture/guard-commit-gate.md` (the commit gate, hooks, built-in checks, override),
+`vault/architecture/guard-agent-hooks.md` (the Claude Code guards and their install),
+`vault/architecture/guard-environment.md` (the clean environment and the tool-path file),
 `vault/architecture/qg-cli.md` and `vault/architecture/qg-driver-contract.md`.
 The decision record is `vault/decisions/ADR-001-driver-contract.md`.
 
@@ -137,7 +143,12 @@ The decision record is `vault/decisions/ADR-001-driver-contract.md`.
 
 Then `/v-init` in a target repo runs this plugin's `init` point, which scaffolds `quality/` and
 writes that repo's own brief. A repo outside the framework runs `qg init --profile <p>`, then
-`qg hooks install --claude`, then `qg doctor`.
+`qg hooks install`, then `qg doctor`.
+
+Once per machine, from the main worktree of this checkout, run
+`qg hooks install --claude --user --config-dir ~/.claude-factory`. It writes the guards into both
+Claude Code config folders and writes the machine tool-path file from your `PATH`. Run it again after
+installing pnpm, node, php, composer, docker or hugo somewhere new.
 
 ## Known limits
 
@@ -147,8 +158,8 @@ writes that repo's own brief. A repo outside the framework runs `qg init --profi
   `guard.sh verify`, so every amend costs a second gate run.
 - **The gate is client-side.** An agent that runs a script file which commits with hooks disabled and
   pushes without hooks passes it, including through `make`, `pnpm run` or an interpreter script.
-  The Claude Code hooks deny the forms typed directly, and only in a session whose project is the
-  gated repo. Only a server-side required check closes the rest.
+  The Claude Code hooks deny the forms typed directly, in every session whose config folder holds
+  the user-level entries. Only a server-side required check closes the rest.
 - **A repo whose toolchain is bound to its checkout path cannot be measured from a detached
   worktree.** The push gate checks the pushed commit out under `/tmp`, which has no `vendor/`, no
   `node_modules` and no container bind-mount. Set `guard_measure_worktree: false` in that repo's

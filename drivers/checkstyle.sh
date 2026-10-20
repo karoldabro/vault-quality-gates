@@ -17,7 +17,7 @@ export LC_ALL=C
 
 case "${1:-}" in
     describe)
-        printf '{"name":"checkstyle","summary":"counts the errors of a checkstyle report a committed runner writes","requires":["jq","xmllint","git"],"needs_tree":true}\n' ;;
+        printf '{"name":"checkstyle","summary":"counts the errors of a checkstyle report a committed runner writes","requires":["jq","xmllint","git"],"needs_tree":true,"sandbox":false,"writes":[]}\n' ;;
     explain)
         if [ -n "${2:-}" ]; then
             printf 'Rule %s, reported by the repo'"'"'s own runner. Fix the line the finding names.\n' "$2"

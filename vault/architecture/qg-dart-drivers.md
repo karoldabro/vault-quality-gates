@@ -23,16 +23,17 @@ Dart tool and do not source it.
 |---|---|---|---|
 | read the SDK path | `qg_dart_config_key guard_flutter_root` | calls the kit's `qg_kit_config_key`, which reads the key through `lib/qg-config.sh` at `QG_CONFIG_REV`; an empty `QG_CONFIG_REV` is a first commit and reads the index | the key is absent or empty |
 | refuse a runner | `qg_dart_env` | a Dart row runs the pinned SDK itself | the row sets `runner=` |
-| pin the SDK | `qg_dart_env` | sets `QG_FLUTTER=<root>/bin/flutter` and `QG_DART=<root>/bin/cache/dart-sdk/bin/dart`; every tool runs by that absolute path | either file is missing or not executable |
-| check `PATH` | `qg_dart_env` | resolves `command -v flutter` with `readlink -f`; no `flutter` on `PATH` is allowed | `flutter` on `PATH` is another file |
-| drop the caller's environment | `qg_dart_env` | unsets `PUB_CACHE`, `XDG_CACHE_HOME` and `FLUTTER_ROOT`, then exports `FLUTTER_ROOT=<root>` | — |
+| pin the SDK | `qg_dart_env` | sets `QG_DART=<root>/bin/cache/dart-sdk/bin/dart`; every tool runs by that absolute path | `<root>/bin/flutter` or that file is missing or not executable |
+| check `PATH` | `qg_dart_env` | resolves `command -v flutter` with `readlink -f`; no `flutter` on `PATH` is allowed | `flutter` on `PATH` is another file than `<root>/bin/flutter` |
+| shim `flutter` | `qg_dart_env` | sets `QG_FLUTTER` to a shim that runs the SDK's tool snapshot, and puts its folder first on `PATH` (`vault/architecture/qg-sandbox.md`) | the shim cannot be written |
+| drop the caller's environment | `qg_dart_env` | unsets `PUB_CACHE`, `XDG_CACHE_HOME` and `FLUTTER_ROOT`, then exports `FLUTTER_ROOT` and `QG_SANDBOX_SDK` as `<root>` | — |
 | refuse repo-chosen packages | `qg_dart_packages` | checks `QG_TREE/pubspec_overrides.yaml`, and `.dart_tool` with `git ls-files` (`:index`) or `git ls-tree` (`QG_TARGET`) | the overrides file exists, or any `.dart_tool` path is tracked |
 | resolve packages | `qg_dart_packages` | runs `dart pub get --offline --enforce-lockfile` inside `QG_TREE`, so a `pubspec.yaml` `dependency_overrides` entry the lock does not record is refused | resolution fails; the error carries its last 5 lines and the fix |
-| isolate commit code | `qg_isolated <dir>` | runs the tool in its own session with only `HOME`, `PATH`, `LANG`, `FLUTTER_ROOT` and `TMPDIR=<dir>`, then kills its process group; a process that starts its own session is not reached | — |
+| isolate commit code | `qg_isolated <argv>` | runs the tool in `QG_TREE` through `qg_sandbox_run`, which kills its process group after it exits; a process that starts its own session is not reached | the sandbox did not start the tool |
 
 `qg_dart_prepare <driver> <unit>` runs `qg_dart_env`, then `qg_dart_packages`, and writes the error.
-Every driver in the list above runs both. `flutter-test` and `mutation-test` run the suite through
-`qg_isolated`.
+Every driver in the list above runs both. Every Dart tool runs in the sandbox: `flutter-test` through
+`qg_isolated`, the others through `qg_tool`. `dart pub get` runs outside it.
 
 **Constraint: `qg baseline` never measures the caller's checkout with these drivers.** In a repo that
 measures commits (no `guard_measure_worktree: false`), `bin/guard.sh baseline` measures a detached
@@ -94,18 +95,21 @@ the root one, skipping `.dart_tool`, `build` and `.git`. Each one missing from `
 `status: error` on a mismatch. It deletes every `DEPS.md` under `paths=` before the run.
 
 **`flutter-test` runs once per run and target:** both rows read one shared summary from `QG_RUN_DIR`.
-The command is `<root>/bin/flutter test --no-pub --coverage --coverage-path <dir>/lcov.info --machine`.
-A `concurrency=<n>` key adds `--concurrency=<n>`. `<dir>` is a `mktemp -d` folder of mode 0700 outside
-`QG_TREE`, deleted after the parse. The parser reads only lines that start with `{`. Coverage counts
-only the libraries some test loads, as the v1 row did: a new file no test imports leaves it unchanged.
+The command is `<shim> test --no-pub --coverage --machine --coverage-path $QG_PRIVATE/lcov.info`.
+A `concurrency=<n>` key adds `--concurrency=<n>`. The sandbox prints `lcov.info` after a `#qg-lcov`
+line that follows the stream, and the driver keeps both in a 0700 folder outside `QG_TREE` until the
+parse. The parser reads only lines that start with `{`. Coverage counts only the libraries some test
+loads, as the v1 row did: a new file no test imports leaves it unchanged.
 
 **`flutter-test` coverage filter:** `include=` and `exclude=` match each `SF:` path after the driver
 strips the `QG_TREE/` prefix and a leading `./`. No `lcov.info`, or LF 0 after the filter, is `status: error`.
 
 **`copydetect` interpreter:** the driver runs
 `$HOME/.cache/<venv-root>/copydetect-<first 12 hex of sha256(requirements)>/bin/python -I` with
-`XDG_CACHE_HOME` unset. The requirements file is read at `QG_CONFIG_REV`. It never takes python from `PATH`. A `venv-root` other than one plain folder
-name is `status: error`.
+`XDG_CACHE_HOME` unset, inside the sandbox. The driver resolves that path under the real `HOME` first,
+and passes the file list as a path, because the sandbox's stdin is `/dev/null`. The requirements file
+is read at `QG_CONFIG_REV`. It never takes python from `PATH`. A `venv-root` other than one plain
+folder name is `status: error`.
 
 **`dart-lock` counts, per base:** it reads the lock and the `pubspec.yaml` beside it from git at
 `QG_TARGET` (the index under commit), never from the tree, which an earlier row's `pub get` may rewrite.
@@ -127,13 +131,11 @@ transitive bump of an unnamed package is not seen; `pubspec.lock` holds no depen
 
 **Constraint: put every `flutter-test` and `mutation-test` row after every other push and baseline
 row in `quality/checks.tsv`.** `guard_run` runs rows in file order, and these two drivers run code the
-commit wrote. That code can write into `QG_RUN_DIR` or the tree and change what a later row reads.
+commit wrote. That code can write its declared tree folders and change what a later row reads.
 
-**Failure mode left open:** the suite runs as the operator's user. While it runs it can forge its own
-`flutter-test` and `mutation-test` values, and it can write files later runs reuse: the pub cache, the
-Flutter SDK, `<git-common-dir>/guard-cache` (a commit-lint runner and its checksum). That plants code
-every later commit and push gate runs. Only an OS sandbox closes it; `bwrap` needs unprivileged user
-namespaces, which this host refuses. Owner: S6.
+**Accepted:** the suite can forge its own `flutter-test` and `mutation-test` values. The sandbox stops
+it writing the pub cache, the SDK beyond its stamps, `QG_RUN_DIR` and `<git-common-dir>/guard-cache`,
+so it plants no code a later gate runs (`vault/architecture/qg-sandbox.md`).
 
 ## `checkstyle`: a runner that is the tool
 

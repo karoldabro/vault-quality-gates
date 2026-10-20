@@ -14,6 +14,6 @@ qg_cases \
     "qg migrate is an unknown subcommand"
 rc=$?
 [ "$rc" -eq 0 ] || exit "$rc"
-left="$(cd "$QG_CHECKS_ROOT" && grep -rnE 'qg_on_from_v1|GUARD_CHECKS_HEADER|GUARD_WHY_FALLBACK|qg_migrate' bin lib templates extend drivers)"
+left="$(cd "$QG_CHECKS_ROOT" && grep -rnE 'qg_on_from_v1|GUARD_CHECKS_HEADER([^_]|$)|GUARD_WHY_FALLBACK|qg_migrate' bin lib templates extend drivers)"
 if [ -n "$left" ]; then printf 'v1 reader code remains:\n%s\n' "$left"; exit 1; fi
 printf 'no v1 reader code remains\n'

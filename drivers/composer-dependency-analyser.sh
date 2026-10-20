@@ -27,7 +27,7 @@ produce() {
 
 case "${1:-}" in
     describe)
-        printf '{"name":"composer-dependency-analyser","summary":"composer-dependency-analyser: counts one class of dependency issue","requires":["jq"],"needs_tree":true}\n' ;;
+        printf '{"name":"composer-dependency-analyser","summary":"composer-dependency-analyser: counts one class of dependency issue","requires":["jq"],"needs_tree":true,"sandbox":false,"writes":[]}\n' ;;
     explain)
         case "${2:-}" in
             cda.shadow) printf 'Code uses a package that composer.json does not require. Add it to require, or stop using it.\n' ;;

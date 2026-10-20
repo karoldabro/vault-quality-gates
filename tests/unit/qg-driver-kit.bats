@@ -39,11 +39,73 @@ kit() { bash -c ". $KIT; $1"; }
     [ "$status" -eq 3 ] && [[ "$output" == *'outside the measured tree'* ]]
 }
 
-@test "qg_tool calls a runner as <runner> <tree> <cache> <argv>" {
-    printf '%s\n' '#!/usr/bin/env bash' 'printf "%s|" "$@" > "$RUNNER_LOG"' > "$WORK/runner"; chmod +x "$WORK/runner"
-    RUNNER_LOG="$WORK/log" QG_RUNNER="$WORK/runner" run kit 'qg_tool - 0 vendor/bin/x a "b c"'
+@test "qg_tool calls a runner as <runner> <tree> <cache> <sandbox prefix> <argv>" {
+    printf '%s\n' '#!/usr/bin/env bash' 'printf "%s|" "$@"; shift 2; exec "$@"' > "$WORK/runner"; chmod +x "$WORK/runner"
+    QG_RUNNER="$WORK/runner" run kit 'qg_tool - 0 true a "b c"'
     [ "$status" -eq 0 ]
-    [ "$(cat "$WORK/log")" = "${TREE}|${WORK}/cache|vendor/bin/x|a|b c|" ]
+    [[ "$(cat "$QG_OUT/stdout")" == "${TREE}|${WORK}/cache|/usr/bin/env|-i|"*"|/code/bin/qg-sandbox|"*"|--|true|a|b c|" ]]
+}
+
+# runner_tool — a runner that writes the tree before it runs its argv, and a tool in the tree that
+# writes the tree and a file outside it, then prints its count.
+runner_tool() {
+    { printf '#!/usr/bin/env bash\n'
+      printf 'tree="$1"; shift 2\necho prepared > "$tree/prepared" && echo "runner wrote the tree"\n'
+      printf 'cd "$tree" && exec "$@"\n'
+    } > "$WORK/runner"
+    { printf '#!/usr/bin/env bash\n'
+      printf 'echo x > tool-wrote.txt 2>/dev/null || echo "tool tree write refused"\n'
+      printf 'echo x > %q 2>/dev/null || echo "tool outside write refused"\n' "$WORK/escaped"
+      printf 'echo 7\n'
+    } > "$TREE/tool"
+    chmod +x "$WORK/runner" "$TREE/tool"
+}
+
+@test "qg_tool runs a sandboxed driver's runner outside the sandbox and the tool it starts inside" {
+    runner_tool
+    QG_RUNNER="$WORK/runner" run kit 'qg_tool - 0 ./tool || { echo "ERR: $QG_ERROR"; exit 3; }; echo "armed=$QG_SANDBOX_ARMED"'
+    [ "$status" -eq 0 ]
+    [ -e "$TREE/prepared" ]
+    [ ! -e "$TREE/tool-wrote.txt" ] && [ ! -e "$WORK/escaped" ]
+    [ "$(cat "$QG_OUT/stdout")" = $'runner wrote the tree\ntool tree write refused\ntool outside write refused\n7' ]
+    [[ "$output" == *'armed=1'* ]]
+    # The control: unsandboxed, the same tool writes both files, so the sandbox is what stopped it.
+    QG_SANDBOX=0 QG_RUNNER="$WORK/runner" run kit 'qg_tool - 0 ./tool'
+    [ "$status" -eq 0 ] && [ -e "$TREE/tool-wrote.txt" ] && [ -e "$WORK/escaped" ]
+}
+
+@test "a runner that writes the tree and then runs the tool still measures, and the tool cannot write outside its grants" {
+    runner_tool
+    QG_RUNNER="$WORK/runner" QG_SANDBOX_WRITES=coverage run kit 'qg_tool - 0 sh -c "./tool; echo c > coverage/c" \
+        && qg_result probe measured "$(tail -1 "$QG_OUT/stdout")" count - - || qg_fail probe count "$QG_ERROR"'
+    [ "$(jq -r .status "$QG_OUT/result.json")" = measured ]
+    [ "$(jq -r .metric "$QG_OUT/result.json")" = 7 ]
+    [ -e "$TREE/prepared" ] && [ -s "$TREE/coverage/c" ]
+    [ ! -e "$TREE/tool-wrote.txt" ] && [ ! -e "$WORK/escaped" ]
+}
+
+@test "a runner whose sandbox never arms is status error and its tool never runs" {
+    runner_tool
+    printf '#!/bin/sh\nexec %q --max-abi 5 "$@"\n' /code/bin/qg-sandbox > "$WORK/weak"; chmod +x "$WORK/weak"
+    QG_RUNNER="$WORK/runner" run kit "QG_SANDBOX_BIN=$WORK/weak; qg_tool - 0 sh -c 'echo ran > $WORK/sentinel' || { echo \"ERR: \$QG_ERROR\"; exit 3; }"
+    [ "$status" -eq 3 ]
+    [[ "$output" == *'ERR: qg-sandbox: the sandbox did not arm'* ]]
+    [ ! -e "$WORK/sentinel" ]
+}
+
+@test "qg_tool refuses a shell function as the program" {
+    run kit 'tool() { echo ran > "$QG_TREE/ran"; }; qg_tool - 0 tool || { echo "ERR: $QG_ERROR"; exit 3; }'
+    [ "$status" -eq 3 ]
+    [[ "$output" == *'ERR: qg_tool: tool is a shell function'* ]]
+    [ ! -e "$TREE/ran" ]
+}
+
+@test "qg_tool adds its report folder to the declared writes and nothing else in the tree" {
+    printf '%s\n' '#!/usr/bin/env bash' 'echo r > reports/r.json; echo x > other.txt' > "$TREE/tool"; chmod +x "$TREE/tool"
+    run kit 'qg_tool reports/r.json "0 1" ./tool || { echo "ERR: $QG_ERROR"; exit 3; }'
+    [ "$status" -eq 0 ]
+    [ -s "$TREE/reports/r.json" ]
+    [ ! -e "$TREE/other.txt" ]
 }
 
 @test "qg_files keeps changed files matching the ERE, include= and not exclude=, present in the tree" {
@@ -112,15 +174,20 @@ kit() { bash -c ". $KIT; $1"; }
     gate_repo "$WORK/repo"
     mkdir -p quality/drivers
     printf '%s\n' '#!/usr/bin/env bash' 'case "$1" in describe) echo "{\"name\":\"rd\",\"requires\":[],\"needs_tree\":false}";;' \
-        '  run) echo "$QG_RUN_DIR" >> "$RUNLOG"; echo "{\"schema\":\"qg.result/1\",\"status\":\"measured\",\"metric\":0,\"findings\":[],\"error\":null}" > "$QG_OUT/result.json";;' \
+        '  run) echo "run-dir $QG_RUN_DIR"; echo "{\"schema\":\"qg.result/1\",\"status\":\"measured\",\"metric\":0,\"findings\":[],\"error\":null}" > "$QG_OUT/result.json";;' \
         '  *) exit 2;; esac' > quality/drivers/rd.sh
     chmod +x quality/drivers/rd.sh
     { printf 'id\ton\tkind\tdriver\targs\tdirection\tthreshold\tgate\twhy\n'
       printf 'r\tpush\tdiff\trd\t-\tdown\t0\trefuse\ta row that logs its run dir\n'; } > quality/checks.tsv
     commit_all rd
-    export RUNLOG="$WORK/runlog"
+    # The repo driver runs sandboxed, so it prints its run dir into the row log the engine keeps.
+    local log
+    log="$(git rev-parse --path-format=absolute --git-common-dir)/qg-last/r/output.txt"
+    RUNLOG="$WORK/runlog"
     QG_RUN_DIR=/tmp/inherited GUARD_SHA="$(git rev-parse HEAD)" run bash /code/bin/guard.sh release refs/heads/x
+    sed -n 's/^run-dir //p' "$log" > "$RUNLOG"
     GUARD_SHA="$(git rev-parse HEAD)" run bash /code/bin/guard.sh release refs/heads/x
+    sed -n 's/^run-dir //p' "$log" >> "$RUNLOG"
     [ "$(sort -u "$RUNLOG" | wc -l)" -eq 2 ]
     ! grep -q '^/tmp/inherited$' "$RUNLOG"
     while read -r d; do [ ! -e "$d" ]; done < "$RUNLOG"

@@ -35,6 +35,8 @@ setup() {
     use_stream flutter-test-pass.jsonl
     cp "$FIX/lcov.info" "$WORK/lcov"
     printf '0\n' > "$WORK/rc"
+    # Cases run unsandboxed so the fakes can record; the sandbox case below runs it.
+    export QG_SANDBOX=0
 }
 
 teardown() {
@@ -42,27 +44,32 @@ teardown() {
     return 0
 }
 
+# The driver runs flutter through the shim of qg_dart_env, which calls
+# `dart --disable-dart-dev --packages=<cfg> <snapshot> <argv>`; the fake dart hands those calls to the
+# fake flutter tool. Records written under the sandbox fail quietly; the stream and lcov still flow.
 fake_sdk() {
     mkdir -p "$1/bin/cache/dart-sdk/bin"
     { printf '#!/usr/bin/env bash\nW=%q\n' "$WORK"; cat <<'EOF'
-printf '%s\n' "$*" >> "$W/flutter.argv"
-env > "$W/flutter.env"
-pwd > "$W/flutter.pwd"
+printf '%s\n' "$*" >> "$W/flutter.argv" 2>/dev/null
+env > "$W/flutter.env" 2>/dev/null
+pwd > "$W/flutter.pwd" 2>/dev/null
 cov=''
 while [ $# -gt 0 ]; do [ "$1" = --coverage-path ] && cov="$2"; shift; done
-printf '%s\n' "$cov" > "$W/flutter.cov"
+printf '%s\n' "$cov" > "$W/flutter.cov" 2>/dev/null
 [ -n "$cov" ] && [ -r "$W/lcov" ] && cp "$W/lcov" "$cov"
 [ -r "$W/stream" ] && sed "s#/TREE#${PWD}#g" "$W/stream"
 [ -r "$W/extra.sh" ] && . "$W/extra.sh"
 exit "$(cat "$W/rc" 2>/dev/null || printf 0)"
 EOF
-    } > "$1/bin/flutter"
-    { printf '#!/usr/bin/env bash\nW=%q\n' "$WORK"; cat <<'EOF'
+    } > "$1/flutter-tool"
+    printf '#!/usr/bin/env bash\nexec %q "$@"\n' "$1/flutter-tool" > "$1/bin/flutter"
+    { printf '#!/usr/bin/env bash\nW=%q\nT=%q\n' "$WORK" "$1/flutter-tool"; cat <<'EOF'
+if [ "${1:-}" = --disable-dart-dev ]; then shift 3; exec "$T" "$@"; fi
 printf '%s|%s\n' "$PWD" "$*" >> "$W/dart.argv"
 exit "$(cat "$W/dart.rc" 2>/dev/null || printf 0)"
 EOF
     } > "$1/bin/cache/dart-sdk/bin/dart"
-    chmod +x "$1/bin/flutter" "$1/bin/cache/dart-sdk/bin/dart"
+    chmod +x "$1/flutter-tool" "$1/bin/flutter" "$1/bin/cache/dart-sdk/bin/dart"
 }
 
 use_stream() { cp "$FIX/$1" "$WORK/stream"; }
@@ -104,12 +111,12 @@ lcov_block() {  # lcov_block <SF path> <LH> <LF>
     [ "$(result '.findings | length')" = 0 ]
 }
 
-@test "flutter gets test --no-pub --coverage --coverage-path <private dir>/lcov.info --machine, in the tree, after an offline pub get" {
+@test "flutter gets test --no-pub --coverage --machine --coverage-path <private dir>/lcov.info, in the tree, after an offline pub get" {
     measure metric=failed
     local cov
     cov="$(cat "$WORK/flutter.cov")"
-    [ "$(cat "$WORK/flutter.argv")" = "test --no-pub --coverage --coverage-path $cov --machine" ]
-    [[ "$cov" == */lcov.info ]]
+    [ "$(cat "$WORK/flutter.argv")" = "test --no-pub --coverage --machine --coverage-path $cov" ]
+    [ "$cov" = "$(sed -n 's/^QG_PRIVATE=//p' "$WORK/flutter.env")/lcov.info" ]
     [[ "$cov" != "$QG_TREE"* ]]
     [ ! -e "$(dirname "$cov")" ]
     [ "$(cat "$WORK/flutter.pwd")" = "$QG_TREE" ]
@@ -118,7 +125,21 @@ lcov_block() {  # lcov_block <SF path> <LH> <LF>
 
 @test "concurrency=4 adds --concurrency=4 after --machine" {
     measure 'metric=failed concurrency=4'
-    [[ "$(cat "$WORK/flutter.argv")" == *' --machine --concurrency=4' ]]
+    [[ "$(cat "$WORK/flutter.argv")" == *' --machine --concurrency=4 '* ]]
+}
+
+@test "the suite runs sandboxed: it measures, and writes only .dart_tool, build and its private folder" {
+    unset QG_SANDBOX
+    export QG_SANDBOX_WRITES="$("$DRIVER" describe | jq -r '.writes | join(" ")')"
+    printf '%s\n' 'echo x > build/ok; echo x > "$W/escaped" 2>/dev/null; echo x > lib/mutated.dart 2>/dev/null' > "$WORK/extra.sh"
+    use_stream flutter-test-fail.jsonl; printf '1\n' > "$WORK/rc"
+    measure metric=failed
+    [ "$(result .status)" = measured ]
+    [ "$(result .metric)" = 1 ]
+    measure metric=coverage
+    [ "$(result .status)" = measured ]
+    [ -e "$QG_TREE/build/ok" ]
+    [ ! -e "$WORK/escaped" ] && [ ! -e "$QG_TREE/lib/mutated.dart" ] && [ ! -e "$WORK/flutter.argv" ]
 }
 
 @test "the recorded failing stream at exit 1 measures 1, with the failing test's file, line and name" {
@@ -273,12 +294,13 @@ lcov_block() {  # lcov_block <SF path> <LH> <LF>
     [ "$(result .metric)" = 1 ]
 }
 
-@test "the suite sees no QG_* or GUARD_* variable, no caller PUB_CACHE, and a TMPDIR outside the tree that is removed" {
-    export GUARD_PROBE=1 QG_PROBE=1 PUB_CACHE="$WORK/pub" XDG_CACHE_HOME="$WORK/xdg"
+@test "the suite sees no GUARD_* or other QG_* variable, no caller PUB_CACHE, and a TMPDIR outside the tree that is removed" {
+    export GUARD_PROBE=1 QG_PROBE=1 QG_SANDBOX_WRITES=lib PUB_CACHE="$WORK/pub" XDG_CACHE_HOME="$WORK/xdg"
     measure metric=failed
     [ "$(result .status)" = measured ]
     [ -s "$WORK/flutter.env" ]
-    [ -z "$(grep -E '^(QG_|GUARD_|PUB_CACHE=|XDG_CACHE_HOME=)' "$WORK/flutter.env")" ]
+    [ -z "$(grep -E '^(QG_PROBE|QG_SANDBOX|GUARD_|XDG_CACHE_HOME=)' "$WORK/flutter.env")" ]
+    grep -qx "PUB_CACHE=$HOME/.pub-cache" "$WORK/flutter.env"
     grep -qx "FLUTTER_ROOT=$WORK/sdk" "$WORK/flutter.env"
     local tmp
     tmp="$(sed -n 's/^TMPDIR=//p' "$WORK/flutter.env")"

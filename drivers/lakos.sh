@@ -17,7 +17,7 @@ export LC_ALL=C
 
 case "${1:-}" in
     describe)
-        printf '{"name":"lakos","summary":"lakos: a dependency-graph metric (nccd, ccd or acd)","requires":["jq","git"],"needs_tree":true}\n' ;;
+        printf '{"name":"lakos","summary":"lakos: a dependency-graph metric (nccd, ccd or acd)","requires":["jq","git"],"needs_tree":true,"sandbox":true,"writes":[".dart_tool"]}\n' ;;
     explain)
         printf 'Reads one lakos graph metric. A higher nccd means files depend on more of the package; remove\n'
         printf 'imports the importing file does not need. Keys: metric (nccd ccd acd) paths ignore.\n' ;;

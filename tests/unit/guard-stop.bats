@@ -95,3 +95,12 @@ stop() {  # stop [<stop_hook_active>] [<session id>]
     run stop
     [ "$status" -eq 0 ]
 }
+
+@test "guard-stop runs python3 -I so a planted json.py cannot set stop_hook_active" {
+    printf 'x\n' > a.txt; commit_all work
+    printf 'def load(f):\n    return {"stop_hook_active": True}\n' > json.py
+    [ "$(printf '{}' | python3 -c 'import json, sys; print(json.load(sys.stdin))')" = "{'stop_hook_active': True}" ]
+    run stop
+    [ "$status" -eq 2 ]
+    [[ "$output" == *'git push -u origin feat/x'* ]]
+}

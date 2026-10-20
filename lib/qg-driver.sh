@@ -5,6 +5,8 @@
 
 # shellcheck source=qg-row.sh
 . "$(dirname "${BASH_SOURCE[0]}")/qg-row.sh"
+# shellcheck source=qg-sandbox.sh
+. "$(dirname "${BASH_SOURCE[0]}")/qg-sandbox.sh"
 
 # Built-in drivers are found from here; a caller that sourced this file directly may not have set it.
 : "${GUARD_LIB_DIR:=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
@@ -99,12 +101,23 @@ guard_driver_needs_tree() {
 # guard_run_driver <row> <base> <files> <tmp> -> value on stdout, or exit 2 with the reason on
 # stderr. Runs `<driver> run` with the environment of vault/architecture/qg-driver-contract.md
 # and reads <tmp>/out/result.json. The engine alone decides pass or fail, from `metric`.
+# A built-in driver gets QG_SANDBOX and QG_SANDBOX_WRITES from its describe: only `"sandbox": false`
+# opts out, and a describe that cannot be read means sandboxed. A repo driver's whole run goes
+# through qg_sandbox_run with QG_OUT writable, whatever its describe says.
 guard_run_driver() {
-    local row="$1" base="$2" files="$3" tmp="$4" driver args path runner status=0 r
+    local row="$1" base="$2" files="$3" tmp="$4" driver args path runner status=0 r desc repo=''
     driver="$(guard_row_field "$row" driver)"
     args="$(guard_substitute "$(guard_row_field "$row" args)" "$base" "$files")"
     path="$(guard_driver_path "$driver" "$tmp")" || { guard_err "$path"; return 2; }
-    unset QG_RUNNER
+    unset QG_RUNNER QG_SANDBOX_SDK
+    export QG_SANDBOX=1 QG_SANDBOX_WRITES=''
+    if guard_driver_builtin "$driver" >/dev/null; then
+        desc="$("$path" describe 2>/dev/null)"
+        [ "$(jq -r 'if .sandbox == false then 0 else 1 end' <<<"$desc" 2>/dev/null)" != 0 ] || QG_SANDBOX=0
+        QG_SANDBOX_WRITES="$(jq -r '.writes // [] | if type == "array" then map(tostring) | join(" ") else empty end' <<<"$desc" 2>/dev/null)"
+    else
+        repo=1
+    fi
     if runner="$(guard_args_kv "$args" runner)"; then
         guard_cfg_copy "$runner" "$tmp/runner" || { guard_err "runner ${runner} is not committed at the config revision"; return 2; }
         export QG_RUNNER="$tmp/runner"
@@ -114,9 +127,12 @@ guard_run_driver() {
     QG_ARGS="$args" QG_OUT="$tmp/out" QG_ROW="$(guard_row_field "$row" id)" QG_BASE="$base" QG_FILES="$files" \
     QG_BASES="${GUARD_BASES:-$base}" QG_TARGET="${GUARD_TARGET:-${GUARD_SHA:-HEAD}}" QG_REPO="$REPO_ROOT" \
     QG_TREE="${GUARD_TREE_DIR:-$PWD}" QG_CACHE="${GUARD_CACHE_DIR:-$(git rev-parse --path-format=absolute --git-common-dir)/guard-cache}" \
-        "$path" run > "$tmp/output" 2>&1 || status=$?
-    unset QG_RUNNER
+        guard_driver_launch "$repo" "$path" > "$tmp/output" 2>&1 || status=$?
+    unset QG_RUNNER QG_SANDBOX QG_SANDBOX_WRITES
+    # The row log keeps the sandbox record last, inside the tail the engine keeps.
+    [ ! -s "$tmp/out/.qg-sandbox.log" ] || sort -u "$tmp/out/.qg-sandbox.log" >> "$tmp/output"
     r="$tmp/out/result.json"
+    [ -z "$QG_SANDBOX_ERROR" ] || { guard_err "$QG_SANDBOX_ERROR"; return 2; }
     [ "$status" -eq 0 ] || { guard_err "driver ${driver} exited ${status}"; return 2; }
     [ -s "$r" ] || { guard_err "driver ${driver} wrote no result.json"; return 2; }
     jq -e 'type == "object"' "$r" >/dev/null 2>&1 || { guard_err "driver ${driver} wrote a result.json that is not a JSON object"; return 2; }
@@ -126,6 +142,15 @@ guard_run_driver() {
     [ "$(jq -r '.status' "$r")" = measured ] || { guard_err "driver ${driver} reports status $(jq -r '.status' "$r")"; return 2; }
     jq -r 'if (.metric | type) == "number" then .metric else "x" end' "$r" | guard_number_line \
         || { guard_err "driver ${driver} reports metric $(jq -c '.metric' "$r"), which is not a number"; return 2; }
+}
+
+# guard_driver_launch <repo driver: 1 or empty> <path> -> runs `<path> run`. A repo driver runs whole
+# inside qg_sandbox_run with QG_OUT writable; a built-in runs directly, since its qg_tool calls are
+# sandboxed. Sets QG_SANDBOX_ERROR when the repo driver never ran.
+guard_driver_launch() {
+    QG_SANDBOX_ERROR=''
+    if [ -n "$1" ]; then QG_SANDBOX=1 QG_SANDBOX_WRITES='' qg_sandbox_run --out -- "$2" run
+    else "$2" run; fi
 }
 
 # guard_number_line -> reads one number from stdin and prints it in plain decimal; exit 2 for

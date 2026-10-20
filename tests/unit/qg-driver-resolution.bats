@@ -108,3 +108,96 @@ v2_checks() {  # v2_checks <driver>
     [ "$status" -eq 1 ]
     [[ "$output" == *'gate-config-invalid'*'empty token'* ]]
 }
+
+# probe_plugin <describe json> — a copy of the plugin under $WORK/plugin whose built-in driver
+# `probe` has that describe and prints the QG_SANDBOX and QG_SANDBOX_WRITES it was started with.
+probe_plugin() {
+    mkdir -p "$WORK/plugin/drivers"
+    cp -R /code/lib /code/bin "$WORK/plugin/"
+    { printf '#!/usr/bin/env bash\n'
+      printf 'case "$1" in describe) printf "%%s\\n" %q;;\n' "$1"
+      printf '  run) echo "sandbox=${QG_SANDBOX-unset} writes=${QG_SANDBOX_WRITES-unset}"\n'
+      printf '       echo "{\\"schema\\":\\"qg.result/1\\",\\"status\\":\\"measured\\",\\"metric\\":0,\\"findings\\":[],\\"error\\":null}" > "$QG_OUT/result.json";;\n'
+      printf '  *) exit 2;; esac\n'
+    } > "$WORK/plugin/drivers/probe.sh"
+    chmod +x "$WORK/plugin/drivers/probe.sh"
+}
+
+# run_probe — guard_run_driver on one probe row; prints the driver's output.
+run_probe() {
+    local row tmp
+    row="$(printf '%s\t' r commit diff probe - down 0 refuse why - - -)"
+    tmp="$(mktemp -d)"
+    bash -c '. "$1/lib/qg-driver.sh"; REPO_ROOT="$PWD"; guard_run_driver "$2" HEAD /dev/null "$3" >/dev/null && cat "$3/output"' \
+        _ "$WORK/plugin" "$row" "$tmp"
+}
+
+@test "guard_run_driver exports QG_SANDBOX and QG_SANDBOX_WRITES from describe" {
+    export QG_SANDBOX=0 QG_SANDBOX_WRITES=.git
+    probe_plugin '{"name":"probe","needs_tree":false,"sandbox":false,"writes":["coverage","node_modules/.vite"]}'
+    [ "$(run_probe)" = 'sandbox=0 writes=coverage node_modules/.vite' ]
+    probe_plugin '{"name":"probe","needs_tree":false}'
+    [ "$(run_probe)" = 'sandbox=1 writes=' ]
+    probe_plugin '{"name":"probe","needs_tree":false,"sandbox":"no","writes":"coverage"}'
+    [ "$(run_probe)" = 'sandbox=1 writes=' ]
+    probe_plugin 'not json'
+    [ "$(run_probe)" = 'sandbox=1 writes=' ]
+}
+
+@test "a repo driver's run executes inside the sandbox with QG_OUT writable" {
+    mkdir -p quality/drivers
+    { printf '#!/usr/bin/env bash\n'
+      printf 'case "$1" in describe) echo "{\\"name\\":\\"mine\\",\\"requires\\":[],\\"needs_tree\\":false}";;\n'
+      printf '  run) echo x > "$QG_TREE/escaped" || echo "tree write refused"\n'
+      printf '       echo "{\\"schema\\":\\"qg.result/1\\",\\"status\\":\\"measured\\",\\"metric\\":0,\\"findings\\":[],\\"error\\":null}" > "$QG_OUT/result.json";;\n'
+      printf '  *) exit 2;; esac\n'
+    } > quality/drivers/mine.sh
+    chmod +x quality/drivers/mine.sh
+    v2_checks mine
+    commit_all custom
+    printf 'x\n' > app/b.php; git add app/b.php
+    run bash /code/bin/guard.sh commit
+    [ "$status" -eq 0 ]
+    [ ! -e escaped ]
+    log="$(git rev-parse --path-format=absolute --git-common-dir)/qg-last/custom/output.txt"
+    grep -q 'tree write refused' "$log"
+    grep -qx 'sandbox: armed' "$log"
+}
+
+@test "a repo driver declaring sandbox false still runs sandboxed" {
+    mkdir -p quality/drivers
+    { printf '#!/usr/bin/env bash\n'
+      printf 'case "$1" in describe) echo "{\\"name\\":\\"mine\\",\\"requires\\":[],\\"needs_tree\\":false,\\"sandbox\\":false}";;\n'
+      printf '  run) echo x > "$QG_TREE/escaped"\n'
+      printf '       echo "{\\"schema\\":\\"qg.result/1\\",\\"status\\":\\"measured\\",\\"metric\\":0,\\"findings\\":[],\\"error\\":null}" > "$QG_OUT/result.json";;\n'
+      printf '  *) exit 2;; esac\n'
+    } > quality/drivers/mine.sh
+    chmod +x quality/drivers/mine.sh
+    v2_checks mine
+    commit_all custom
+    printf 'x\n' > app/b.php; git add app/b.php
+    run bash /code/bin/guard.sh commit
+    [ "$status" -eq 0 ]
+    [ ! -e escaped ]
+}
+
+@test "every built-in describe's sandbox and writes match the rules table" {
+    local d name want got
+    declare -A table=(
+        [shell]='false|' [checkstyle]='false|' [phpstan]='false|' [phpmd]='false|' [phpcs]='false|' [pint]='false|'
+        [phpinsights]='false|' [composer-dependency-analyser]='false|' [phpunit]='false|' [infection]='false|'
+        [jscpd]='false|' [jscpd-added]='false|' [doc-lint]='false|'
+        [vitest]='true|coverage quality-reports .nuxt node_modules/.vite node_modules/.cache'
+        [stryker]='true|.stryker-tmp reports .nuxt node_modules/.vite node_modules/.cache'
+        [nuxt-typecheck]='true|.nuxt node_modules/.cache' [eslint]='true|'
+        [flutter-test]='true|.dart_tool build' [mutation-test]='true|lib test .dart_tool build reports'
+        [dart-analyze]='true|.dart_tool' [dart-format]='true|.dart_tool' [dart-code-linter]='true|.dart_tool'
+        [lakos]='true|.dart_tool' [layerlens]='true|.dart_tool'
+    )
+    for d in /code/drivers/*.sh; do
+        name="$(basename "$d" .sh)"
+        want="${table[$name]:-true|}"
+        got="$("$d" describe | jq -r '"\(.sandbox)|\(.writes | join(" "))"')"
+        [ "$got" = "$want" ] || { echo "$name: $got, want $want"; return 1; }
+    done
+}

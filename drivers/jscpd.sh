@@ -19,7 +19,7 @@ export LC_ALL=C
 
 case "${1:-}" in
     describe)
-        printf '{"name":"jscpd","summary":"jscpd: duplicated-line percentage or clone count of the repo","requires":["jq","pnpm"],"needs_tree":true}\n' ;;
+        printf '{"name":"jscpd","summary":"jscpd: duplicated-line percentage or clone count of the repo","requires":["jq","pnpm"],"needs_tree":true,"sandbox":false,"writes":[]}\n' ;;
     explain)
         printf 'Finds copied blocks with jscpd across the scanned paths. Extract the shared code into one function,\n'
         printf 'composable or module. Keys: metric (percentage, clones) paths version bin config min-lines min-tokens\n'

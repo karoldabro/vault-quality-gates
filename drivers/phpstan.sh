@@ -25,7 +25,7 @@ findings() {  # findings <phpstan json> -> qg.result/1 findings on stdout
 
 case "${1:-}" in
     describe)
-        printf '{"name":"phpstan","summary":"PHPStan static analysis: counts every error, file-less ones included","requires":["jq"],"needs_tree":true}\n' ;;
+        printf '{"name":"phpstan","summary":"PHPStan static analysis: counts every error, file-less ones included","requires":["jq"],"needs_tree":true,"sandbox":false,"writes":[]}\n' ;;
     explain)
         if [ "${2:-}" = phpstan.fileless ]; then
             printf 'An error PHPStan reports without a file: a boot failure, a bad config, or an ignore pattern in\n'

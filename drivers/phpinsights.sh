@@ -28,7 +28,7 @@ produce() {
 
 case "${1:-}" in
     describe)
-        printf '{"name":"phpinsights","summary":"PHP Insights: one category score (code, complexity, architecture or style)","requires":["jq"],"needs_tree":true}\n' ;;
+        printf '{"name":"phpinsights","summary":"PHP Insights: one category score (code, complexity, architecture or style)","requires":["jq"],"needs_tree":true,"sandbox":false,"writes":[]}\n' ;;
     explain)
         if [ -n "${2:-}" ]; then
             printf 'PHP Insights check %s. Fix the code it names; the score rises as these issues go.\n' "$2"

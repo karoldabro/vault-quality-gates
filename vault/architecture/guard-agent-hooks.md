@@ -1,0 +1,82 @@
+---
+type: architecture
+project: vault-quality-gates
+slug: guard-agent-hooks
+status: current
+tags: [quality, gates, contract, agent-hooks]
+---
+
+# The Claude Code guards: the three entries, their install, and what they deny
+
+Three hooks in `templates/claude-hooks/` stop an agent from skipping, disabling or forging the
+gate. They run in place from the plugin checkout by absolute path, never copied.
+
+## The three entries
+
+| entry | event and matcher | does |
+|---|---|---|
+| `guard-bash.sh` | `PreToolUse`, `Bash` | denies a command that skips, disables or forges the gate; rules in `guard_bash.py`, tokeniser in `shell_lexer.py` |
+| `guard-edit.sh` | `PreToolUse`, `Edit\|Write\|MultiEdit\|NotebookEdit` | denies an edit to a git dir, a Claude settings file, a git config file, gate configuration, the plugin or a global write denial |
+| `guard-stop.sh` | `Stop`, timeout 30 | blocks the end of a turn while a gated repo has commits on no remote |
+
+An entry is one of the three when its command's file name is `guard-bash.sh`, `guard-edit.sh` or
+`guard-stop.sh`. Install replaces every such entry, whatever its folder, and keeps every other
+entry. Remove drops exactly those three. A settings file that is not valid JSON is left unchanged,
+and the command exits 2. With several targets, install and remove check every target first.
+
+| command | target |
+|---|---|
+| `qg hooks install --claude --user [--config-dir <dir>]...` | `~/.claude/settings.json` and each `<dir>/settings.json`, so every session in every repo runs the guards. The commands name the main worktree of the plugin. It also writes the machine tool-path file (`vault/architecture/guard-environment.md`). It refuses when the plugin checkout is a linked worktree |
+| `qg hooks remove --claude --user [--config-dir <dir>]...` | the same files |
+| `qg hooks status --user [--config-dir <dir>]...` | one line `installed\|absent <entry> <file>` per entry, for `~/.claude`, `~/.claude-factory` when it exists, and each `<dir>`; exit 0; allowed for an agent |
+| `qg hooks install --claude`, `qg hooks remove --claude` | `<repo>/.claude/settings.json`; remove keeps the git hooks |
+
+The `--user` forms run in `bin/qg` itself, because only `qg` holds the caller's `PATH`
+(`QG_CALLER_PATH`). `guard.sh hooks install --claude --user` exits 2 naming the `qg` command.
+
+## What the guards deny
+
+**Plugin files.** Both hooks protect the main worktree of the checkout they run from. Any linked
+worktree of the plugin stays editable, the one the hooks run from included.
+
+**Global write denials.** Both hooks deny a write or an edit under these paths, compared by the
+spelled and the resolved path (`write_denials.py`):
+
+- `~/.pub-cache`;
+- any folder holding `bin/internal/engine.version` and `packages/flutter_tools`, a Flutter SDK;
+- a direct child of `~/.cache` holding a `copydetect-*` folder;
+- `~/.bashrc`, `~/.bash_profile`, `~/.bash_login`, `~/.profile`, `~/.zshrc`, `~/.zshenv`, `~/.zprofile`;
+- every absolute `PATH` folder before `/usr/bin`, or every one when `PATH` has no `/usr/bin`;
+- every folder in the machine tool-path file.
+
+`guard-bash.sh` also matches these paths in interpreter code (`-c`, `-e`, heredocs, script files),
+spelled with `~`, `$HOME`, `${HOME}` or absolutely. It also checks write targets: `tar -C`,
+`--directory=`, `unzip -d`, `curl -o`, `--output`, `--output-dir`, `wget -O`, `--output-document`,
+`-P`, `dd of=` and the folder of `git clone <url> <dir>`. A bare `cd` moves the checked cwd to `HOME`.
+
+**Denied names.** `guard-bash.sh` denies assigning, exporting, declaring or passing through `env`
+any of `BASH_ENV`, `SHELLOPTS`, `BASHOPTS`, `BASH_FUNC_*`, `GIT_REPLACE_REF_BASE`,
+`GIT_NO_REPLACE_OBJECTS`, `GIT_ALTERNATE_OBJECT_DIRECTORIES`, `GIT_OBJECT_DIRECTORY`,
+`GIT_EXTERNAL_DIFF`, `LD_PRELOAD`, `LD_LIBRARY_PATH` and `LD_AUDIT`. It denies any name that is no
+plain identifier, and any change to `CLAUDECODE` or `AI_AGENT`. `env` is checked for every word
+holding `=` before its program. `export -f` and `declare` or `typeset` with both `-f` and `-x` are
+denied; `declare -f`, `declare -F` and `declare +x -f` are allowed.
+
+**Narrowed checks.** Code patterns that can run git or rewrite files (`RISKY_CODE`) and words holding
+`claudecode` or `ai_agent` deny only when the same input also names git, `.git`, a hook or the
+plugin. The input includes every script it runs or sources. `RISKY_CODE` is advisory, because a
+script file the agent writes is never scanned for it.
+
+**Allowed.** `>&<digit>` and `>&-` duplicate or close a descriptor and are never write targets. An
+installed program, whose real path is under `~/.claude/plugins/cache`, may name the plugin path; its
+redirects and the commands chained to it are still checked.
+
+## How the guards read scripts
+
+`guard-bash.sh` reads every script a command runs or sources and scans it like the command. Two kinds
+run unscanned: a committed, unmodified script under `guard_protected_paths`, and code installed under
+`~/.claude/plugins/cache/`. Both hooks deny an agent any write or edit there, which is what makes
+that code safe to run as installed. Every hook runs `python3 -I`, so a module planted in the cwd or
+a `PYTHONPATH` never loads.
+
+The `qg` subcommands `guard-bash.sh` lets an agent run are listed in `vault/architecture/qg-cli.md`.

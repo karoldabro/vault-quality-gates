@@ -6,6 +6,7 @@
 # tests/fixtures/drivers/phpinsights.json, or the recorded crash) and exits $FAKE_RC.
 
 load guard-helpers
+load qg-fakes
 
 DRIVER=/code/drivers/phpinsights.sh
 FIX=/code/tests/fixtures/drivers
@@ -13,6 +14,7 @@ FIX=/code/tests/fixtures/drivers
 setup() {
     export LC_ALL=C
     WORK="$(mktemp -d)"
+    fakes_setup
     unset QG_RUNNER QG_ARGS QG_RUN_DIR CLAUDECODE AI_AGENT
     TREE="$WORK/tree"; mkdir -p "$TREE/vendor/bin" "$WORK/out"
     fake_bin "$TREE/vendor/bin/phpinsights"
@@ -30,6 +32,7 @@ fake_bin() {  # a phpinsights that records its argv, prints $FAKE_OUT and exits 
     printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" >> "${FAKE_ARGV:-/dev/null}"' \
         '[ -r "${FAKE_OUT:-}" ] && cat "$FAKE_OUT"' 'exit "${FAKE_RC:-0}"' > "$1"
     chmod +x "$1"
+    fake_bake "$1"
 }
 
 result() { jq -r "$1" "$QG_OUT/result.json"; }

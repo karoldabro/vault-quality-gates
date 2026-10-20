@@ -14,8 +14,11 @@ setup() {
     unset QG_SKIP_REASON CLAUDECODE AI_AGENT
     gate_repo "$WORK/repo"
     mkdir -p quality/drivers
-    # The driver prints 30 numbered lines, writes $RESULT verbatim (when set) and exits $RC.
+    # The driver prints 30 numbered lines, writes $RESULT verbatim (when set) and exits $RC. It runs
+    # sandboxed under an empty environment, so it reads RESULT, RC and DESCRIBE from the file
+    # guard_commit writes, whose path is baked in.
     { printf '#!/usr/bin/env bash\n'
+      printf '[ ! -r %q ] || . %q\n' "$WORK/probe.env" "$WORK/probe.env"
       printf 'case "$1" in describe) printf "%%s\\n" "${DESCRIBE:-{\\"name\\":\\"probe\\",\\"requires\\":[],\\"needs_tree\\":false}}";;\n'
       printf '  run) seq 1 30; [ -n "${RESULT+set}" ] && printf "%%s" "$RESULT" > "$QG_OUT/result.json"; exit "${RC:-0}";;\n'
       printf '  *) exit 2;; esac\n'
@@ -33,16 +36,24 @@ teardown() {
     return 0
 }
 
+# guard_commit — writes the RESULT, RC and DESCRIBE set for this call into $WORK/probe.env, then
+# runs the commit gate.
+guard_commit() {
+    local v
+    for v in RESULT RC DESCRIBE; do [ -z "${!v+set}" ] || printf '%s=%q\n' "$v" "${!v}"; done > "$WORK/probe.env"
+    bash /code/bin/guard.sh commit
+}
+
 last() { printf '%s/qg-last/probe-row' "$(git rev-parse --path-format=absolute --git-common-dir)"; }
 ok_json() { printf '{"schema":"qg.result/1","status":"measured","metric":%s,"findings":[],"error":null}' "$1"; }
 
 @test "a numeric metric is a value: 0, 1.5 and 1e0 pass the ceiling, 6 is refused" {
     local m
     for m in 0 1.5 1e0 5; do
-        RESULT="$(ok_json "$m")" run bash /code/bin/guard.sh commit
+        RESULT="$(ok_json "$m")" run guard_commit
         [ "$status" -eq 0 ] || { echo "metric $m: $output"; return 1; }
     done
-    RESULT="$(ok_json 6)" run bash /code/bin/guard.sh commit
+    RESULT="$(ok_json 6)" run guard_commit
     [ "$status" -eq 1 ]
 }
 
@@ -52,27 +63,29 @@ ok_json() { printf '{"schema":"qg.result/1","status":"measured","metric":%s,"fin
              '{"status":"measured","metric":"3","error":null}' '{"status":"measured","metric":true,"error":null}' \
              '{"status":"measured","error":null}' '{"status":"error","metric":0,"error":null}' \
              '{"status":"measured","metric":0,"error":"the tool crashed"}' '{"status":"done","metric":0,"error":null}'; do
-        RESULT="$r" run bash /code/bin/guard.sh commit
+        RESULT="$r" run guard_commit
         [ "$status" -eq 2 ] && [[ "$output" == *'probe-row'*'could not'* ]] || bad+=$'\n'"[$r] -> $status"
     done
     unset RESULT
-    run bash /code/bin/guard.sh commit
+    run guard_commit
     [[ "$output" == *'wrote no result.json'* ]] || bad+=$'\n'"absent result: $output"
-    RESULT="$(ok_json 0)" RC=3 run bash /code/bin/guard.sh commit
+    RESULT="$(ok_json 0)" RC=3 run guard_commit
     [[ "$output" == *'exited 3'* ]] || bad+=$'\n'"exit 3: $output"
     [ -z "$bad" ] || { printf '%s\n' "$bad"; return 1; }
 }
 
 @test "the error text a driver reports reaches the refusal" {
-    RESULT='{"status":"error","metric":null,"error":"vendor/ does not match composer.lock"}' run bash /code/bin/guard.sh commit
+    RESULT='{"status":"error","metric":null,"error":"vendor/ does not match composer.lock"}' run guard_commit
     [[ "$output" == *'vendor/ does not match composer.lock'* ]]
 }
 
 @test "the last 20 output lines and the result are kept in qg-last/<id>" {
-    RESULT='{"status":"error","metric":null,"error":"boom"}' run bash /code/bin/guard.sh commit
+    RESULT='{"status":"error","metric":null,"error":"boom"}' run guard_commit
     [ "$(wc -l < "$(last)/output.txt")" -eq 20 ]
-    [ "$(head -1 "$(last)/output.txt")" = 11 ]
-    [ "$(tail -1 "$(last)/output.txt")" = 30 ]
+    [ "$(head -1 "$(last)/output.txt")" = 12 ]
+    [ "$(tail -2 "$(last)/output.txt" | head -1)" = 30 ]
+    # The repo driver ran sandboxed; the engine keeps that record as the last line.
+    [ "$(tail -1 "$(last)/output.txt")" = 'sandbox: armed' ]
     [ "$(jq -r '.error' "$(last)/result.json")" = boom ]
 }
 
@@ -83,7 +96,7 @@ ok_json() { printf '{"schema":"qg.result/1","status":"measured","metric":%s,"fin
     } > quality/checks.tsv
     commit_all shell-rows
     printf 'y\n' > app/c.php; git add app/c.php
-    run bash /code/bin/guard.sh commit
+    run guard_commit
     d="$(git rev-parse --path-format=absolute --git-common-dir)/qg-last"
     [ "$(jq -r '.metric' "$d/num/result.json")" = 3 ]
     [ "$(jq -r '.status' "$d/bad/result.json")" = error ]
@@ -92,7 +105,7 @@ ok_json() { printf '{"schema":"qg.result/1","status":"measured","metric":%s,"fin
 
 @test "a driver whose describe is unreadable is measured on the staged tree, never the working tree" {
     printf 'BAD\n' > app/a.php
-    DESCRIBE='not json' RESULT="$(ok_json 0)" run bash /code/bin/guard.sh commit
+    DESCRIBE='not json' RESULT="$(ok_json 0)" run guard_commit
     [ "$status" -eq 0 ]
     [ -d "$(git rev-parse --path-format=absolute --git-common-dir)/guard-tree/app" ]
 }
@@ -101,7 +114,7 @@ ok_json() { printf '{"schema":"qg.result/1","status":"measured","metric":%s,"fin
     write_checks $'../escape\tcommit\tdiff\techo 0\t-\t-\tdown\t0\trefuse'
     commit_all v1
     printf 'z\n' > app/d.php; git add app/d.php
-    run bash /code/bin/guard.sh commit
+    run guard_commit
     common="$(git rev-parse --path-format=absolute --git-common-dir)"
     [ ! -e "$common/escape" ]
     [ ! -e "$common/qg-last/../escape" ]
