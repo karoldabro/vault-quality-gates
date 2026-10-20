@@ -58,6 +58,18 @@ def main(act, args):
             print("socketpair ok")
         except OSError as e:
             print(f"socketpair errno {e.errno}")
+    elif act == "rename":
+        # As pub precompiles: write in a temporary subfolder, then move the file up one folder.
+        d = args[0]
+        try:
+            os.makedirs(f"{d}/tmp", exist_ok=True)
+            with open(f"{d}/tmp/f", "w") as f:
+                f.write("x")
+            os.rename(f"{d}/tmp/f", f"{d}/f")
+            os.link(f"{d}/f", f"{d}/tmp/g")
+            print("rename ok")
+        except OSError as e:
+            print(f"rename errno {e.errno}")
     elif act == "dgrampair":
         for name, kind in (("dgram", socket.SOCK_DGRAM), ("seqpacket", socket.SOCK_SEQPACKET),
                            ("stream-cloexec", socket.SOCK_STREAM | socket.SOCK_CLOEXEC | socket.SOCK_NONBLOCK)):

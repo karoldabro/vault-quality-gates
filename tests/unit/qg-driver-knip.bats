@@ -136,3 +136,15 @@ result() { jq -r "$1" "$QG_OUT/result.json"; }
     "$DRIVER" run > /dev/null
     cmp "$WORK/first.json" "$QG_OUT/result.json"
 }
+
+@test "knip runs sandboxed and may write node_modules/.cache, where jiti compiles its configs" {
+    cp "$FIX/knip.out" "$FAKE_OUT"
+    { printf '#!/usr/bin/env bash\n'
+      printf 'mkdir -p node_modules/.cache/jiti && echo x > node_modules/.cache/jiti/vitest.config.mjs || exit 9\n'
+      printf 'cat %q\nexit 1\n' "$FAKE_OUT"
+    } > "$TREE/node_modules/.bin/knip"
+    export QG_SANDBOX=1 QG_SANDBOX_WRITES="$(/code/drivers/knip.sh describe | jq -r '.writes | join(" ")')"
+    "$DRIVER" run > /dev/null
+    [ "$(result .status)" = measured ] && [ "$(result .metric)" = 248 ]
+    [ -s "$TREE/node_modules/.cache/jiti/vitest.config.mjs" ]
+}

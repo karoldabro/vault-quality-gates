@@ -15,7 +15,7 @@ A --write path that is missing, a symlink, reached through one, or a file with m
 refuses the run. A --declared folder, relative to --tree, is resolved when the sandbox arms, after a
 runner prepared the tree: each missing component is created as a folder, and a path reached through
 a symlink, or one that is not a folder, is skipped with a stderr line. The tool runs in a nested
-Landlock domain that holds only the scopes, so it cannot signal or ptrace this process.
+Landlock domain that holds only the scopes and REFER, so it cannot signal or ptrace this process.
 
 Before the rules apply the process starts its own session (unless --keep-session: the caller already
 did and kills its process group), reads stdin from /dev/null and closes every descriptor above 2. It
@@ -54,6 +54,7 @@ EPERM, EACCES, ENOSYS = 1, 13, 38
 # LANDLOCK_ACCESS_FS_*: every right that changes the file system. Reads and execution are not handled.
 FS_WRITE_FILE = 1 << 1
 FS_TRUNCATE = 1 << 14
+FS_REFER = 1 << 13
 FS_HANDLED = FS_WRITE_FILE | sum(1 << b for b in range(4, 15))  # remove, make_*, refer, truncate
 FS_FILE = FS_WRITE_FILE | FS_TRUNCATE
 SCOPE_ABSTRACT_UNIX_SOCKET, SCOPE_SIGNAL = 1 << 0, 1 << 1
@@ -292,12 +293,19 @@ def run(cmd):
     child = os.fork()
     if child == 0:
         # A nested domain with only the scopes: the tool can neither signal nor ptrace this parent,
-        # which must outlive it to kill what it leaves behind.
-        attr = ctypes.create_string_buffer(struct.pack("<QQQ", 0, 0, SCOPE_ABSTRACT_UNIX_SOCKET | SCOPE_SIGNAL))
+        # which must outlive it to kill what it leaves behind. Landlock denies a rename or link
+        # across folders in any domain that does not grant REFER, so this one grants it on the whole
+        # file system; the outer domain still decides every write.
+        attr = ctypes.create_string_buffer(struct.pack("<QQQ", FS_REFER, 0, SCOPE_ABSTRACT_UNIX_SOCKET | SCOPE_SIGNAL))
         rfd = syscall(NR_CREATE_RULESET, attr, ctypes.c_size_t(24), ctypes.c_uint32(0))
-        if rfd < 0 or syscall(NR_RESTRICT_SELF, ctypes.c_long(rfd), ctypes.c_uint32(0)) < 0:
+        root = os.open("/", os.O_PATH | os.O_CLOEXEC)
+        rule = ctypes.create_string_buffer(struct.pack("<Qi", FS_REFER, root))
+        if rfd < 0 \
+                or syscall(NR_ADD_RULE, ctypes.c_long(rfd), ctypes.c_long(RULE_PATH_BENEATH), rule, ctypes.c_uint32(0)) < 0 \
+                or syscall(NR_RESTRICT_SELF, ctypes.c_long(rfd), ctypes.c_uint32(0)) < 0:
             print("qg-sandbox: cannot scope the tool away from its parent", file=sys.stderr)
             os._exit(126)
+        os.close(root)
         os.close(rfd)
         try:
             os.execvp(cmd[0], cmd)

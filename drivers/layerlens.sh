@@ -37,6 +37,8 @@ case "${1:-}" in
             [ -d "${QG_TREE}/${p}" ] || { qg_fail layerlens edges "path ${p} is not a folder in the measured tree"; exit 0; }
             find "${QG_TREE}/${p}" -name DEPS.md -type f -delete
         done
+        # layerlens writes a DEPS.md into every folder under paths=: those folders join the writes.
+        QG_SANDBOX_WRITES="${QG_SANDBOX_WRITES:-} ${QG_PATH_LIST[*]}" \
         qg_tool - 0 "$QG_DART" pub global run layerlens --path . --package "$package" --only "$only" \
             || { qg_fail layerlens edges "$QG_ERROR"; exit 0; }
         (cd "$QG_TREE" && find "${QG_PATH_LIST[@]}" -name DEPS.md -type f -print0) > "${QG_OUT}/deps"

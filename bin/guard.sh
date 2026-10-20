@@ -129,6 +129,13 @@ guard_leave_tree() {
     [ -n "$GUARD_WORKTREE" ] || return 0
     cd "$REPO_ROOT" || return 0
     git worktree remove --force "$GUARD_WORKTREE" >/dev/null 2>&1
+    # A tool can leave a folder git cannot delete, such as one without write permission, and a
+    # failed `worktree add` leaves the empty mktemp folder: remove what is left, then prune.
+    if [ -e "$GUARD_WORKTREE" ]; then
+        chmod -R u+rwX "$GUARD_WORKTREE" 2>/dev/null
+        rm -rf "$GUARD_WORKTREE"
+        git worktree prune 2>/dev/null
+    fi
     GUARD_WORKTREE=''
 }
 GUARD_CONFIG_DIR=''

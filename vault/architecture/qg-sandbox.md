@@ -48,7 +48,9 @@ Both modes give the command its own session, stdin from `/dev/null`, and a kill 
 after it exits. Sandboxed, it also holds no descriptor above 2, and `bin/qg-sandbox` stays as a child
 subreaper: when the tool exits, it kills every descendant left, one that started its own session
 included. The tool runs in a nested Landlock domain that holds only the signal and abstract-socket
-scopes, so it cannot signal or ptrace that parent to escape the kill.
+scopes, so it cannot signal or ptrace that parent to escape the kill. That domain also grants
+`REFER` on `/`, because Landlock refuses a move across folders in any domain that does not, and pub
+moves its precompiled snapshots that way; the outer domain still decides every write.
 Output leaves only through descriptors 1 and 2, which the caller opened on files in `QG_OUT`.
 
 ## What a sandboxed tool may write

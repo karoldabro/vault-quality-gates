@@ -34,7 +34,7 @@ eslint_report() {
 
 case "${1:-}" in
     describe)
-        printf '{"name":"eslint","summary":"ESLint: counts errors, all problems or the messages of listed rules","requires":["jq"],"needs_tree":true,"sandbox":true,"writes":[]}\n' ;;
+        printf '{"name":"eslint","summary":"ESLint: counts errors, all problems or the messages of listed rules","requires":["jq"],"needs_tree":true,"sandbox":true,"writes":[".nuxt","node_modules/.cache"]}\n' ;;
     explain)
         if [ -n "${2:-}" ]; then
             printf 'ESLint rule %s. Fix the code at the reported line; eslint --fix fixes the fixable ones.\n' "$2"

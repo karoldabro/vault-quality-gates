@@ -147,3 +147,12 @@ layerlens_calls() { calls_of '^dart pub global run layerlens'; }
     [[ "$(result .error)" == *'run flutter pub get'* ]]
     [ "$(layerlens_calls)" = 0 ]
 }
+
+@test "layerlens runs sandboxed and may write DEPS.md under paths=, and nowhere else in the tree" {
+    export QG_SANDBOX=1 QG_SANDBOX_WRITES="$("$ROOT/drivers/layerlens.sh" describe | jq -r '.writes | join(" ")')"
+    export FAKE_WRITE="$FAKE_WRITE stray/DEPS.md=$DEPS"
+    measure
+    [ "$(result .status)" = measured ]
+    [ "$(result .metric)" = 6 ]
+    [ ! -e "$TREE/stray/DEPS.md" ]
+}

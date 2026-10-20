@@ -179,8 +179,8 @@ commit_repo() {
     [ "$(argv)" = '-c quality/eslint.config.mjs -f json --max-warnings 0 -- app server' ]
 }
 
-@test "eslint runs sandboxed: its report reaches the driver and nothing in the tree is written" {
-    export QG_SANDBOX=1
+@test "eslint runs sandboxed: its report reaches the driver and it writes only its declared folders" {
+    export QG_SANDBOX=1 QG_SANDBOX_WRITES="$(/code/drivers/eslint.sh describe | jq -r '.writes | join(" ")')"
     # The sandbox hides the test's variables, so this fake has its report and its targets baked in.
     { printf '#!/usr/bin/env bash\nJSON=%q\nESC=%q\n' "$FAKE_JSON" "$WORK/escaped"; cat <<'EOF'
 out=''
@@ -189,12 +189,15 @@ sed "s#/home/kdabrow/workspace/app.givore.com#$(pwd -P)#g" "$JSON" > "$out"
 echo 'console output of a config file'
 echo x > "$ESC" 2>/dev/null
 echo x > planted.json 2>/dev/null
+mkdir -p .nuxt && echo "// typegen" > .nuxt/eslint-typegen.d.ts || exit 9
 exit 1
 EOF
     } > "$TREE/node_modules/.bin/eslint"
     QG_ARGS='metric=problems' "$DRIVER" run > /dev/null
     [ "$(result .status)" = measured ] && [ "$(result .metric)" = 18 ]
     [ ! -e "$WORK/escaped" ] && [ ! -e "$TREE/planted.json" ]
+    # eslint-typegen writes .nuxt/eslint-typegen.d.ts, which the eslint writes allow.
+    [ -s "$TREE/.nuxt/eslint-typegen.d.ts" ]
 }
 
 @test "a tree eslint.config.js exporting [] changes neither argv nor metric" {

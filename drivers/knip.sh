@@ -16,7 +16,7 @@ export LC_ALL=C
 
 case "${1:-}" in
     describe)
-        printf '{"name":"knip","summary":"knip: counts unused files, exports, types and dependencies","requires":["jq"],"needs_tree":true,"sandbox":true,"writes":[]}\n' ;;
+        printf '{"name":"knip","summary":"knip: counts unused files, exports, types and dependencies","requires":["jq"],"needs_tree":true,"sandbox":true,"writes":["node_modules/.cache"]}\n' ;;
     explain)
         if [ -n "${2:-}" ]; then
             printf 'knip issue type %s. Delete the unused file, export, type or dependency, or use it; an entry\n' "${2#knip.}"

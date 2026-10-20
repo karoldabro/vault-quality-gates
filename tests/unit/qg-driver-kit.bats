@@ -193,6 +193,22 @@ runner_tool() {
     while read -r d; do [ ! -e "$d" ]; done < "$RUNLOG"
 }
 
+@test "the push worktree is removed even when a row leaves a folder git cannot delete" {
+    gate_repo "$WORK/repo"
+    # A shell row in the detached worktree prints its folder and leaves a read-only folder with a file.
+    { printf 'id\ton\tkind\tdriver\targs\tdirection\tthreshold\tgate\twhy\n'
+      printf 'ro\tpush\tdiff\tshell\t-- echo "tree $PWD" >&2; mkdir -p ro && : > ro/f && chmod 555 ro; echo 0\tdown\t0\trefuse\ta row that leaves a read-only folder\n'
+    } > quality/checks.tsv
+    commit_all ro
+    GUARD_SHA="$(git rev-parse HEAD)" run bash /code/bin/guard.sh release refs/heads/x
+    local log tree
+    log="$(git rev-parse --path-format=absolute --git-common-dir)/qg-last/ro/output.txt"
+    tree="$(sed -n 's/^tree //p' "$log")"
+    [ -n "$tree" ] && [ "$tree" != "$WORK/repo" ]
+    [ ! -e "$tree" ] || { chmod -R u+w "$tree"; echo "worktree $tree was left behind"; return 1; }
+    [ "$(git worktree list | wc -l)" -eq 1 ]
+}
+
 @test "qg_result writes 5000 findings, more than one exec's argument limit holds" {
     jq -n '[range(5000) | {ruleId: "r", file: ("/app/app/F\(.).php"), line: 1, level: "error", message: ("a long message number \(.) " * 10), doc: null}]' > "$WORK/f.json"
     run kit "qg_result d measured 5000 findings $WORK/f.json -"

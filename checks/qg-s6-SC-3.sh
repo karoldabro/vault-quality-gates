@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 # S6 SC-3 — delivery: this branch's engine (sandboxed) and main's engine each run on a fresh scratch
 # clone of recycling_mobile_app at release/1.17.0 and app.givore.com at release/1.19.0, with
-# `qg run push` and `qg run baseline --only` the suite and mutation rows. Every row must give the
-# same id, value and status, every compared row must be measured, and nothing under ~/.pub-cache or
-# the Flutter SDK may change except the SDK's bin/cache stamps and lockfile. In the app.givore.com
+# `qg baseline --only` the suite and mutation rows first, so the push rows read a fresh suite run,
+# then `qg run push`. Every row must give the same id, value and status, and every compared row of a
+# kind other than absent must be measured. Nothing under ~/.pub-cache or the Flutter SDK may change
+# except the SDK's bin/cache stamps and lockfile, and ~/.pub-cache/active_roots/, which the planned
+# `dart pub get --offline` outside the sandbox writes on both engines. In the app.givore.com
 # clones a staged one-line change runs `qg run commit --json` on both engines: the rows must match
 # and `typecheck-new`, whose runner links node_modules into the staged tree, must be measured. The
 # real checkouts are only read.
 #
-# Run by the operator: the agent hook refuses scripts that set QG_* names.
-# Exit 0 pass, 1 fail, 2 could not run.
+# Run by the operator, after `qg hooks install --claude --user` from the main worktree has written
+# the machine tool-path file: without it the engine's PATH lacks pnpm and node. The agent hook
+# refuses scripts that set QG_* names. Exit 0 pass, 1 fail, 2 could not run.
 set -uo pipefail
 exec < /dev/null
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -17,8 +20,17 @@ MAIN="${HOME}/workspace/vault-quality-gates"
 [ -x "${MAIN}/bin/qg" ] || { printf 'no main engine at %s\n' "$MAIN"; exit 2; }
 [ "$(git -C "$MAIN" rev-parse HEAD)" != "$(git -C "$ROOT" rev-parse HEAD)" ] || { printf 'main already holds this branch; nothing to compare\n'; exit 2; }
 command -v jq > /dev/null || { printf 'jq is not on PATH\n'; exit 2; }
+# shellcheck source=../lib/qg-toolpath.sh
+. "${ROOT}/lib/qg-toolpath.sh"
+toolpath="$(qg_tool_path_file)" && [ -s "$toolpath" ] || {
+    printf 'the machine tool-path file is missing; run qg hooks install --claude --user from the main worktree first\n'
+    exit 2
+}
 tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+# On a failure the scratch folder is kept, with every engine's json and stderr, for the operator to
+# read; the full report also goes to report.txt there.
+trap 'if [ "$bad" -eq 0 ]; then rm -rf "$tmp"; fi' EXIT
+exec > >(tee "${tmp}/report.txt")
 touch "${tmp}/mark"
 bad=0
 failed=()   # one short name per failure, repeated on the last line so a one-line evidence cell names them
@@ -31,11 +43,20 @@ clone() {
     fi
 }
 
-# measure <engine qg> <clone> <out prefix> <baseline rows>
+# measure <engine qg> <clone> <out prefix> <baseline rows> -> the baseline rows first, read from
+# their kept result as id|metric|measured or id|-|error, then the push rows as id|value|status.
 measure() {
+    local id r
+    (cd "$2" && "$1" baseline --only "$4" > "${3}.base.out" 2> "${3}.base.err")
     (cd "$2" && "$1" run push --json > "${3}.push.json" 2> "${3}.push.err")
-    (cd "$2" && "$1" run baseline --only "$4" --json > "${3}.base.json" 2> "${3}.base.err")
-    jq -r '.rows[] | "\(.id)|\(.value)|\(.status)"' "${3}.push.json" "${3}.base.json" | sort
+    {
+        for id in ${4//,/ }; do
+            r="${2}/.git/qg-last/${id}/result.json"
+            if [ -s "$r" ]; then jq -r --arg id "$id" '"\($id)|\(.metric // "-")|\(if .status == "measured" then "measured" else "error" end)"' "$r"
+            else printf '%s|-|error\n' "$id"; fi
+        done
+        jq -r '.rows[] | "\(.id)|\(.value)|\(.status)"' "${3}.push.json"
+    } | sort
 }
 
 # measure_commit <engine qg> <clone> <out prefix> -> stages a one-line change to the first tracked
@@ -64,9 +85,9 @@ compare() {   # <name> <src> <ref> <baseline rows>
     if [ "$new" = "$old" ]; then printf '  ok       %s: same rows on both engines\n' "$name"
     else printf '  FAILING  %s: rows differ (< this branch, > main):\n' "$name"; diff <(printf '%s\n' "$new") <(printf '%s\n' "$old"); bad=1; fi
     [ "$new" = "$old" ] || failed+=("${name}: rows differ between engines")
-    # A measured row has status ok, worse, warn or recorded; these three mean nothing was measured.
-    if grep -qE '\|(unmeasurable|skipped|absent)$' <<<"$new"; then
-        printf '  FAILING  %s: rows not measured:\n' "$name"; grep -E '\|(unmeasurable|skipped|absent)$' <<<"$new"; bad=1
+    # A measured row has status ok, worse, warn, recorded or measured; absent is a row kind, never run.
+    if grep -qE '\|(unmeasurable|skipped|error)$' <<<"$new"; then
+        printf '  FAILING  %s: rows not measured:\n' "$name"; grep -E '\|(unmeasurable|skipped|error)$' <<<"$new"; bad=1
         failed+=("${name}: rows not measured")
     fi
     if grep -rqs '^sandbox: armed' "${tmp}/${name}-new/.git/qg-last"; then printf '  ok       %s: rows ran inside qg-sandbox\n' "$name"
@@ -92,12 +113,13 @@ sdk="$(git -C "$MOBILE" show release/1.17.0:quality/config | sed -n 's/^guard_fl
 run_new mobile "$MOBILE" release/1.17.0 mutation
 run_new app "$APP" release/1.19.0 tests-suite-failed,mutation
 
-changed="$(find "${HOME}/.pub-cache" "$sdk" -type f -newer "${tmp}/mark" ! -path "${sdk}/bin/cache/*.stamp" ! -path "${sdk}/bin/cache/lockfile" -print)"
+changed="$(find "${HOME}/.pub-cache" "$sdk" -type f -newer "${tmp}/mark" ! -path "${sdk}/bin/cache/*.stamp" \
+    ! -path "${sdk}/bin/cache/lockfile" ! -path "${HOME}/.pub-cache/active_roots/*" -print)"
 if [ -z "$changed" ]; then printf '  ok       ~/.pub-cache and the SDK are unchanged by the sandboxed runs\n'
 else printf '  FAILING  files changed under ~/.pub-cache or the SDK:\n%s\n' "$changed"; bad=1; failed+=("pub cache or SDK changed"); fi
 
 compare mobile "$MOBILE" release/1.17.0 mutation
 compare app "$APP" release/1.19.0 tests-suite-failed,mutation
 if [ "$bad" -eq 0 ]; then printf 'both repos: same rows on both engines, all measured, sandboxed, caches unchanged\n'
-else printf 'failed: %s\n' "$(IFS=';'; printf '%s' "${failed[*]}")"; fi
+else printf 'failed: %s; details in %s\n' "$(IFS=';'; printf '%s' "${failed[*]}")" "${tmp}/report.txt"; fi
 exit "$bad"

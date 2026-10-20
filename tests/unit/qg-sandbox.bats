@@ -508,3 +508,13 @@ EOF
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
     [ -s "$TREE/quality-reports/junit.xml" ] && [ -d "$TREE/quality-reports" ] && [ ! -L "$TREE/quality-reports" ]
 }
+
+@test "a file moves or links across folders inside a grant, as pub's precompile does" {
+    QG_SANDBOX_WRITES=.dart_tool run probe rename .dart_tool/pub/bin
+    [ "$output" = 'rename ok' ]
+    [ -s "$TREE/.dart_tool/pub/bin/f" ]
+    # Out of the grant the move is still refused.
+    mkdir -p "$TREE/src/tmp"; : > "$TREE/src/tmp/f"
+    run probe rename src
+    [ "$output" != 'rename ok' ]
+}

@@ -189,7 +189,7 @@ run_probe() {
         [jscpd]='false|' [jscpd-added]='false|' [doc-lint]='false|'
         [vitest]='true|coverage quality-reports .nuxt node_modules/.vite node_modules/.cache'
         [stryker]='true|.stryker-tmp reports .nuxt node_modules/.vite node_modules/.cache'
-        [nuxt-typecheck]='true|.nuxt node_modules/.cache' [eslint]='true|'
+        [nuxt-typecheck]='true|.nuxt node_modules/.cache' [eslint]='true|.nuxt node_modules/.cache' [knip]='true|node_modules/.cache'
         [flutter-test]='true|.dart_tool build' [mutation-test]='true|lib test .dart_tool build reports'
         [dart-analyze]='true|.dart_tool' [dart-format]='true|.dart_tool' [dart-code-linter]='true|.dart_tool'
         [lakos]='true|.dart_tool' [layerlens]='true|.dart_tool'
