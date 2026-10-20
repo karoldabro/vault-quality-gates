@@ -27,7 +27,7 @@ recycling_mobile_app `master` and the S6 close wait for SC-3.
 | 4 | remove the worktrees: `git -C ~/workspace/recycling-api worktree remove --force ~/workspace/recycling-api-master`, `git -C ~/workspace/app.givore.com worktree remove --force ~/workspace/app.givore.com-master` | both worktrees | `git worktree list` in each repo no longer lists them |
 | 5 | set `"priority": "master"` for recycling-api and app.givore.com | `~/agent-factory/nightly-baselines.json` | `./agentctl check-config` in `~/workspace/agent-control` passes |
 | 6 | find why last night's recycling-api run failed: `qg-suite exited 2: tests-suite: env exited 255` | `~/agent-factory/nightly/recycling-api/20261020-003745/logs/` | the next night's `result.json` reads `green` or `red`, not `error` |
-| 7 | read the end of the SC-3 run; then merge `main` into `feat/qg-s6-agent-hooks` (it lacks the grant and `6b6b772`, the vitest fix) and rerun SC-3, which ran on the engine without the fix | `~/sc3-verdict.log`, `checks/qg-s6-SC-3.sh` | SC-3 reads `MET` in `vault/plans/2026-10-20-1022-qg-s6-agent-hooks.md` |
+| 7 | after the SC-3 run ends: merge `main` into `feat/qg-s6-agent-hooks` (it lacks the grant and `6b6b772`, the vitest fix); move SC-3, SC-7 and SC-8 to S7 | `~/sc3-verdict.log`, `vault/plans/2026-10-20-1022-qg-s6-agent-hooks.md` | the S6 plan lists SC-1, SC-2 and SC-4..SC-6 only |
 | 8 | recycling_mobile_app `master`, after row 7: rows 9 and 3 of `vault/handoffs/2026-10-20-1906-qg-agent-grant.md` and row 3 here: copy `quality/` from `de4663d`, then commit the config before the baseline | `~/workspace/recycling_mobile_app-master/quality/` | `git -C ~/workspace/recycling_mobile_app show origin/master:quality/config` succeeds |
 | 9 | split S6 and close it: rows 10 and 11 of `vault/handoffs/2026-10-20-1906-qg-agent-grant.md` | `vault/plans/2026-10-20-1022-qg-s6-agent-hooks.md`, `vault/plans/2026-10-18-1121-qg-common-interface.md` | the close gate exits 0 and the S6 row reads `done` |
 | 10 | operator: push `main` of `~/workspace/vault-quality-gates` (`origin/main` is `2978d66`, without S6, the grant or the vitest fix) | `~/workspace/vault-quality-gates` | `git -C ~/workspace/vault-quality-gates status -sb` shows no `ahead` |
@@ -87,4 +87,6 @@ qg grant --status && tail -5 ~/sc3-verdict.log
 
 - Commit the gate config first and baseline second: a runner script must be committed before the gate runs it (`runner quality/bin/in-server.sh is not committed at the config revision`).
 - Baseline with `--skip` for mutation, the test suite and coverage: a full `qg baseline` drops every row it cannot measure, and a dropped `repo` row counts as loosening. The nightly run measures the suite and coverage.
-- Fix a worse row in code on a branch from the `-master` worktree, never by accepting it, unless v1 already measured that value on the same commit.
+- Code debt never blocks the migration. A row still worse after the fix sessions is reset: commit the measured baseline under the grant's override, and the operator pushes `master` with `git push --no-verify origin master`. The push gate refuses a looser baseline with no override (`guard_release_locked` in `bin/guard.sh`).
+- SC-3 is no condition for closing S6. It moves to S7 with SC-7 and SC-8, and runs there as a nightly job.
+- The operator batches human steps: one grant and one push round per day.
