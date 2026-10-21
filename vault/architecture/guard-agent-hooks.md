@@ -93,7 +93,15 @@ and `declare` or `typeset` with both `-f` and `-x`. It denies any change to `CLA
   `GIT_EXTERNAL_DIFF`, `LD_PRELOAD`, `LD_LIBRARY_PATH` or `LD_AUDIT`, or exporting a name that is
   no plain identifier, such as `export $(xargs < .env)`;
 - interpreter code, inline or in a script file, matching `RISKY_CODE`;
-- a word holding `claudecode` or `ai_agent`.
+- a word holding `claudecode` or `ai_agent`;
+- a command word, a write target, or part of `-c`/`-e` code computed at run time (`"${PYTHON}"`,
+  `rm "$DIR/x"`, `python3 -c "…$f…"`). Code that is only a substitution (`python3 -c "$CODE"`,
+  `sh -c "$(…)"`) is always denied, and so is a computed target whose spelled prefix lies in a
+  `.git` folder, the plugin or installed plugin code.
+
+A script file counts toward "names git" by its words only; its comments and heredoc text do not.
+A hook counts as named by the word `hook` or `hooks`, not by names like `--hook-type`.
+`git worktree list`, `git branch` listing flags, `git stash list|show` and `git remote [-v|get-url|show]` are reads.
 
 `RISKY_CODE` is advisory, because a script file the agent writes and runs later is never scanned.
 Inline or heredoc code that starts a program (`exec*`, `subprocess`, `child_process`, `spawn`,
