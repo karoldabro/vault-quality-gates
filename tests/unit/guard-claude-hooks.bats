@@ -380,6 +380,30 @@ no_bad() {
     no_bad
 }
 
+@test "a value computed at run time is allowed until the command names git, a hook, qg or the plugin" {
+    printf '#!/usr/bin/env bash\n# git tracks the channels; this hook-free launcher picks its python\nPY="${STUDIO_PYTHON:-python3}"\nexec "${PY}" -m "$@"\ncat <<EOF\nusage: git is named here only\nEOF\n' > "$WORK/launch.sh"
+    printf 'G=git; $G commit -n -m x\n' > "$WORK/hidden.sh"
+    chmod +x "$WORK/launch.sh"
+    bash_case allow "bash $WORK/launch.sh json.tool x.json"
+    bash_case allow "$WORK/launch.sh json.tool x.json"
+    bash_case allow 'rm -rf "$RUN_DIR/audio"'
+    bash_case allow 'mv "$RUN_DIR/audio" "$RUN_DIR/replaced/"'
+    bash_case allow "python3 -c \"import json; print(json.load(open('\$f'))['titles'])\""
+    bash_case allow '"${PYTHON}" -m json.tool x.json'
+    bash_case allow 'bash -c "cd $d && make"'
+    bash_case allow 'git worktree list'
+    bash_case allow 'git branch -a'
+    bash_case allow 'git stash list'
+    bash_case allow 'git remote -v'
+    bash_case deny  "bash $WORK/hidden.sh"
+    bash_case deny  'X=git; "$X" commit -m x'
+    bash_case deny  'rm -rf .git/$x'
+    bash_case deny  'rm -rf /code/$x'
+    bash_case deny  'python3 -c "$CODE"'
+    bash_case allow 'X="$RUN_DIR/x"; printf "%s" "--hook-type cold" > "$X.txt"'
+    no_bad
+}
+
 @test "reads, copies from the plugin, sed scripts and repositories under /tmp are not false denials" {
     mkdir -p "$WORK/other/.git"
     bash_case allow 'HOME=/tmp composer install'

@@ -56,10 +56,20 @@ PLUGIN_RE = re.compile('(%s)(/|\\Z)' % '|'.join(re.escape(p.lower()) for p in PL
 # Needles that only count when the same command also names git, .git, a hook or the plugin: a file
 # called ai_agent.py is ordinary, an agent marker cleared beside a commit is not.
 SOFT_NEEDLES = ('claudecode', 'ai_agent')
-NAMES_GIT = re.compile(r'\bgit\b|\.git|hook|husky|\bqg\b|guard\.sh|' + '|'.join(re.escape(p) for p in PLUGIN_SPELLINGS if len(p) > 1), re.I)
+NAMES_GIT = re.compile(r'\bgit\b|\.git|\bhooks?\b(?![-.])|husky|\bqg\b|guard\.sh|' + '|'.join(re.escape(p) for p in PLUGIN_SPELLINGS if len(p) > 1), re.I)
 # What a command scanned so far: every text read (the input, scripts, inline code) and the soft
 # findings that turn into a denial once that text names git.
 SEEN, DEFERRED = [], []
+SUBST = re.compile(r'\$\([^)]*\)?|`[^`]*`?|\$\{[^}]*\}?|\$(\w+|[0-9@*#?$!-])')
+
+
+def literal_text(word):
+    """What a word shows before it runs: its text with every $var, ${..}, $(..) and `..` taken out."""
+    return SUBST.sub('', str(word)).strip()
+
+
+def defer_dynamic(what):
+    DEFERRED.append(f'{what} is computed at run time, in a command that names git, a hook, qg or the plugin')
 MARKERS = {'CLAUDECODE', 'AI_AGENT'}
 # Names that change what bash, git or the loader runs, whatever the command beside them.
 DENIED_NAMES = {'BASH_ENV', 'SHELLOPTS', 'BASHOPTS', 'GIT_REPLACE_REF_BASE', 'GIT_NO_REPLACE_OBJECTS',
@@ -170,10 +180,17 @@ def in_tmp_elsewhere(p, ctx):
 
 
 def protected(tok, ctx):
-    if tok.dynamic:
-        raise Deny(f'the target {tok} is computed at run time, so the hook cannot see what it touches')
     if needle(tok):
         return True
+    if tok.dynamic:
+        # The part spelled before the first expansion still names where the write lands.
+        prefix = re.split(r'[$`]', str(tok), maxsplit=1)[0]
+        p = os.path.realpath(os.path.join(ctx.cwd, prefix)) if prefix else None
+        if p and (in_plugin(p) or p.startswith(INSTALLED + '/') or '.git' in prefix.split('/')
+                  or write_denials.denial(os.path.normpath(os.path.join(ctx.cwd, prefix)), PLUGIN)):
+            return True
+        defer_dynamic(f'the target {tok}')
+        return False
     for c in glob.glob(os.path.join(ctx.cwd, tok)) if re.search(r'[*?[]', tok) else [tok]:
         p = os.path.realpath(os.path.join(ctx.cwd, c))
         if needle(p) or in_plugin(p) or p.startswith(INSTALLED + '/'):
@@ -298,9 +315,16 @@ def check_git(a, ctx, cwd):
     check_ref_writers(sub, rest, ctx, cwd)
 
 
+BRANCH_LIST = {'-a', '-r', '-v', '-vv', '-l', '--all', '--remotes', '--verbose', '--list', '--show-current', '--no-color', '--color'}
+BRANCH_LIST_VALUE = ('--contains', '--merged', '--no-merged', '--format', '--sort', '--points-at')
+
+
 def git_is_read(sub, rest):
-    return sub in GIT_READ or (sub == 'config' and git_config_is_read(rest)) or (sub == 'branch' and not rest) \
-        or (sub == 'notes' and rest[:1] in ([], ['list'], ['show']))
+    return sub in GIT_READ or (sub == 'config' and git_config_is_read(rest)) \
+        or (sub == 'branch' and all(t in BRANCH_LIST or t.startswith(BRANCH_LIST_VALUE) for t in rest)) \
+        or (sub == 'notes' and rest[:1] in ([], ['list'], ['show'])) \
+        or (sub == 'worktree' and rest[:1] == ['list']) or (sub == 'stash' and rest[:1] in (['list'], ['show'])) \
+        or (sub == 'remote' and rest[:1] in ([], ['-v'], ['--verbose'], ['get-url'], ['show']))
 
 
 def check_git_tree(sub, rest, ctx, cwd, where):
@@ -533,7 +557,7 @@ def run_file(path, ctx, depth, shell):
         return
     text = read_script(path, ctx)
     if shell or re.match(r'#!.*\b(ba|z|da|k)?sh\b', text):
-        scan_script(text, ctx, depth + 1)
+        scan_script(text, ctx, depth + 1, from_file=True)
     else:
         check_code(f'the script {path}', text, inline=False)
 
@@ -606,7 +630,7 @@ def scan_words(w, ctx, depth, remote=False):
 def scan_program(w, ctx, depth, remote):
     cmd, args = base(w[0]), w[1:]
     if w[0].dynamic:
-        raise Deny(f'the command word {w[0]} is computed at run time, so the hook cannot tell which program runs')
+        defer_dynamic(f'the command word {w[0]}')
     if cmd == 'script' or cmd == 'eval' and any(t.dynamic for t in args):
         raise Deny(f'{cmd} runs text the hook cannot see before it runs')
     if cmd in LAUNCHERS or (cmd == 'tmux' and any(t in TMUX_RUN for t in args)) \
@@ -884,8 +908,10 @@ def scan_shell(args, w, ctx, depth, remote):
     if j < len(args):
         if has_c:
             if args[j].dynamic:
-                raise Deny(f'{base(w[0])} -c runs text computed at run time')
-            return scan_script(args[j], ctx, depth + 1)
+                if not literal_text(args[j]):
+                    raise Deny(f'{base(w[0])} -c runs text computed at run time')
+                defer_dynamic(f'part of the {base(w[0])} -c text')
+            return scan_script(str(args[j]), ctx, depth + 1)
         if not remote:
             run_file(args[j], ctx, depth, True)
         return
@@ -929,7 +955,9 @@ def scan_interpreter(cmd, args, w, ctx, depth, remote):
         t = args[j]
         if CODE_FLAG.match(t) and not (cmd.startswith('python') and t in ('-E',)) and j + 1 < len(args):
             if args[j + 1].dynamic:
-                raise Deny(f'{cmd} {t} runs code computed at run time')
+                if not literal_text(args[j + 1]):
+                    raise Deny(f'{cmd} {t} runs code computed at run time')
+                defer_dynamic(f'part of the {cmd} {t} code')
             return check_code(f'{cmd} code', args[j + 1])
         if t == '-m' and j + 1 < len(args):
             if RISKY_CODE.search(args[j + 1]):
@@ -977,14 +1005,17 @@ def scan_seg(seg, ctx, depth):
     scan_words(seg['words'], ctx, depth)
 
 
-def scan_script(text, ctx, depth=0):
+def scan_script(text, ctx, depth=0, from_file=False):
+    """A shell script file adds only its words to SEEN, so its comments and usage text never turn a
+    deferred finding into a denial; a command or code string the agent wrote adds all of its text."""
     if depth > 8:
         raise Deny('shell nesting deeper than 8 levels')
-    SEEN.append(text)
     lx = Lexer(text)
     segs = lx.parse()
     if lx.error:
         raise Deny(f'the command is incomplete: {lx.error}')
+    SEEN.append(' '.join(str(w) for seg in segs + lx.subs for w in seg['words'] + [t for _, t in seg['redirs']])
+                if from_file else text)
     for seg in segs + lx.subs:
         scan_seg(seg, ctx, depth)
 
