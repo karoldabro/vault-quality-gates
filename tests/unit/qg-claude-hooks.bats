@@ -3,6 +3,8 @@
 # override token, quality/drivers/ and quality/config, the git directory, and the Stop hook's
 # test for a gated repo. 2 denies, 0 allows.
 
+load guard-helpers
+
 HOOKS=/code/templates/claude-hooks
 
 setup() {
@@ -14,6 +16,7 @@ setup() {
     git config user.email 'test@example.invalid'
     git config user.name 'test'
     git commit -q --allow-empty -m init
+    mark_gated .
     BAD=''
 }
 
@@ -82,6 +85,7 @@ no_bad() { [ -z "$BAD" ] || { printf '%s\n' "$BAD" >&2; return 1; }; }
     local real; real="$(mktemp -d -p /var/tmp)"
     mkdir -p "$real/other" && git -C "$real/other" init -q . \
         && git -C "$real/other" -c user.email=t@e -c user.name=t commit -q --allow-empty -m init
+    mark_gated "$real/other"
     mkdir -p "$real/plain"; cd "$real/plain" || return 1
     bash_case deny "printf 'a b' > $real/other/.git/info/grafts"
     bash_case deny "printf x > $real/other/.git/refs/heads/feat-x"
@@ -115,8 +119,8 @@ no_bad() { [ -z "$BAD" ] || { printf '%s\n' "$BAD" >&2; return 1; }; }
     no_bad
 }
 
-@test "the Stop hook treats a repo with committed quality/checks.tsv and rules.tsv as gated" {
-    printf 'x\n' > quality/checks.tsv; printf 'x\n' > quality/rules.tsv
+@test "the Stop hook treats a repo whose gate hook is installed as gated" {
+    printf 'x\n' > quality/checks.tsv
     git add -A; git commit -q -m gate
     run bash -c "jq -nc --arg d '$PWD' '{cwd:\$d}' | $HOOKS/guard-stop.sh"
     [ "$status" -eq 2 ]
@@ -124,9 +128,10 @@ no_bad() { [ -z "$BAD" ] || { printf '%s\n' "$BAD" >&2; return 1; }; }
     [[ "$output" == *'quality/config, quality/drivers/'* ]]
 }
 
-@test "the Stop hook leaves a repo without the gate's files alone" {
-    printf 'x\n' > quality/checks.tsv
-    git add -A; git commit -q -m only-checks
+@test "the Stop hook leaves a repo with the gate's files but no gate hook alone" {
+    printf 'x\n' > quality/checks.tsv; printf 'x\n' > quality/rules.tsv
+    git add -A; git commit -q -m gate-files
+    rm .git/hooks/pre-commit
     run bash -c "jq -nc --arg d '$PWD' '{cwd:\$d}' | $HOOKS/guard-stop.sh"
     [ "$status" -eq 0 ]
 }

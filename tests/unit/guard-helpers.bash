@@ -14,6 +14,14 @@ new_repo() {
     git config commit.gpgsign false
 }
 
+# mark_gated <repo> — writes the line every installed gate hook carries, so the agent guards count
+# the repo as gated (templates/claude-hooks/gated.py). Mode 644, so git never runs it.
+mark_gated() {
+    git -C "$1" config advice.ignoredHook false
+    printf '#!/bin/sh\n# vault-guard-start\n' > "$(git -C "$1" rev-parse --path-format=absolute --git-common-dir)/hooks/pre-commit"
+    chmod 644 "$(git -C "$1" rev-parse --path-format=absolute --git-common-dir)/hooks/pre-commit"
+}
+
 # write_checks <row>... — quality/checks.tsv with the header and the given tab-separated rows.
 write_checks() {
     mkdir -p quality

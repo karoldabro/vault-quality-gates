@@ -37,6 +37,34 @@ At user level an entry counts as installed only when its command is exactly
 The `--user` forms run in `bin/qg` itself, because only `qg` holds the caller's `PATH`
 (`QG_CALLER_PATH`). `guard.sh hooks install --claude --user` exits 2 naming the `qg` command.
 
+## Scope
+
+The user-level guards run in every session, but their gate rules bind only in a gated repo.
+`templates/claude-hooks/gated.py` decides it from the filesystem alone. A repo is gated when
+`<common dir>/hooks/pre-commit` or `pre-push` holds `# vault-guard-start`. It is also gated when its
+`.git` file, git dir or hooks folder cannot be read, or its config sets `hookspath`. A bare repo or a
+separate git dir counts as its own common dir.
+
+| class | binds | covers |
+|---|---|---|
+| integrity (`Integrity` in `guard_bash.py`) | every repo | the plugin main worktree; installed plugin code; `write_denials.py`; any `settings*.json` under a `.claude` or `.claude-*` folder; `~/.gitconfig`, `~/.config/git/config`, `~/.config/husky/`, and hook keys set through `--global`, `--system` or a `--file` outside the repo; `rm`, `mv` and the other `REMOVERS`, and `find -delete`, on a folder that holds any of these; `qg` and `guard.sh` commands other than reads; a writing git command whose repository is computed; deferred findings in a command that runs `qg` or names the plugin; text the hook cannot see (a pipe into a shell, a launcher, `xargs`, a script written and run in one command) when the raw command names any of these |
+| gate (`gate()`) | a command that reaches a gated repo | every other rule of `## What the guards deny` |
+
+`gate()` records the rule and scanning goes on, so a later integrity rule in the same command still
+fires. After the scan, `main()` denies with the first recorded rule when any scope path lies in a
+gated repo. Scope paths are the cwd before and after each segment and every git `-C`, `--git-dir`,
+`--work-tree`, `GIT_DIR` and `GIT_WORK_TREE` target. They also cover every write target and every
+path-like word piece split on `=` and `:`, plus every absolute or `~` path in any shell text read,
+quoted, piped and heredoc text included. `guard-edit.sh` applies its `.git`, husky and
+`quality/config` reasons only when the target or the cwd is gated. `guard-stop.sh` lets a turn end
+only on `gated.py` exit 3.
+
+An integrity denial ends with "ask the human to make this change"; a gate denial points at the commit
+gate. Unchecked by the agent guards, and left to the gated repo's own git hooks: a gated repo reached
+from an ungated cwd only through a computed path, a relative path inside opaque text, or a non-shell
+script. Also unchecked: a `systemd --user` unit or crontab written outside a gated repo, and files
+included from the global git config.
+
 ## What the guards deny
 
 **Plugin files.** Both hooks protect the main worktree of the checkout they run from. Any linked

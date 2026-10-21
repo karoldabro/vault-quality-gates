@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Claude Code Stop hook. Claude Code fires Stop at the end of every turn, not only at the end of
-# a session. When the turn ends in a gated repo (its committed VAULT.md names vault-quality-gates,
-# or HEAD carries quality/checks.tsv and quality/rules.tsv) and HEAD carries commits that are on
-# no remote, this exits 2 and tells the agent to push, so the
+# a session. When the turn ends in a gated repo (gated.py: its gate git hook is installed) and HEAD
+# carries commits that are on no remote, this exits 2 and tells the agent to push, so the
 # pre-push hook runs the full gate while the agent is still there to fix what it refuses.
 #
 # It blocks at most once per turn (stop_hook_active) and at most GUARD_STOP_LIMIT times (default
@@ -12,6 +11,7 @@
 # deploys. Outside a gated repo it exits 0.
 set -uo pipefail
 command -v python3 >/dev/null 2>&1 || exit 0
+HERE="$(dirname "$(realpath "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")")"
 
 input="$(cat)"
 # -I: a planted json.py in the cwd, or a PYTHONPATH, cannot answer for the json module.
@@ -26,10 +26,9 @@ active="${fields[0]:-0}" session="${fields[1]:--}" cwd="${fields[2]:-.}"
 [ "${active:-0}" = 1 ] && exit 0
 root="$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null)" || exit 0
 cd "$root" || exit 0
-# Gated: VAULT.md names the plugin, or HEAD carries the gate's own files (a repo set up with qg init).
-git show HEAD:VAULT.md 2>/dev/null | grep -qE '^plugins:.*vault-quality-gates' \
-    || { git cat-file -e HEAD:quality/checks.tsv 2>/dev/null && git cat-file -e HEAD:quality/rules.tsv 2>/dev/null; } \
-    || exit 0
+# Exit 3 is the only "not gated"; a crash or any other code counts as gated, so the hook fails closed.
+python3 -I "$HERE/gated.py" "$root" >/dev/null 2>&1
+[ "$?" -eq 3 ] && exit 0
 
 n="$(git rev-list --count HEAD --not --remotes 2>/dev/null)" || exit 0
 [ "${n:-0}" -gt 0 ] || exit 0

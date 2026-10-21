@@ -16,6 +16,7 @@ setup() {
     export GUARD_LOCK_WAIT=5
     unset QG_SKIP_REASON GUARD_CONFIG_REV GUARD_SHA GUARD_BASE GUARD_SKIP CLAUDECODE AI_AGENT
     gate_repo "$WORK/repo"
+    mark_gated .
     write_checks "$BAD_ROW" "$COV_ROW"
     printf 'id\tvalue\tcommit\treason\ncov\t80\tabc\t-\n' > quality/baseline.tsv
     commit_all baseline

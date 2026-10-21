@@ -172,7 +172,9 @@ git hooks are copies, and `qg doctor` fails until they match the templates.
 - **The gate is client-side.** An agent that runs a script file which commits with hooks disabled and
   pushes without hooks passes it, including through `make`, `pnpm run` or an interpreter script.
   The Claude Code hooks deny the forms typed directly, in every session whose config folder holds
-  the user-level entries. Only a server-side required check closes the rest.
+  the user-level entries. Their gate rules bind only in repos whose git hook carries
+  `# vault-guard-start`; the rules that protect the guards and the gate's tools bind everywhere
+  (`vault/architecture/guard-agent-hooks.md` `## Scope`). Only a server-side required check closes the rest.
 - **A repo whose toolchain is bound to its checkout path cannot be measured from a detached
   worktree.** The push gate checks the pushed commit out under `/tmp`, which has no `vendor/`, no
   `node_modules` and no container bind-mount. Set `guard_measure_worktree: false` in that repo's

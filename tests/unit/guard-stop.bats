@@ -1,7 +1,6 @@
 #!/usr/bin/env bats
 # templates/claude-hooks/guard-stop.sh — the Claude Code Stop hook that refuses to let a turn
-# end while HEAD carries commits on no remote, in a repo whose committed VAULT.md names the
-# plugin.
+# end while HEAD carries commits on no remote, in a repo whose gate git hook is installed.
 
 load guard-helpers
 
@@ -19,9 +18,11 @@ setup() {
     git remote add origin "$WORK/origin.git"
     git push -q origin master
     git switch -q -c feat/x
+    mark_gated .
 }
 
 teardown() {
+    [ -n "${WORK:-}" ] && chmod -R u+rwx "$WORK" 2>/dev/null
     [ -n "${WORK:-}" ] && [ -d "$WORK" ] && rm -rf "$WORK"
     return 0
 }
@@ -84,10 +85,25 @@ stop() {  # stop [<stop_hook_active>] [<session id>]
     grep -q 'stop hook gave up' "$(git rev-parse --git-common-dir)/guard-bypass.log"
 }
 
-@test "a repo that does not name the plugin is left alone" {
-    printf 'nothing\n' > VAULT.md; commit_all unplug
+@test "a repo whose VAULT.md names the plugin but has no gate hook lets the turn end" {
+    printf 'x\n' > a.txt; commit_all work
+    rm .git/hooks/pre-commit
     run stop
     [ "$status" -eq 0 ]
+}
+
+@test "an unreadable hooks folder or a failing gated.py counts as gated" {
+    printf 'x\n' > a.txt; commit_all work
+    chmod 000 .git/hooks
+    run stop
+    chmod 755 .git/hooks
+    [ "$status" -eq 2 ]
+    rm .git/hooks/pre-commit
+    mkdir -p "$WORK/hooks"
+    cp "$STOP" "$WORK/hooks/guard-stop.sh"
+    printf 'raise RuntimeError("broken")\n' > "$WORK/hooks/gated.py"
+    STOP="$WORK/hooks/guard-stop.sh" run stop
+    [ "$status" -eq 2 ]
 }
 
 @test "outside a git repo it exits 0" {

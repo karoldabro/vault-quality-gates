@@ -7,7 +7,10 @@ import glob, os, re, subprocess
 
 HOME = os.path.expanduser('~')
 HOME_REAL = os.path.realpath(HOME)
-STARTUP = ('.bashrc', '.bash_profile', '.bash_login', '.profile', '.zshrc', '.zshenv', '.zprofile')
+STARTUP = ('.bashrc', '.bash_profile', '.bash_login', '.bash_logout', '.bash_aliases', '.profile',
+           '.zshrc', '.zshenv', '.zprofile', '.zlogin', '.zlogout')
+# Folders whose files every login or shell session sources: a line there can set GIT_CONFIG_* for every repo.
+STARTUP_DIRS = ('.config/fish', '.config/environment.d')
 # A path inside interpreter code: ~, $HOME or ${HOME} followed by /, or an absolute path.
 TEXT_PATH = re.compile(r'''(?:~|\$\{HOME\}|\$HOME)(?=/)[^\s'"`;|&<>(){}\[\],]*|/[^\s'"`;|&<>(){}\[\],]+''')
 # Code that writes a file or starts a program: a write mode passed as an argument, a write or file call,
@@ -64,7 +67,7 @@ def denial(path, plugin):
         for home in {HOME, HOME_REAL}:
             if under(p, os.path.join(home, '.pub-cache')):
                 return 'it is in the Dart package cache, which the gate runs unsandboxed'
-            if p in {os.path.join(home, s) for s in STARTUP}:
+            if p in {os.path.join(home, s) for s in STARTUP} or any(under(p, os.path.join(home, s)) for s in STARTUP_DIRS):
                 return 'it is a shell startup file'
             cache = os.path.join(home, '.cache')
             if p.startswith(cache + '/'):

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Claude Code PreToolUse hook (matcher Bash): exits 2 with the reason on stderr when a command
 # would skip, disable or forge the commit gate; exits 0 otherwise. Read-only commands always pass.
+# Gate rules bind only when the command reaches a gated repo (gated.py); the rules that protect the
+# guards and the gate's tools bind in every repo.
 # The plugin checkout is this file's grandparent directory, so the guard protects its own files.
 # The rules live in guard_bash.py; the tokeniser in shell_lexer.py.
 SELF="$(realpath "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")"

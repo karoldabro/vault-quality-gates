@@ -6,6 +6,8 @@
 # (stderr goes back to the agent), 0 allows. The plugin checkout is /code, derived by the hooks
 # from their own location, so /code/bin/guard.sh is the protected plugin file here.
 
+load guard-helpers
+
 HOOKS=/code/templates/claude-hooks
 
 setup() {
@@ -17,6 +19,7 @@ setup() {
     git config user.email 'test@example.invalid'
     git config user.name 'test'
     git commit -q --allow-empty -m init
+    mark_gated .
     BAD=''
 }
 
@@ -50,6 +53,14 @@ edit_case() {
 
 no_bad() {
     [ -z "$BAD" ] || { printf '%s\n' "$BAD" >&2; return 1; }
+}
+
+# ungated — makes $WORK/plain, a repo with no gate hook, and enters it.
+ungated() {
+    mkdir -p "$WORK/plain"
+    cd "$WORK/plain" || return 1
+    git init -q .
+    git -c user.email=t@e -c user.name=t commit -q --allow-empty -m init
 }
 
 @test "a denial exits 2 and names the reason on stderr" {
@@ -549,6 +560,7 @@ plugin_copy() {
     git -C "$1" init -q .
     git -C "$1" -c user.email=t@e -c user.name=t add -A
     git -C "$1" -c user.email=t@e -c user.name=t commit -q -m plugin
+    mark_gated "$1"
 }
 
 @test "BASH_FUNC_ assignments are denied beside any command and BASH_ENV, SHELLOPTS and BASHOPTS beside git, qg or a hook" {
@@ -716,7 +728,7 @@ plugin_copy() {
     no_bad
 }
 
-@test "in a repo with no quality folder an fd duplication, python backticks and an installed program naming the plugin path are allowed" {
+@test "in a gated repo with no quality folder an fd duplication, python backticks and an installed program naming the plugin path are allowed" {
     [ ! -e quality ]
     local inst="$HOME/.claude/plugins/cache/demo/1.0/bin"
     mkdir -p "$inst"
@@ -788,7 +800,7 @@ plugin_copy() {
     no_bad
 }
 
-@test "in a repo with no quality folder every git, qg and write denial still holds" {
+@test "in a gated repo with no quality folder every git, qg and write denial still holds" {
     [ ! -e quality ]
     local c
     for c in 'git commit -n -m x' 'git push --force' 'git config core.hooksPath /dev/null' 'qg override --reason x' \
@@ -800,6 +812,78 @@ plugin_copy() {
     edit_case deny "$PWD/.claude/settings.json"
     bash_case allow 'qg hooks status --user'
     bash_case allow '/code/bin/guard.sh hooks status --user'
+    no_bad
+}
+
+@test "in an ungated repo launchers, scripts running git, computed code and programs, git reads and git commit -n are allowed" {
+    ungated
+    printf '#!/usr/bin/env bash\ngit status\nX="${STUDIO_PYTHON:-python3}"\n"$X" -m pytest -q\n' > test-safe.sh
+    chmod +x test-safe.sh
+    local c
+    for c in 'systemctl --user restart agent-dashboard.service' 'bash test-safe.sh' './test-safe.sh' \
+             "python3 -c \"print('\$v')\"" '"$P" -m json.tool x.json' 'git worktree list' 'git commit -n -m x' \
+             'rm -rf .git/x' 'tmux new-session -d -s x ls' 'X=1 python3 -c "print(1)"'; do
+        bash_case allow "$c"
+    done
+    edit_case allow "$PWD/.git/info/exclude"
+    no_bad
+}
+
+@test "in an ungated repo writes to the guard install and the gate's tools are denied with the integrity text" {
+    ungated
+    local c
+    for c in 'touch /code/bin/guard.sh' 'touch .husky /code/bin/guard.sh' 'rm -rf ~/.claude/plugins/cache/x > .git/x' \
+             'echo x > ~/.claude/settings.json' 'echo x > ~/.claude-factory/settings.json' 'echo x > .claude/settings.json' \
+             'git config --global core.hooksPath /dev/null' 'echo x >> ~/.bash_aliases' 'touch ~/.config/fish/conf.d/x.fish' \
+             'qg override --reason x' 'qg baseline' '"$P" /code/bin/x' \
+             "printf 'echo x > ~/.claude/settings.json' | bash" 'echo ~/.claude/settings.json | xargs rm' \
+             "systemd-run --user sh -c 'echo x >> ~/.bashrc'" "echo 'touch ~/.claude/settings.json' > w.sh; bash w.sh" \
+             'touch ~/.claude/plugins/cache/demo/1.0/bin/qg-last' 'rm -rf ~/.claude' 'mv ~/.claude-factory ~/x' \
+             "find ~/.claude -name 'settings*' -delete" 'find -L / -name guard.sh -delete' 'rm -rf ~' \
+             'echo x > ~/.config/husky/init.sh'; do
+        bash_case deny "$c"
+    done
+    bash_case allow 'rm -rf "$RUN_DIR/audio"; ls checks/qg-scope-SC-1.sh'
+    bash_case allow 'git config -f .git/config core.hooksPath x'
+    bash_case allow 'mkdir -p ~/workspace/new-project'
+    run bash -c "jq -nc '{tool_name:\"Bash\",cwd:\"$PWD\",tool_input:{command:\"touch /code/bin/guard.sh\"}}' | $HOOKS/guard-bash.sh"
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"in every repo; ask the human"* ]]
+    edit_case deny "$HOME/.claude/settings.json"
+    edit_case deny "$PWD/.claude/settings.local.json"
+    edit_case deny "$HOME/.claude-factory/settings.json"
+    edit_case deny "$HOME/.gitconfig"
+    edit_case deny "$HOME/.config/husky/init.sh"
+    no_bad
+}
+
+@test "a gate denial earlier in a command never hides an integrity write later in it" {
+    ungated
+    printf '#!/usr/bin/env bash\necho x > ~/.claude/settings.json\n' > w.sh
+    bash_case deny 'docker exec c git commit -n; bash ./w.sh'
+    plugin_copy "$WORK/repo-plugin"
+    local saved="$HOOKS"
+    HOOKS="$WORK/repo-plugin/templates/claude-hooks"
+    bash_case deny 'env -C /tmp git commit -n; touch ../repo-plugin/bin/x'
+    HOOKS="$saved"
+    no_bad
+}
+
+@test "from an ungated cwd a literal path into a gated repo brings every gate rule" {
+    ungated
+    local c
+    for c in "git -C $WORK/repo commit -n -m x" "cd $WORK/repo && git commit -n -m x" 'cd .. && cd repo && git commit -n -m x' \
+             "bash -c 'cd $WORK/repo && git commit -n -m x'" "git --git-dir=$WORK/repo/.git --work-tree=$WORK/repo commit -n -m x" \
+             "rm $WORK/repo/.git/hooks/pre-commit" 'cd .. && git -C repo commit -n -m x' \
+             "printf 'cd $WORK/repo && git commit -n -m x' | bash" "env -S \"git -C $WORK/repo commit -n -m x\"" \
+             "export QG_SKIP_REASON=x; bash -c 'cd $WORK/repo && git commit -m y'"; do
+        bash_case deny "$c"
+    done
+    edit_case deny "$WORK/repo/.git/config"
+    git init -q --bare "$WORK/app.git"
+    printf '#!/bin/sh\n# vault-guard-start\n' > "$WORK/app.git/hooks/pre-commit"
+    bash_case deny "git --git-dir=$WORK/app.git --work-tree=. commit -n -m x"
+    bash_case deny "rm $WORK/app.git/hooks/pre-commit"
     no_bad
 }
 
