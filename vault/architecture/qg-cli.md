@@ -58,7 +58,7 @@ the rules; `bin/qg`, `lib/guard-override.sh` and `templates/claude-hooks/guard_b
 - **Logging:** each granted use appends `agent grant (<action>, until <time>): <what>` to the repo's
   `<git-common-dir>/guard-bypass.log`, and the next `pre-push` prints it.
 - **Never granted:** `qg grant` itself, `accept`, `init`, `migrate`, `hooks install` and
-  `hooks remove` (`--user` included), force or mirror pushes, and writes to the plugin main worktree.
+  `hooks remove` (`--user` included), and force or mirror pushes.
   The push gate rows and the baseline-loosening check still run on every push.
 - **`qg grant --status`** prints `grant: <actions> until <time> (<N> minutes left)` or `no grant`,
   exit 0. Anyone may run it.

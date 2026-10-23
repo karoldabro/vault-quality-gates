@@ -5,13 +5,14 @@
 # install writes the templates into .git/hooks and, with --claude, the three guard entries into
 # <repo>/.claude/settings.json. A repo's own pre-commit step (lint-staged, say) goes in
 # .git/hooks/pre-commit.user, which the pre-commit template runs first and this never touches.
-# install --claude --user writes the three entries into ~/.claude/settings.json and each
+# install --claude --user writes the two entries into ~/.claude/settings.json and each
 # <dir>/settings.json instead, pointing at the main worktree of this plugin, and writes the machine
 # tool-path file (lib/qg-toolpath.sh) from QG_CALLER_PATH, which only bin/qg sets.
 #
-# The three entries are the hooks whose command's file name is guard-bash.sh, guard-edit.sh or
-# guard-stop.sh. Install replaces every such entry, whatever its folder; remove --claude removes
-# exactly those and nothing else. A settings file that is not valid JSON is left unchanged, exit 2.
+# The two entries are the hooks whose command's file name is guard-bash.sh or guard-edit.sh.
+# Install replaces every such entry, whatever its folder, and drops a Stop entry for guard-stop.sh
+# an older install wrote; remove --claude removes exactly those and nothing else. A settings file
+# that is not valid JSON is left unchanged, exit 2.
 #
 # Every git hook body written carries the marker lines below. Anything else in a hook file
 # was written by someone else, and this refuses to overwrite it.
@@ -20,7 +21,7 @@ GUARD_MARK_START='# vault-guard-start'
 # shellcheck disable=SC2034  # the closing marker every template carries; doctor and readers match it
 GUARD_MARK_END='# vault-guard-end'
 GUARD_HOOK_NAMES='pre-commit pre-merge-commit pre-applypatch pre-push post-rewrite'
-GUARD_CLAUDE_NAMES='guard-bash.sh guard-edit.sh guard-stop.sh'
+GUARD_CLAUDE_NAMES='guard-bash.sh guard-edit.sh'
 
 # shellcheck source=guard-pass.sh
 . "${GUARD_LIB_DIR}/guard-pass.sh"
@@ -85,7 +86,7 @@ guard_hooks_record_local() {
 guard_claude_settings() { printf '%s/.claude/settings.json' "$(git rev-parse --show-toplevel)"; }
 
 # The jq definitions every settings edit shares. ours: a hook whose command's file name is one of
-# the three guards. strip: drops those hooks, then a group they emptied, then an event list and a
+# the two guards or the retired guard-stop.sh. strip: drops those hooks, then a group they emptied, then an event list and a
 # .hooks object they emptied; anything else stays as it was.
 GUARD_JQ_DEFS='
 def ours: ((.command? // "") | tostring | test("(^|/)guard-(bash|edit|stop)\\.sh([\\s\"'"'"']|$)"));
@@ -97,11 +98,10 @@ def strip1($k):
     else . end;
 def strip: (.hooks? // null) as $before | strip1("PreToolUse") | strip1("Stop")
     | if .hooks == {} and $before != {} then del(.hooks) else . end;
-def add($bash; $edit; $stop):
-    .hooks //= {} | .hooks.PreToolUse //= [] | .hooks.Stop //= []
+def add($bash; $edit):
+    .hooks //= {} | .hooks.PreToolUse //= []
     | .hooks.PreToolUse += [{matcher: "Bash", hooks: [{type: "command", command: $bash}]},
-                            {matcher: "Edit|Write|MultiEdit|NotebookEdit", hooks: [{type: "command", command: $edit}]}]
-    | .hooks.Stop += [{hooks: [{type: "command", command: $stop, timeout: 30}]}];
+                            {matcher: "Edit|Write|MultiEdit|NotebookEdit", hooks: [{type: "command", command: $edit}]}];
 '
 
 # guard_claude_valid <file> -> 0 when the file is absent, empty or a JSON object.
@@ -117,10 +117,9 @@ guard_claude_render() {
     local how="$1" file="$2" hooks="${3}/templates/claude-hooks" out="$4" prog="${GUARD_JQ_DEFS} strip"
     command -v jq >/dev/null 2>&1 || { guard_err 'guard: --claude needs jq'; return 2; }
     guard_claude_valid "$file" || { guard_err "guard: ${file} is not valid JSON — leaving every target alone"; return 2; }
-    [ "$how" = remove ] || prog+=" | add(\$bash; \$edit; \$stop)"
+    [ "$how" = remove ] || prog+=" | add(\$bash; \$edit)"
     { if [ -s "$file" ]; then cat "$file"; else printf '{}\n'; fi; } \
-        | jq --arg bash "${hooks}/guard-bash.sh" --arg edit "${hooks}/guard-edit.sh" --arg stop "${hooks}/guard-stop.sh" \
-            "$prog" > "$out" || { guard_err "guard: ${file} is not valid JSON — leaving every target alone"; return 2; }
+        | jq --arg bash "${hooks}/guard-bash.sh" --arg edit "${hooks}/guard-edit.sh" "$prog" > "$out" || { guard_err "guard: ${file} is not valid JSON — leaving every target alone"; return 2; }
 }
 
 # guard_claude_apply <install|remove> <file> <rendered> -> writes the rendered settings over the
@@ -132,8 +131,8 @@ guard_claude_apply() {
     elif [ "$how" = install ]; then
         mkdir -p "$(dirname "$file")" && cat "$new" > "$file" || return 2
     fi
-    if [ "$how" = remove ]; then printf 'removed guard-bash.sh, guard-edit.sh and guard-stop.sh from %s\n' "$file"
-    else printf 'installed PreToolUse guard-bash.sh and guard-edit.sh, and Stop guard-stop.sh, into %s\n' "$file"; fi
+    if [ "$how" = remove ]; then printf 'removed guard-bash.sh and guard-edit.sh from %s\n' "$file"
+    else printf 'installed PreToolUse guard-bash.sh and guard-edit.sh into %s\n' "$file"; fi
 }
 
 # guard_claude_edit <install|remove> <plugin> <file>... -> renders every file first, then writes
@@ -206,12 +205,10 @@ guard_hooks_remove_user() {
 }
 
 # guard_claude_entry_state <settings file> <guard file name> <plugin> -> installed or absent. The
-# one predicate for "the entry is installed": a hook under its event (PreToolUse for guard-bash.sh
-# and guard-edit.sh, Stop for guard-stop.sh) whose command is exactly
+# one predicate for "the entry is installed": a PreToolUse hook whose command is exactly
 # <plugin>/templates/claude-hooks/<name>, and that file exists and is executable.
 guard_claude_entry_state() {
     local cmd="${3}/templates/claude-hooks/${2}" event=PreToolUse
-    [ "$2" != guard-stop.sh ] || event=Stop
     if [ -x "$cmd" ] && jq -e --arg c "$cmd" --arg e "$event" \
         'any(.hooks[$e][]?; any(.hooks[]?; .command == $c))' "$1" >/dev/null 2>&1; then
         printf 'installed'

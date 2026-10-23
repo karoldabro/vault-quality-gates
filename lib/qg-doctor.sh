@@ -53,7 +53,7 @@ qg_doctor() {
             [[ "$seen_bad" == *"|${f}|"* ]] || note fail "${f} is missing or not JSON: agents run without the guards (a human runs qg hooks install --claude --user)"
             seen_bad+="|${f}|"
         else
-            note fail "${f} does not run ${main}/templates/claude-hooks/${entry} as its $([ "$entry" = guard-stop.sh ] && printf Stop || printf PreToolUse) entry (a human runs qg hooks install --claude --user)"
+            note fail "${f} does not run ${main}/templates/claude-hooks/${entry} as its PreToolUse entry (a human runs qg hooks install --claude --user)"
         fi
     done < <(guard_hooks_status_user)
     if [ -r .claude/settings.json ]; then

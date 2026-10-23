@@ -6,26 +6,28 @@ status: current
 tags: [quality, gates, contract, agent-hooks]
 ---
 
-# The Claude Code guards: the three entries, their install, and what they deny
+# The Claude Code guards: the two entries, their install, and what they deny
 
-Three hooks in `templates/claude-hooks/` stop an agent from skipping, disabling or forging the
-gate. They run in place from the plugin checkout by absolute path, never copied.
+Two hooks in `templates/claude-hooks/` deny an agent what skips or weakens the commit gate or the
+push gate. Every other command and edit runs unchecked; the repo's own `pre-commit` and `pre-push`
+hooks still judge each commit and push. The hooks run in place from the plugin checkout by absolute
+path, never copied.
 
-## The three entries
+## The two entries
 
 | entry | event and matcher | does |
 |---|---|---|
-| `guard-bash.sh` | `PreToolUse`, `Bash` | denies a command that skips, disables or forges the gate; rules in `guard_bash.py`, tokeniser in `shell_lexer.py` |
-| `guard-edit.sh` | `PreToolUse`, `Edit\|Write\|MultiEdit\|NotebookEdit` | denies an edit to a git dir, a Claude settings file, a git config file, gate configuration, the plugin or a global write denial |
-| `guard-stop.sh` | `Stop`, timeout 30 | blocks the end of a turn while a gated repo has commits on no remote |
+| `guard-bash.sh` | `PreToolUse`, `Bash` | denies a command in `## What guard-bash denies`; rules in `guard_bash.py`, tokeniser in `shell_lexer.py` |
+| `guard-edit.sh` | `PreToolUse`, `Edit\|Write\|MultiEdit\|NotebookEdit` | denies an edit in `## What guard-edit denies` |
 
-An entry is one of the three when its command's file name is `guard-bash.sh`, `guard-edit.sh` or
-`guard-stop.sh`. Install replaces every such entry, whatever its folder, and keeps every other
-entry. Remove drops exactly those three. A settings file that is not valid JSON is left unchanged,
-and the command exits 2. With several targets, install and remove check every target first.
-At user level an entry counts as installed only when its command is exactly
-`<main worktree>/templates/claude-hooks/<name>` under its event, and that file is executable.
-`qg doctor` fails naming that path. Its repo-level duplicate warning matches by file name, in any folder.
+An entry is one of the two when its command's file name is `guard-bash.sh` or `guard-edit.sh`.
+Install replaces every such entry, whatever its folder, keeps every other entry, and drops a `Stop`
+entry for `guard-stop.sh` that an older install wrote. Remove drops exactly those. A settings file
+that is not valid JSON is left unchanged, and the command exits 2. With several targets, install and
+remove check every target first. At user level an entry counts as installed only when its command is
+exactly `<main worktree>/templates/claude-hooks/<name>` under `PreToolUse`, and that file is
+executable. `qg doctor` fails naming that path. Its repo-level duplicate warning matches by file
+name, in any folder.
 
 | command | target |
 |---|---|
@@ -39,113 +41,40 @@ The `--user` forms run in `bin/qg` itself, because only `qg` holds the caller's 
 
 ## Scope
 
-The user-level guards run in every session, but their gate rules bind only in a gated repo.
+The git, gate-variable and gate-file rules bind only in a gated repo.
 `templates/claude-hooks/gated.py` decides it from the filesystem alone. A repo is gated when
 `<common dir>/hooks/pre-commit` or `pre-push` holds `# vault-guard-start`. It is also gated when its
-`.git` file, git dir or hooks folder cannot be read, or its config sets `hookspath`. A bare repo or a
-separate git dir counts as its own common dir.
+`.git` file, git dir or hooks folder cannot be read, or its config sets `hookspath`. The folder a
+rule checks is the cwd after each literal `cd`, a `git -C` target, or the folder of a write target.
+The `qg` and `guard.sh` rules bind in every repo.
 
-| class | binds | covers |
-|---|---|---|
-| integrity (`Integrity` in `guard_bash.py`) | every repo | the plugin main worktree; installed plugin code; `write_denials.py`; any `settings*.json` under a `.claude` or `.claude-*` folder; `~/.gitconfig`, `~/.config/git/config`, `~/.config/husky/`, and hook keys set through `--global`, `--system` or a `--file` outside the repo; `rm`, `mv` and the other `REMOVERS`, and `find -delete`, on a folder that holds any of these; `qg` and `guard.sh` commands other than reads; a writing git command whose repository is computed; deferred findings in a command that runs `qg` or names the plugin; text the hook cannot see (a pipe into a shell, a launcher, `xargs`, a script written and run in one command) when the raw command names any of these |
-| gate (`gate()`) | a command that reaches a gated repo | every other rule of `## What the guards deny` |
+A command the hook cannot parse runs unchecked (`guard-bash: not checked …` on stderr). A computed
+`git -C "$x"`, a script file, and code run through an interpreter are not read; the repo's git hooks
+judge what they commit or push.
 
-`gate()` records the rule and scanning goes on, so a later integrity rule in the same command still
-fires. After the scan, `main()` denies with the first recorded rule when any scope path lies in a
-gated repo. Scope paths are the cwd before and after each segment and every git `-C`, `--git-dir`,
-`--work-tree`, `GIT_DIR` and `GIT_WORK_TREE` target. They also cover every write target and every
-path-like word piece split on `=` and `:`, plus every absolute or `~` path in any shell text read,
-quoted, piped and heredoc text included. `guard-edit.sh` applies its `.git`, husky and
-`quality/config` reasons only when the target or the cwd is gated. `guard-stop.sh` lets a turn end
-only on `gated.py` exit 3.
+## What guard-bash denies
 
-An integrity denial ends with "ask the human to make this change"; a gate denial points at the commit
-gate. Unchecked by the agent guards, and left to the gated repo's own git hooks: a gated repo reached
-from an ungated cwd only through a computed path, a relative path inside opaque text, or a non-shell
-script. Also unchecked: a `systemd --user` unit or crontab written outside a gated repo, and files
-included from the global git config.
+- `git commit -n`, `-n` inside a short-flag cluster, and `--no-verify`;
+- `--no-verify` on `merge`, `push`, `am`, `rebase`, `cherry-pick`, `revert` and `pull`;
+- `git push` with `--force*`, `-f`, a `+` refspec, `--mirror`, `--delete`, `-d`, `--prune`,
+  `-o`/`--push-option`, `--receive-pack` or `--exec`;
+- `git push` whose target branch is `master`, `main`, `develop` or `development`, including a bare
+  `git push` or `HEAD` from one of them, because a push there deploys;
+- `git config` that sets or unsets `core.hooksPath` or a `hook.*` key, and `git -c` with one;
+- assigning, exporting or passing through `env` `HUSKY=0` or any `GUARD_*` or `QG_*` name;
+- a redirect or a `rm`, `mv`, `cp`, `ln`, `chmod`, `touch`, `tee`, `truncate`, `install`, `mkdir`,
+  `rsync` or `dd of=` target inside a `.git` folder, naming `qg-override`, inside `.husky/`, or under
+  `quality/config`, `quality/drivers`, `quality/baseline.tsv` or `quality/checks.tsv`;
+- `qg` subcommands other than the reads in `vault/architecture/qg-cli.md`; `qg baseline` and
+  `qg override` pass while the operator grant names them (`## The agent grant` there);
+- `guard.sh` subcommands other than `verify <range>`, `report` and `hooks status`.
 
-## What the guards deny
+`bash -c`, `sh -c`, `zsh -c` and `dash -c` text is read like the command. `env`, `command`, `nice`,
+`nohup`, `time`, `timeout`, `sudo`, `exec`, `builtin`, `stdbuf`, `ionice` and `setsid` are skipped
+with their options, and so are `export`, `declare`, `typeset`, `readonly` and `local`.
 
-**Plugin files.** Both hooks protect the main worktree of the checkout they run from. Any linked
-worktree of the plugin stays editable, the one the hooks run from included. A git command other than
-a read is denied when its work tree lies in the main worktree. The checked paths are the tracked cwd,
-`-C`, `--work-tree`, `--git-dir`, an assigned or exported `GIT_WORK_TREE` or `GIT_DIR`,
-`checkout-index --prefix` and the folder of `worktree add`, each resolved with `realpath`. The cwd
-follows `cd`, `cd -` and the `pushd`/`popd` stack. A `GIT_DIR` or `GIT_WORK_TREE` value is checked
-both against the cwd of its assignment and the cwd git runs in; `unset` drops it. After a `cd` to a
-computed folder, a stack rotation or an unknown `OLDPWD`, a writing git command is denied.
+## What guard-edit denies
 
-**Launchers.** `script`, `exec -c`, `systemd-run`, `at`, `batch`, `screen`, `dbus-run-session`,
-`busctl`, `systemctl` with `start`, `restart` or `run`, and the tmux subcommands that run a command
-(`new-session`, `new-window`, `split-window`, `send-keys`, `respawn-*`, `run-shell`) are denied.
-Each can start a command without the agent markers.
-
-**The override's own check.** `lib/guard-override.sh` refuses when the hook or an ancestor holds
-`CLAUDECODE` or `AI_AGENT` in `/proc/<pid>/environ`, or when one of those files cannot be read. The
-walk stops at the user manager or init. It fails closed at a process on the hook's terminal whose
-parent is init or the user manager, because that process was orphaned and lost the parent that may
-have been the agent. The check covers only commands that stay in the agent's process tree; a command
-a service manager starts falls outside it, which is why the launchers above are denied.
-
-**Accepted, predates S6:** a git alias already set in a repo or global git config runs as git runs
-it, unscanned. `guard-bash.sh` denies setting an alias, never one that already exists.
-
-**Global write denials.** Both hooks deny a write or an edit under these paths, compared by the
-spelled and the resolved path (`write_denials.py`):
-
-- `~/.pub-cache`;
-- any folder holding `bin/internal/engine.version` and `packages/flutter_tools`, a Flutter SDK;
-- a direct child of `~/.cache` holding a `copydetect-*` folder;
-- `~/.bashrc`, `~/.bash_profile`, `~/.bash_login`, `~/.profile`, `~/.zshrc`, `~/.zshenv`, `~/.zprofile`;
-- every absolute `PATH` folder before `/usr/bin`, or every one when `PATH` has no `/usr/bin`;
-- every folder in the machine tool-path file.
-
-`guard-bash.sh` also matches these paths in interpreter code (`-c`, `-e`, heredocs, script files),
-spelled with `~`, `$HOME`, `${HOME}` or absolutely, when the code writes a file or starts a program.
-Code that only reads them passes, and a shebang line never counts. It also checks write targets: `tar -C`,
-`--directory=`, `unzip -d`, `curl -o`, `--output`, `--output-dir`, `wget -O`, `--output-document`,
-`-P`, `dd of=` and the folder of `git clone <url> <dir>`. A bare `cd` moves the checked cwd to `HOME`.
-
-**Names always denied.** `guard-bash.sh` denies assigning, exporting, declaring or passing through
-`env` any `BASH_FUNC_*` name and any name `env` sets that is no plain identifier. It denies `export -f`,
-and `declare` or `typeset` with both `-f` and `-x`. It denies any change to `CLAUDECODE` or `AI_AGENT`.
-`env` is checked for every word holding `=` before its program. `declare -f`, `declare -F` and
-`declare +x -f` are allowed.
-
-**Narrowed checks.** These deny only when the same input also names git, `.git`, a hook, `qg`,
-`guard.sh` or the plugin; the input includes every script it runs or sources:
-
-- assigning, exporting or declaring `BASH_ENV`, `SHELLOPTS`, `BASHOPTS`, `GIT_REPLACE_REF_BASE`,
-  `GIT_NO_REPLACE_OBJECTS`, `GIT_ALTERNATE_OBJECT_DIRECTORIES`, `GIT_OBJECT_DIRECTORY`,
-  `GIT_EXTERNAL_DIFF`, `LD_PRELOAD`, `LD_LIBRARY_PATH` or `LD_AUDIT`, or exporting a name that is
-  no plain identifier, such as `export $(xargs < .env)`;
-- interpreter code, inline or in a script file, matching `RISKY_CODE`;
-- a word holding `claudecode` or `ai_agent`;
-- a command word, a write target, or part of `-c`/`-e` code computed at run time (`"${PYTHON}"`,
-  `rm "$DIR/x"`, `python3 -c "…$f…"`). Code that is only a substitution (`python3 -c "$CODE"`,
-  `sh -c "$(…)"`) is always denied, and so is a computed target whose spelled prefix lies in a
-  `.git` folder, the plugin or installed plugin code.
-
-A script file counts toward "names git" by its words only; its comments and heredoc text do not.
-A hook counts as named by the word `hook` or `hooks`, not by names like `--hook-type`.
-`git worktree list`, `git branch` listing flags, `git stash list|show` and `git remote [-v|get-url|show]` are reads.
-
-`RISKY_CODE` is advisory, because a script file the agent writes and runs later is never scanned.
-Inline or heredoc code that starts a program (`exec*`, `subprocess`, `child_process`, `spawn`,
-`os.system`, `popen`) and also changes the environment or opens a pty is always denied. It can
-spell the program's name so that no text check sees it.
-
-**Allowed.** `>&<digit>` and `>&-` duplicate or close a descriptor and are never write targets. An
-installed program, whose real path is under `~/.claude/plugins/cache`, may name the plugin path; its
-redirects and the commands chained to it are still checked.
-
-## How the guards read scripts
-
-`guard-bash.sh` reads every script a command runs or sources and scans it like the command. Two kinds
-run unscanned: a committed, unmodified script under `guard_protected_paths`, and code installed under
-`~/.claude/plugins/cache/`. Both hooks deny an agent any write or edit there, which is what makes
-that code safe to run as installed. Every hook runs `python3 -I`, so a module planted in the cwd or
-a `PYTHONPATH` never loads.
-
-The `qg` subcommands `guard-bash.sh` lets an agent run are listed in `vault/architecture/qg-cli.md`.
+In a gated repo, an edit to a path inside a `.git` folder or the git dir, `.husky/` or `.huskyrc`,
+`quality/config`, `quality/drivers/`, `quality/baseline.tsv` or `quality/checks.tsv`. Every hook
+runs `python3 -I`, so a module planted in the cwd or a `PYTHONPATH` never loads.

@@ -11,4 +11,4 @@ qg_cases \
     "lock check: a new application package passes, a new dev package is refused, at most 10 names print" \
     "in-tree.sh runs when the staged lock changes only an application package and vendor/ matches it" \
     "in-tree.sh refuses a staged tool change, a vendor/ that differs from the staged lock, and the checkout itself" \
-    "in-server.sh refuses a merged compose file, a missing vendor/ or .env, and a vendor/ that differs from the lock"
+    "in-server.sh refuses a missing vendor/ or .env, and a vendor/ that differs from the lock"

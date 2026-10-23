@@ -350,12 +350,10 @@ stage_change() { printf 'staged\n' >> file.txt; git add file.txt; }
     jq -e '.hooks.PreToolUse[] | select(.matcher == "Read")' "$f" >/dev/null
     [ "$(jq -r '.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[0].command' "$f")" = /code/templates/claude-hooks/guard-bash.sh ]
     [ "$(jq -r '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|MultiEdit|NotebookEdit") | .hooks[0].command' "$f")" = /code/templates/claude-hooks/guard-edit.sh ]
-    [ "$(jq '.hooks.Stop | length' "$f")" -eq 1 ]
-    [ "$(jq -r '.hooks.Stop[0].hooks[0].command' "$f")" = /code/templates/claude-hooks/guard-stop.sh ]
+    [ "$(jq '.hooks.Stop // [] | length' "$f")" -eq 0 ]
     run guard_hooks_status
     [[ "$output" == *'guard-bash'*'installed'* ]]
     [[ "$output" == *'guard-edit'*'installed'* ]]
-    [[ "$output" == *'guard-stop'*'installed'* ]]
 }
 
 @test "pre-commit runs hooks/pre-commit.user first, and its failure refuses the commit" {

@@ -1,7 +1,6 @@
 #!/usr/bin/env bats
 # templates/claude-hooks/* — the agent guards for the surfaces qg adds: the qg command, the
-# override token, quality/drivers/ and quality/config, the git directory, and the Stop hook's
-# test for a gated repo. 2 denies, 0 allows.
+# override token, quality/drivers/ and quality/config, and the git directory. 2 denies, 0 allows.
 
 load guard-helpers
 
@@ -95,15 +94,6 @@ no_bad() { [ -z "$BAD" ] || { printf '%s\n' "$BAD" >&2; return 1; }; }
     no_bad
 }
 
-@test "git hash-object -w -t commit and git mktree are denied; a read-only hash-object is not" {
-    bash_case deny 'git hash-object -t commit -w --stdin < /tmp/c'
-    bash_case deny 'git hash-object -w -tcommit --stdin < /tmp/c'
-    bash_case deny 'git mktree < /tmp/t'
-    bash_case allow 'git hash-object README.md'
-    bash_case allow 'git hash-object -w --stdin < /tmp/blob'
-    no_bad
-}
-
 @test "quality/drivers/ and quality/config cannot be written by Bash or the edit tools; the rest of quality/ can" {
     local c
     for c in 'printf x > quality/config' 'mkdir -p quality/drivers && cp /tmp/x quality/drivers/phpstan.sh' \
@@ -117,23 +107,6 @@ no_bad() { [ -z "$BAD" ] || { printf '%s\n' "$BAD" >&2; return 1; }; }
     edit_case allow "$WORK/repo/quality/README.md"
     edit_case allow "$WORK/repo/quality/configuration.md"
     no_bad
-}
-
-@test "the Stop hook treats a repo whose gate hook is installed as gated" {
-    printf 'x\n' > quality/checks.tsv
-    git add -A; git commit -q -m gate
-    run bash -c "jq -nc --arg d '$PWD' '{cwd:\$d}' | $HOOKS/guard-stop.sh"
-    [ "$status" -eq 2 ]
-    [[ "$output" == *'on no remote'* ]]
-    [[ "$output" == *'quality/config, quality/drivers/'* ]]
-}
-
-@test "the Stop hook leaves a repo with the gate's files but no gate hook alone" {
-    printf 'x\n' > quality/checks.tsv; printf 'x\n' > quality/rules.tsv
-    git add -A; git commit -q -m gate-files
-    rm .git/hooks/pre-commit
-    run bash -c "jq -nc --arg d '$PWD' '{cwd:\$d}' | $HOOKS/guard-stop.sh"
-    [ "$status" -eq 0 ]
 }
 
 # --- user-level install: qg hooks install|remove|status --claude --user ------------------------
@@ -164,7 +137,7 @@ foreign() {
     jq -cS '[(.hooks.PreToolUse[]?, .hooks.Stop[]?) | select(any(.hooks[]?; .command | test("guard-(bash|edit|stop)\\.sh") | not))], del(.hooks)' "$1"
 }
 
-@test "hooks install --claude --user twice leaves three guard entries and keeps other entries" {
+@test "hooks install --claude --user twice leaves two guard entries and keeps other entries" {
     user_setup
     printf '%s\n' "$FOREIGN" > "$HOME/.claude/settings.json"
     local before; before="$(foreign "$HOME/.claude/settings.json")"
@@ -174,7 +147,7 @@ foreign() {
     run "$QG" hooks install --claude --user
     [ "$status" -eq 0 ]
     [ "$(jq -S . "$HOME/.claude/settings.json")" = "$first" ]
-    [ "$(guard_entries "$HOME/.claude/settings.json" | wc -l)" -eq 3 ]
+    [ "$(guard_entries "$HOME/.claude/settings.json" | wc -l)" -eq 2 ]
     [ "$(foreign "$HOME/.claude/settings.json")" = "$before" ]
 }
 
@@ -183,7 +156,7 @@ foreign() {
     run "$QG" hooks install --claude --user --config-dir "$WORK/factory" --config-dir "$WORK/other/"
     [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
     local want; want="$(guard_entries "$HOME/.claude/settings.json")"
-    [ "$(printf '%s\n' "$want" | wc -l)" -eq 3 ]
+    [ "$(printf '%s\n' "$want" | wc -l)" -eq 2 ]
     [ "$(guard_entries "$WORK/factory/settings.json")" = "$want" ]
     [ "$(guard_entries "$WORK/other/settings.json")" = "$want" ]
 }
@@ -193,7 +166,7 @@ foreign() {
     ln -s "$WORK/plugin" "$WORK/plugin-link"
     run "$WORK/plugin-link/bin/qg" hooks install --claude --user
     [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
-    [ "$(guard_entries "$HOME/.claude/settings.json")" = "$(printf '%s/templates/claude-hooks/%s\n' "$PLUGIN_REAL" guard-bash.sh "$PLUGIN_REAL" guard-edit.sh "$PLUGIN_REAL" guard-stop.sh)" ]
+    [ "$(guard_entries "$HOME/.claude/settings.json")" = "$(printf '%s/templates/claude-hooks/%s\n' "$PLUGIN_REAL" guard-bash.sh "$PLUGIN_REAL" guard-edit.sh)" ]
 }
 
 @test "hooks install --claude --user writes the machine tool-path file from the caller's PATH" {
@@ -216,7 +189,7 @@ foreign() {
     [ ! -e "$WORK/plugin/.git/qg-tool-path" ]
 }
 
-@test "hooks remove --claude --user removes exactly the three guard entries" {
+@test "hooks remove --claude --user removes exactly the two guard entries" {
     user_setup
     printf '%s\n' "$FOREIGN" > "$HOME/.claude/settings.json"
     mkdir -p "$WORK/factory"
@@ -252,19 +225,19 @@ foreign() {
     cmp "$WORK/before" "$HOME/.claude/settings.json"
 }
 
-@test "hooks install --claude --user replaces an older guard entry naming another folder" {
+@test "hooks install --claude --user replaces an older guard entry naming another folder and drops the retired Stop entry" {
     user_setup
     printf '%s\n' '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/old/vault-quality-gates/templates/claude-hooks/guard-bash.sh"}]},{"matcher":"Read","hooks":[{"type":"command","command":"/other.sh"}]}],"Stop":[{"hooks":[{"type":"command","command":"/old/vault-quality-gates/templates/claude-hooks/guard-stop.sh","timeout":30}]}]}}' \
         > "$HOME/.claude/settings.json"
     run "$QG" hooks install --claude --user
     [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
-    [ "$(guard_entries "$HOME/.claude/settings.json" | wc -l)" -eq 3 ]
+    [ "$(guard_entries "$HOME/.claude/settings.json" | wc -l)" -eq 2 ]
     run grep -c '/old/' "$HOME/.claude/settings.json"
     [ "$output" = 0 ]
     jq -e '.hooks.PreToolUse[] | select(.matcher == "Read")' "$HOME/.claude/settings.json" > /dev/null
 }
 
-@test "hooks remove --claude removes the three repo-level entries and keeps every other entry and the git hooks" {
+@test "hooks remove --claude removes the two repo-level entries and keeps every other entry and the git hooks" {
     run /code/bin/qg hooks install --claude
     [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
     jq '.hooks.PreToolUse += [{"matcher":"Read","hooks":[{"type":"command","command":"/other.sh"}]}] | .model = "x"' \
@@ -291,12 +264,12 @@ foreign() {
     user_setup
     run "$QG" hooks status --user --config-dir "$WORK/factory"
     [ "$status" -eq 0 ]
-    [ "$(grep -c '^absent guard-' <<<"$output")" -eq 6 ]
+    [ "$(grep -c '^absent guard-' <<<"$output")" -eq 4 ]
     [[ "$output" == *"absent guard-bash.sh $HOME/.claude/settings.json"* ]]
-    [[ "$output" == *"absent guard-stop.sh $WORK/factory/settings.json"* ]]
+    [[ "$output" == *"absent guard-edit.sh $WORK/factory/settings.json"* ]]
     "$QG" hooks install --claude --user > /dev/null
     run "$QG" hooks status --user --config-dir "$WORK/factory"
-    [ "$(grep -c '^installed guard-' <<<"$output")" -eq 3 ]
+    [ "$(grep -c '^installed guard-' <<<"$output")" -eq 2 ]
     [[ "$output" == *"installed guard-edit.sh $HOME/.claude/settings.json"* ]]
     [[ "$output" == *"absent guard-edit.sh $WORK/factory/settings.json"* ]]
     mkdir -p "$HOME/.claude-factory"
@@ -308,7 +281,7 @@ foreign() {
     user_setup
     CLAUDECODE=1 run "$QG" hooks status --user
     [ "$status" -eq 0 ]
-    [ "$(grep -c '^absent guard-' <<<"$output")" -eq 3 ]
+    [ "$(grep -c '^absent guard-' <<<"$output")" -eq 2 ]
     AI_AGENT=1 run "$QG" hooks install --claude --user
     [ "$status" -eq 2 ]
     [ ! -e "$HOME/.claude/settings.json" ]

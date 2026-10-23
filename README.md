@@ -95,15 +95,13 @@ a release date or it is not made.
   variable, exported function or planted program changes a verdict
   (`vault/architecture/guard-environment.md`). The gate runs on Linux only.
 - `qg hooks install --claude --user` adds, once per machine, two Claude Code `PreToolUse` hooks that
-  deny an agent the commands and edits that would skip, disable or loosen the gate. It also adds a `Stop` hook
-  (`guard-stop.sh`) that blocks the end of a turn once while HEAD carries commits on no remote, so
-  the push gate runs while the agent can still fix the result. On the default branch, `development`,
-  `develop` or a detached HEAD it asks for a new branch instead. It gives up after 5 blocks on the
-  same commit and logs that to `guard-bypass.log`.
+  deny an agent only the commands and edits that would skip or weaken the commit gate or the push
+  gate (`vault/architecture/guard-agent-hooks.md`). Pushing stays the operator's decision.
 - A repo's own pre-commit step, such as `lint-staged`, goes in `.git/hooks/pre-commit.user`. The
   installed `pre-commit` runs it first, and a reinstall never touches it.
 - The Claude Code hooks need `python3` on `PATH`: the Bash guard tokenises the command with real
   shell quoting (`$'..'`, heredocs, `$(...)`). Without `python3` each hook denies every call.
+  A command the Bash guard cannot parse runs unchecked.
 
 **Nothing whole-repo runs at commit time.** A suite that takes an hour makes the gate unusable, and
 people bypass it. Slow rows carry `on: push:<glob>` or `on: baseline`.
@@ -131,7 +129,7 @@ people bypass it. Slow rows carry `on: push:<glob>` or `on: baseline`.
 | `lib/guard-parsers/*.sh` | the `shell` driver's parsers: clover, junit, infection, jscpd, insights, phpstan, phpstan-all, phpmd, cda, cloc, diffcover, exitcode |
 | `templates/init/*.tsv` | starter `checks.tsv` rows per profile: `docs`, `php`, `nuxt`, `flutter`, `hugo` |
 | `templates/git-hooks/*` | `pre-commit`, `pre-merge-commit`, `pre-applypatch`, `pre-push`, `post-rewrite` |
-| `templates/claude-hooks/*` | the `PreToolUse` guards `guard-bash.sh` and `guard-edit.sh`, the `Stop` hook `guard-stop.sh`, and `write_denials.py`, the paths no agent writes |
+| `templates/claude-hooks/*` | the `PreToolUse` guards `guard-bash.sh` and `guard-edit.sh`, and `gated.py`, which decides whether a repo is gated |
 | `extend/` | the framework extension points: `init` scaffolds a repo, `dod-keys` declares its keys |
 
 **The git hooks are written into `.git/hooks/`.** An agent sees a refusal because it ran

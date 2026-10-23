@@ -192,5 +192,5 @@ log line. The next `pre-push` prints the log lines it has not printed before.
 
 ## Claude Code hooks
 
-The agent guards, their user-level install and their write denials are in
+The agent guards and their user-level install are in
 `vault/architecture/guard-agent-hooks.md`.

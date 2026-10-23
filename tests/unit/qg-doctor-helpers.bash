@@ -17,12 +17,11 @@ healthy_setup() {
 }
 
 # user_settings <claude config dir> [<guard name> to leave out] — its settings.json with a foreign
-# entry and the three guard entries, less the one named.
+# entry and the two guard entries, less the one named.
 user_settings() {
     mkdir -p "$1"
     jq -n --arg p "$PLUGIN/templates/claude-hooks" --arg skip "${2:-}" '
         def e($m; $n): select($n != $skip) | {matcher: $m, hooks: [{type: "command", command: "\($p)/\($n)"}]};
         {hooks: {PreToolUse: [{matcher: "Read", hooks: [{type: "command", command: "/usr/bin/true"}]},
-                              e("Bash"; "guard-bash.sh"), e("Edit|Write"; "guard-edit.sh")],
-                 Stop: [e(null; "guard-stop.sh")]}}' > "$1/settings.json"
+                              e("Bash"; "guard-bash.sh"), e("Edit|Write"; "guard-edit.sh")]}}' > "$1/settings.json"
 }

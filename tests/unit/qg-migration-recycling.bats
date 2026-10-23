@@ -135,15 +135,21 @@ api_repo() {
     [[ "$output" != *'variable is not set'* ]]
 }
 
-@test "in-server.sh refuses a merged compose file, a missing vendor/ or .env, and a vendor/ that differs from the lock" {
+@test "in-server.sh runs past a local compose override, which -f keeps out of the run" {
     api_repo
     local extra
     for extra in compose.yaml compose.yml docker-compose.override.yml docker-compose.override.yaml; do
         : > "$extra"
+        rm -f "$DOCKER_LOG"
         run bash quality/bin/in-server.sh "$WORK/api" - x
-        [ "$status" -eq 2 ] && [[ "$output" == *"$extra"* ]] || { echo "not refused: $extra"; return 1; }
+        [ "$status" -eq 0 ] || { echo "refused: $extra"; return 1; }
+        [[ "$(head -1 "$DOCKER_LOG")" == "compose -f $WORK/api/docker-compose.yml "* ]]
         rm "$extra"
     done
+}
+
+@test "in-server.sh refuses a missing vendor/ or .env, and a vendor/ that differs from the lock" {
+    api_repo
     mv .env .env.off
     run bash quality/bin/in-server.sh "$WORK/api" - x
     [ "$status" -eq 2 ] && [[ "$output" == *'.env does not exist'* ]]

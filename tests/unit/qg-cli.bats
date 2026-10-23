@@ -134,14 +134,14 @@ teardown() {
 }
 
 
-@test "doctor fails naming qg hooks install --claude --user when ~/.claude/settings.json lacks the three entries" {
+@test "doctor fails naming qg hooks install --claude --user when ~/.claude/settings.json lacks the two entries" {
     healthy_setup
     run "$QG" doctor
     [ "$status" -eq 0 ]
-    user_settings "$HOME/.claude" guard-stop.sh
+    user_settings "$HOME/.claude" guard-edit.sh
     run "$QG" doctor
     [ "$status" -eq 1 ]
-    [[ "$output" == *"fail  ${HOME}/.claude/settings.json does not run ${PLUGIN}/templates/claude-hooks/guard-stop.sh as its Stop entry (a human runs qg hooks install --claude --user)"* ]]
+    [[ "$output" == *"fail  ${HOME}/.claude/settings.json does not run ${PLUGIN}/templates/claude-hooks/guard-edit.sh as its PreToolUse entry (a human runs qg hooks install --claude --user)"* ]]
     rm "$HOME/.claude/settings.json"
     run "$QG" doctor
     [ "$status" -eq 1 ]

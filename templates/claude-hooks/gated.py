@@ -5,8 +5,7 @@ which every template in templates/git-hooks/ carries. It also counts as gated wh
 git dir or hooks folder cannot be read, or <common dir>/config sets hookspath, so anything unclear
 fails closed. Only the filesystem is read; no git process starts.
 
-`python3 -I gated.py <path>` exits 0 when gated and 3 when not; guard-stop.sh reads every other
-exit as gated.
+`python3 -I gated.py <path>` exits 0 when gated and 3 when not.
 """
 import os, re, sys
 
