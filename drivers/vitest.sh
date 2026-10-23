@@ -9,6 +9,8 @@
 #   config       default vitest.config.ts, passed as --config so no sibling config shadows it, with
 #                --configLoader runner: the default loader writes <config>.timestamp-*.mjs beside the
 #                config, which the sandbox refuses (needs vitest 3 or later)
+#                A run whose argv holds --coverage empties coverage/ first and gets --coverage.clean=false,
+#                because the sandbox refuses vitest removing coverage/ itself
 #   run=no       read the report a previous run left; run nothing
 #   bin          default node_modules/.bin/vitest
 #
@@ -45,6 +47,12 @@ case "${1:-}" in
             bin="$(qg_kv bin)" || bin='node_modules/.bin/vitest'
             config="$(qg_kv config)" || config=vitest.config.ts
             read -ra argv <<<"$(qg_argv)"
+            # Vitest deletes its coverage folder before a coverage run, and the sandbox refuses
+            # removing the folder itself. The driver empties it instead and tells vitest not to clean.
+            if [[ " ${argv[*]} " == *' --coverage'* ]]; then
+                [ ! -d "${QG_TREE}/coverage" ] || find "${QG_TREE}/coverage" -mindepth 1 -delete
+                argv+=(--coverage.clean=false)
+            fi
             # Vitest exits 1 on a failing test and on a missed coverage threshold; the report decides.
             qg_tool "$report" '0 1' "$bin" --config "$config" --configLoader runner "${argv[@]}" || { qg_fail vitest "$unit" "$QG_ERROR"; exit 0; }
             ran="$QG_RC"

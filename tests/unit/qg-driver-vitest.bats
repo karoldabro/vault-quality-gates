@@ -171,13 +171,25 @@ EOF
     junit "$WORK/fresh.xml" 5 0 0
     export FAKE_REPORT="$WORK/fresh.xml" FAKE_DEST="$TREE/$JUNIT" PROBE="$TREE/$JUNIT"
     QG_ARGS='metric=failed -- run --coverage --reporter=junit --outputFile.junit=quality-reports/junit.xml' "$DRIVER" run > /dev/null
-    [ "$(cat "$FAKE_ARGV")" = '--config vitest.config.ts --configLoader runner run --coverage --reporter=junit --outputFile.junit=quality-reports/junit.xml' ]
+    [ "$(cat "$FAKE_ARGV")" = '--config vitest.config.ts --configLoader runner run --coverage --reporter=junit --outputFile.junit=quality-reports/junit.xml --coverage.clean=false' ]
     [ "$(cat "$FAKE_SEEN")" = "$TREE/$JUNIT=absent" ]
     [ "$(result .status)" = measured ] && [ "$(result .metric)" = 0 ]
     rm -f "$FAKE_ARGV"
     mkdir -p "$TREE/tools"; fake_bin "$TREE/tools/vt"
     QG_ARGS='metric=failed bin=tools/vt config=quality/vitest.ci.ts' "$DRIVER" run > /dev/null
     [ "$(cat "$FAKE_ARGV")" = '--config quality/vitest.ci.ts --configLoader runner' ]
+}
+
+@test "a coverage run empties coverage/ but keeps the folder, and vitest gets --coverage.clean=false" {
+    junit "$WORK/fresh.xml" 5 0 0
+    export FAKE_REPORT="$WORK/fresh.xml" FAKE_DEST="$TREE/$JUNIT"
+    mkdir -p "$TREE/coverage/html"; printf old > "$TREE/coverage/clover.xml"; printf old > "$TREE/coverage/html/index.html"
+    QG_ARGS='metric=failed -- run --coverage' "$DRIVER" run > /dev/null
+    [ -d "$TREE/coverage" ] && [ -z "$(ls -A "$TREE/coverage")" ]
+    [[ "$(cat "$FAKE_ARGV")" == *' --coverage.clean=false' ]]
+    printf old > "$TREE/coverage/clover.xml"; rm -f "$FAKE_ARGV"
+    QG_ARGS='metric=failed -- run' "$DRIVER" run > /dev/null
+    [ -s "$TREE/coverage/clover.xml" ] && [[ "$(cat "$FAKE_ARGV")" != *'coverage.clean'* ]]
 }
 
 @test "a run that exits 1 with no failure in the root reads 1; with failures it reads their count" {
