@@ -18,7 +18,9 @@ export GIT_NO_REPLACE_OBJECTS=1
 #   guard.sh release [<ref>]     rows scoped release|both, against the merge-base; checks.tsv,
 #                                baseline.tsv and VAULT.md read from GUARD_SHA (else HEAD);
 #                                --record-pass writes a push pass record after a full pass,
-#                                --use-pass accepts a valid one instead of measuring
+#                                --use-pass (pre-push) accepts a valid one instead of measuring,
+#                                refuses an agent's hotfix/* push without the operator's grant,
+#                                and writes guard-pass/measured/<sha> for every ref it accepts
 #   guard.sh baseline [--skip <regex> | --only <id,id>] [--reason "<why>"]
 #                                rows scoped baseline plus every kind: repo row,
 #                                then rewrites quality/baseline.tsv. --skip omits
@@ -69,6 +71,8 @@ export GUARD_LIB_DIR
 . "${GUARD_LIB_DIR}/guard-pass.sh"
 # shellcheck source=../lib/guard-baseline-accept.sh
 . "${GUARD_LIB_DIR}/guard-baseline-accept.sh"
+# shellcheck source=../lib/guard-override.sh
+. "${GUARD_LIB_DIR}/guard-override.sh"
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
     guard_err 'guard: not a git repository'; exit 2
@@ -306,6 +310,30 @@ cmd_measure() {
     return "$rc"
 }
 
+# guard_measured <ok|unmeasured> <ref> <rev> -> the measured record of a ref pre-push accepts
+# (--use-pass only). A failed write is reported and never changes the verdict.
+guard_measured() {
+    [ "$GUARD_PASS_MODE" = use ] && [ "$2" != '-' ] || return 0
+    local sha
+    sha="$(git rev-parse -q --verify "${3}^{commit}" 2>/dev/null)" && guard_measured_write "$sha" "$1" "$2" \
+        || printf 'vault-guard: measured record not written\n' >&2
+}
+
+# guard_hotfix_refused <ref> <rev> -> 0, with the refusal printed, when an agent pushes a
+# refs/heads/hotfix/* branch and no live operator grant names hotfix. A hotfix branch runs no push
+# row once the repo's cells read push:!(refs/heads/hotfix/*), so the grant is what lets it through.
+guard_hotfix_refused() {
+    [ "$GUARD_PASS_MODE" = use ] && [[ "$1" == refs/heads/hotfix/* ]] && guard_pusher_is_agent || return 1
+    qg_grant_use hotfix "${1} $(git rev-parse -q --verify "${2}^{commit}" 2>/dev/null)" && return 1
+    local msg last
+    msg="vault-guard: push refused to ${1}: an agent pushed a hotfix/* branch, which skips the push rows, and no operator grant names hotfix.
+  Ask the operator to run qg grant --agent hotfix in a separate terminal, or push it as a feature branch and let the push gate measure it."
+    printf '%s\n' "$msg" >&2
+    last="$(guard_common_dir)/qg-last"
+    mkdir -p "$last" 2>/dev/null && printf '%s\n' "$msg" > "${last}/REFUSAL.txt"
+    return 0
+}
+
 # cmd_release <pushed ref | -> — the push gate for one ref. Rows are chosen by `on` before
 # anything else, so a ref no row runs on is accepted without a config or tree check: a branch
 # that predates the gate, a ref outside every `push:` glob, or a branch that is not checked out.
@@ -313,11 +341,13 @@ cmd_measure() {
 cmd_release() {
     local ref="$1" rev base row n=0 rc=0
     rev="${GUARD_SHA:-HEAD}"
+    guard_hotfix_refused "$ref" "$rev" && exit 1
     guard_release_config "${GUARD_CONFIG_PIN:-$rev}" || rc=$?
     if [ "$rc" -eq 3 ]; then
         # A pinned config (the agent factory) that lacks the file is an error, never a pass.
         if [ "$ref" != '-' ] && [ -z "${GUARD_CONFIG_PIN:-}" ]; then
-            printf 'vault-guard: no gate row runs on %s: %s has no quality/checks.tsv\n' "$ref" "${rev:0:12}" >&2; exit 0
+            printf 'vault-guard: no gate row runs on %s: %s has no quality/checks.tsv\n' "$ref" "${rev:0:12}" >&2
+            guard_measured unmeasured "$ref" "$rev"; exit 0
         fi
         guard_err "guard: ${GUARD_CONFIG_PIN:-$rev} has no quality/checks.tsv; the release gate reads its configuration there"; exit 2
     fi
@@ -334,7 +364,7 @@ cmd_release() {
             guard_render_report; guard_refusal "$ref"; exit 1
         fi
         printf 'vault-guard: no gate row runs on %s\n' "$ref" >&2
-        exit 0
+        guard_measured unmeasured "$ref" "$rev"; exit 0
     fi
     # A push pass record binds every input that picks the rows or what they compare against. A
     # pinned config, a partial run and ref `-` neither write nor read one.
@@ -344,11 +374,12 @@ cmd_release() {
     fi
     if [ "$GUARD_PASS_MODE" = use ] && [ -n "$key" ] && age="$(guard_push_pass_valid "$key")"; then
         printf 'vault-guard: %s at %s passed qg run push %s min ago; not measured again\n' "$ref" "${rev:0:12}" "$age" >&2
-        exit 0
+        guard_measured ok "$ref" "$rev"; exit 0
     fi
     printf 'vault-guard: measuring %d rows on %s (%s); this can take several minutes\n' "$n" "$ref" "${rev:0:12}" >&2
     guard_release_tree_matches || exit 2
     cmd_measure 'release' "$base" "$ref" || return
+    guard_measured ok "$ref" "$rev"
     if [ "$GUARD_PASS_MODE" = record ] && [ -n "$key" ]; then
         # The working tree a guard_measure_worktree: false repo measured may have moved during the run.
         if guard_release_tree_matches && guard_push_pass_write "$key"; then

@@ -130,6 +130,24 @@ guard_push_pass_valid() {
     printf '%s' "$(((now - epoch) / 60))"
 }
 
+# Measured record: <git-common-dir>/guard-pass/measured/<sha> = "<ok|unmeasured> <epoch> <ref>", one
+# per pushed commit, which the operator's merge flow reads as a hint. Contract:
+# vault/architecture/guard-push-pass.md (The measured record).
+guard_measured_dir() { printf '%s/guard-pass/measured' "$(guard_common_dir)"; }
+
+# guard_measured_write <sha> <ok|unmeasured> <ref> -> writes the record through a temp file; an
+# existing `ok` is never replaced by `unmeasured`. Exit 1 when it cannot be written.
+guard_measured_write() {
+    local dir tmp old=''
+    dir="$(guard_measured_dir)" || return 1
+    [[ "$1" =~ ^[0-9a-f]{40,64}$ ]] || return 1
+    mkdir -p "$dir" || return 1
+    [ "$2" = unmeasured ] && read -r old _ < "${dir}/$1" 2>/dev/null && [ "$old" = ok ] && return 0
+    tmp="$(mktemp "${dir}/.write.XXXXXX")" || return 1
+    if printf '%s %s %s\n' "$2" "$(date +%s)" "$3" > "$tmp" && mv -f "$tmp" "${dir}/$1"; then return 0; fi
+    rm -f "$tmp"; return 1
+}
+
 # guard_config_show <path> -> the file as committed at GUARD_CONFIG_AT, else at HEAD; from
 # the index on a first commit, when no HEAD exists. The gate never reads its configuration
 # from the working tree. guard_gate sets GUARD_CONFIG_AT to GUARD_CONFIG_PIN (the caller's GUARD_CONFIG_REV) when it

@@ -410,3 +410,169 @@ stage_change() { printf 'staged\n' >> file.txt; git add file.txt; }
     [ "$new" != "$c" ]
     grep -qx "STUB verify ${new}^! GUARD_SHA=unset" "$RAN"
 }
+
+# --- pre-push with the real engine: the hotfix grant and the measured record ---------------------
+#
+# engine_repo [v1] pushes through the real pre-push to a bare remote with a copy of the engine under
+# $WORK/engine. The copy is a git checkout, so the operator grant lives in its git dir. The push
+# row appends to $COUNT on every run and measures 0; with v1, the row is release-only.
+
+V2_HEADER=$'id\ton\tkind\tdriver\targs\tdirection\tthreshold\tgate\twhy'
+
+engine_repo() {
+    ENGINE="$WORK/engine" COUNT="$WORK/count"
+    mkdir -p "$ENGINE"
+    cp -a /code/bin /code/lib /code/drivers "$ENGINE/"
+    git -C "$ENGINE" init -q . && git -C "$ENGINE" add -A \
+        && git -C "$ENGINE" -c user.email=t@e -c user.name=t commit -q -m engine
+    GRANT="$ENGINE/.git/qg-grant"
+    git init -q --bare "$WORK/remote.git"
+    new_repo "$WORK/erepo"
+    git remote add origin "$WORK/remote.git"
+    write_rules
+    if [ "${1:-}" = v1 ]; then
+        write_checks "counter"$'\t'"release"$'\t'"diff"$'\t'"echo x >> ${COUNT}; echo 0"$'\t-\t-\tdown\t0\trefuse'
+        printf 'guard_release_pattern: refs/heads/release/*\n' > VAULT.md
+    else
+        { printf '%s\n' "$V2_HEADER"
+          printf 'counter\tpush:!(refs/heads/hotfix/*)\tdiff\tshell\t-- echo x >> %s; echo 0\tdown\t0\trefuse\tcounts its runs\n' "$COUNT"
+        } > quality/checks.tsv
+    fi
+    commit_all init
+    git -c core.hooksPath=/dev/null push -q origin HEAD:refs/heads/master
+    git fetch -q origin
+    sed "s|__GUARD_SH__|${ENGINE}/bin/guard.sh|g" /code/templates/git-hooks/pre-push > .git/hooks/pre-push
+    chmod +x .git/hooks/pre-push
+    engine_commit one
+}
+
+# engine_commit <line> — commits a change with its commit-gate pass record, as the commit hook would.
+engine_commit() {
+    printf '%s\n' "$1" >> file.txt
+    commit_all "$1"
+    ( . "$ENGINE/lib/guard-pass.sh"; guard_pass_write "$(guard_pass_key_of_commit HEAD)" ok )
+}
+
+runs() { [ -r "$COUNT" ] && wc -l < "$COUNT" | tr -d ' ' || printf '0'; }
+measured() { cat "$(git rev-parse --path-format=absolute --git-common-dir)/guard-pass/measured/${1:-$(git rev-parse HEAD)}" 2>/dev/null; }
+hotfix_grant() {  # hotfix_grant <actions> [<life s>] — a grant file as `qg grant` writes it
+    local now; now="$(date +%s)"
+    printf 'v1\t%s\t%s\t%s\tt\n' "$now" "$((now + ${2:-1800}))" "$1" > "$GRANT"
+    chmod 600 "$GRANT"
+}
+remote_has() { git --git-dir="$WORK/remote.git" rev-parse -q --verify "$1" >/dev/null; }
+
+@test "an agent's hotfix push is refused without a grant naming hotfix, whatever produced the ref" {
+    engine_repo
+    git branch hotfix/x
+    for args in 'HEAD:refs/heads/hotfix/x' 'HEAD:hotfix/x' 'hotfix/x' '--all' 'refs/heads/*:refs/heads/*'; do
+        CLAUDECODE=1 run git push origin $args
+        [ "$status" -ne 0 ] || { echo "pushed: $args"; return 1; }
+        [[ "$output" == *'push refused to refs/heads/hotfix/x'*'qg grant --agent hotfix'* ]] || { echo "$output"; return 1; }
+        ! remote_has refs/heads/hotfix/x
+    done
+    git config remote.origin.push 'HEAD:refs/heads/hotfix/x'
+    AI_AGENT=1 run git push origin
+    [ "$status" -ne 0 ] && ! remote_has refs/heads/hotfix/x
+    git config --unset remote.origin.push
+    git checkout -q hotfix/x
+    git push -q -u origin HEAD:refs/heads/hotfix/x
+    git branch -q --set-upstream-to=origin/hotfix/x
+    git checkout -q -b fix-local
+    git branch -q --set-upstream-to=origin/hotfix/x
+    engine_commit upstream
+    CLAUDECODE=1 run git -c push.default=upstream push origin
+    [ "$status" -ne 0 ]
+    [ "$(git ls-remote origin refs/heads/hotfix/x | cut -f1)" != "$(git rev-parse HEAD)" ]
+    hotfix_grant push,override
+    CLAUDECODE=1 run git push origin HEAD:refs/heads/hotfix/y
+    [ "$status" -ne 0 ] && ! remote_has refs/heads/hotfix/y
+    [ -z "$(measured)" ]
+    [ "$(cat "$(git rev-parse --git-common-dir)/qg-last/REFUSAL.txt")" = "$(grep -m1 'push refused to' <<<"$output")"$'\n'"$(grep -m1 'Ask the operator' <<<"$output")" ]
+}
+
+@test "an agent's hotfix push goes through under a live hotfix grant, logged, and records unmeasured" {
+    engine_repo
+    hotfix_grant push,hotfix
+    CLAUDECODE=1 run git push origin HEAD:refs/heads/hotfix/x
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *'allowed for an agent by the operator grant (push,hotfix)'* ]]
+    remote_has refs/heads/hotfix/x
+    [ "$(runs)" -eq 0 ]
+    grep -q "agent grant (hotfix, until .*): refs/heads/hotfix/x $(git rev-parse HEAD)" "$(git rev-parse --git-common-dir)/guard-bypass.log"
+    [[ "$(measured)" =~ ^unmeasured\ [0-9]+\ refs/heads/hotfix/x$ ]]
+    hotfix_grant hotfix -1
+    engine_commit expired
+    CLAUDECODE=1 run git push origin HEAD:refs/heads/hotfix/x
+    [ "$status" -ne 0 ]
+}
+
+@test "a person's hotfix push needs no grant and runs no row; an agent's feature push is measured as before" {
+    engine_repo
+    run git push origin HEAD:refs/heads/hotfix/x
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *'no gate row runs on refs/heads/hotfix/x'* ]]
+    [ "$(runs)" -eq 0 ]
+    [[ "$(measured)" == 'unmeasured '*' refs/heads/hotfix/x' ]]
+    engine_commit two
+    CLAUDECODE=1 run git push origin HEAD:refs/heads/feature/x
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [ "$(runs)" -eq 1 ]
+    [[ "$(measured)" =~ ^ok\ [0-9]+\ refs/heads/feature/x$ ]]
+}
+
+@test "an agent's feature push against release-only v1 rows is accepted unmeasured" {
+    engine_repo v1
+    CLAUDECODE=1 run git push origin HEAD:refs/heads/feature/x
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [ "$(runs)" -eq 0 ]
+    [[ "$(measured)" == 'unmeasured '*' refs/heads/feature/x' ]]
+    CLAUDECODE=1 run git push origin HEAD:refs/heads/release/1.0.0
+    [ "$status" -eq 0 ]
+    [ "$(runs)" -eq 1 ]
+    [[ "$(measured)" == 'ok '*' refs/heads/release/1.0.0' ]]
+}
+
+@test "the measured record: ok is kept after a same-sha hotfix push, a pass record writes ok, a refused ref writes nothing" {
+    engine_repo
+    run git push origin HEAD:refs/heads/feature/x
+    [ "$status" -eq 0 ]
+    [[ "$(measured)" == 'ok '*' refs/heads/feature/x' ]]
+    run git push origin HEAD:refs/heads/hotfix/x
+    [ "$status" -eq 0 ]
+    [[ "$(measured)" == 'ok '*' refs/heads/feature/x' ]]
+    engine_commit passed
+    "$ENGINE/bin/qg" run push --ref refs/heads/feature/y
+    run git push origin HEAD:refs/heads/feature/y
+    [[ "$output" == *'not measured again'* ]]
+    [[ "$(measured)" == 'ok '*' refs/heads/feature/y' ]]
+    engine_commit bare
+    git rm -q -r quality && commit_all no-gate
+    ( . "$ENGINE/lib/guard-pass.sh"; guard_pass_write "$(guard_pass_key_of_commit HEAD)" ok )
+    run git push origin HEAD:refs/heads/feature/z
+    [ "$status" -eq 0 ]
+    [[ "$(measured)" == 'unmeasured '*' refs/heads/feature/z' ]]
+}
+
+@test "a two-ref push with one refused ref refuses the push and records only the accepted ref" {
+    engine_repo
+    good="$(git rev-parse HEAD)"
+    git checkout -q -b bad
+    sed -i 's/; echo 0\t/; echo 1\t/' quality/checks.tsv
+    printf 'bad\n' >> file.txt; commit_all bad
+    ( . "$ENGINE/lib/guard-pass.sh"; guard_pass_write "$(guard_pass_key_of_commit HEAD)" ok )
+    bad="$(git rev-parse HEAD)"
+    run git push origin "${good}:refs/heads/feature/good" "${bad}:refs/heads/feature/bad"
+    [ "$status" -ne 0 ]
+    [[ "$(measured "$good")" == 'ok '*' refs/heads/feature/good' ]]
+    [ -z "$(measured "$bad")" ]
+}
+
+@test "a failed measured-record write is reported and never refuses the push" {
+    engine_repo
+    mkdir -p .git/guard-pass && printf 'not a folder\n' > .git/guard-pass/measured
+    run git push origin HEAD:refs/heads/feature/x
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'vault-guard: measured record not written'* ]]
+    remote_has refs/heads/feature/x
+}
