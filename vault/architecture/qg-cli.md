@@ -78,7 +78,8 @@ the rules; `bin/qg`, `lib/guard-override.sh` and `templates/claude-hooks/guard_b
 | subcommand | purpose | exit codes | agent |
 |---|---|---|---|
 | `qg help [<command>]` | the overview, or one subcommand's options | 0 | yes |
-| `qg list [--on commit\|push\|baseline]` | every row: id, driver, gate, when it runs, why | 0; 2 when `HEAD` has no loadable `quality/checks.tsv` | yes |
+| `qg list [--on commit\|push\|baseline]` | every row: id, driver, gate, when it runs, why | 0; 2 when `HEAD` has no loadable `quality/checks.tsv`, or `--on` names another event | yes |
+| `qg list --on push --ref <ref> [--rev <rev>]` | the push rows that run when `<ref>` is pushed, selected by `qg_row_runs_on` as `guard.sh release` selects them, from `quality/checks.tsv` at `<rev>` (default `HEAD`); a v1 file resolves through `guard_release_pattern` at `<rev>`. `--ref` with another `--on` is refused. agent-control's `check-config --online` probes it | 0, also when no row runs; 2 when `<rev>` is no commit or has no loadable `quality/checks.tsv` | yes |
 | `qg run commit [--only id,id]` | the commit gate on what is staged now, without committing | 0 pass, 1 a row is worse, 2 a row could not be measured | yes |
 | `qg run push [--ref refs/heads/<b>] [--only id,id]` | the push gate on `HEAD` for that ref, without pushing; no `--ref` runs every push row; with `--ref` and no `--only`, a pass is recorded for `git push` (`vault/architecture/guard-push-pass.md`) | 0, 1, 2 as above | yes |
 | `qg explain <id>` | one row: why, when, driver, limit, last result and output, how to reproduce and pass | 0; 2 for no id or an unknown id | yes |

@@ -63,14 +63,14 @@ qg_refuse_agent() {
 # the next commit. Exit 2 naming the reason when it is absent or does not load.
 qg_load_head() {
     local tmp; tmp="$(mktemp)"
-    guard_config_show quality/checks.tsv > "$tmp" || { rm -f "$tmp"; qg_die 'HEAD has no quality/checks.tsv; this repo is not gated (qg init sets it up)'; }
+    guard_config_show quality/checks.tsv > "$tmp" || { rm -f "$tmp"; qg_die "${GUARD_CONFIG_AT:-HEAD} has no quality/checks.tsv; this repo is not gated (qg init sets it up)"; }
     guard_load_checks "$tmp" || { rm -f "$tmp"; exit 2; }
     rm -f "$tmp"
 }
 
 qg_help() {
     case "${1:-}" in
-        list)     printf 'qg list [--on commit|push|baseline] [--json]\n  Every gate row: id, when it runs, driver, what refuses, and why it exists.\n' ;;
+        list)     printf 'qg list [--on commit|push|baseline] [--json]\n  Every gate row: id, when it runs, driver, what refuses, and why it exists.\nqg list --on push --ref <ref> [--rev <rev>] [--json]\n  The push rows that run when <ref> is pushed, read from quality/checks.tsv at <rev>\n  (default HEAD). A v1 file resolves through guard_release_pattern at the same commit.\n' ;;
         run)      printf 'qg run commit [--only id,id] [--json]\n  Runs the commit gate on what is staged now, exactly as `git commit` would, without committing.\nqg run push [--ref refs/heads/<branch>] [--only id,id] [--json]\n  Runs the push gate on HEAD for that ref (default: every push row), without pushing.\n  With --ref and no --only, a pass is recorded: git push of HEAD to that ref within 60 minutes\n  accepts it instead of measuring again, as long as the remote tip and the engine are unchanged.\n  Exit 0 pass, 1 a row is worse, 2 a row could not be measured.\n' ;;
         explain)  printf 'qg explain <id> [--json]\n  What the row checks, why, when it runs, its limit, its last result and output,\n  how to reproduce it, and how to pass.\n' ;;
         last)     printf 'qg last\n  Prints the last refusal in full, as the commit or push printed it.\n' ;;
@@ -136,15 +136,41 @@ qg_on_words() {  # qg_on_words <on> -> "every commit; pushes to refs/heads/relea
     printf '%s' "$out"
 }
 
+# qg_list_row <on> -> 0 when the row is listed: no --on, an --on that names the event, or with --ref,
+# a push row that runs on that ref (lib/qg-events.sh).
+qg_list_row() {
+    if [ -n "$list_ref" ]; then qg_row_runs_on "$1" push "$list_ref"; return; fi
+    [ -z "$want" ] || [[ ",$1," == *",$want"[,:]* ]]
+}
+
 cmd_list() {
-    local want='' r on
-    [ "${1:-}" = --on ] && want="${2:-}"
+    local want='' list_ref='' rev='' r on
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --on|--ref|--rev) [ $# -ge 2 ] && [ -n "$2" ] || qg_die "list: $1 needs a value (qg help list)" ;;
+        esac
+        case "$1" in
+            --on)  want="$2"; shift 2 ;;
+            --ref) list_ref="$2"; shift 2 ;;
+            --rev) rev="$2"; shift 2 ;;
+            *) qg_die "list: unknown option $1 (qg help list)" ;;
+        esac
+    done
+    case "$want" in ''|commit|push|baseline) ;; *) qg_die "list: --on takes commit, push or baseline (qg help list)" ;; esac
+    if [ -n "$list_ref" ]; then
+        [ "${want:-push}" = push ] || qg_die 'list: --ref goes with --on push (qg help list)'
+        want=push
+    fi
+    if [ -n "$rev" ]; then
+        # The rows as committed at <rev>: guard_config_show and the v1 release pattern both read there.
+        GUARD_CONFIG_AT="$(git rev-parse -q --verify "${rev}^{commit}")" || qg_die "list: cannot read commit ${rev}"
+    fi
     qg_load_head
     if [ "$JSON" = 1 ]; then
         for r in "${GUARD_ROWS[@]:-}"; do
             [ -n "$r" ] || continue
             on="$(guard_row_field "$r" on)"
-            [ -z "$want" ] || [[ ",$on," == *",$want"[,:]* ]] || continue
+            qg_list_row "$on" || continue
             jq -nc --arg id "$(guard_row_field "$r" id)" --arg on "$on" --arg kind "$(guard_row_field "$r" kind)" \
                 --arg driver "$(guard_row_field "$r" driver)" --arg gate "$(guard_row_field "$r" gate)" \
                 --arg direction "$(guard_row_field "$r" direction)" --arg threshold "$(guard_row_field "$r" threshold)" \
@@ -157,7 +183,7 @@ cmd_list() {
     for r in "${GUARD_ROWS[@]:-}"; do
         [ -n "$r" ] || continue
         on="$(guard_row_field "$r" on)"
-        [ -z "$want" ] || [[ ",$on," == *",$want"[,:]* ]] || continue
+        qg_list_row "$on" || continue
         printf '%-26s %-10s %-8s %s\n%-46s %s\n' "$(guard_row_field "$r" id)" "$(guard_row_field "$r" driver)" \
             "$(guard_row_field "$r" gate)" "$(qg_on_words "$on")" '' "$(guard_row_field "$r" why)"
     done
