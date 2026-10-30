@@ -76,8 +76,9 @@ operator's merge flow catches it.
 - `git -c` or `--config-env` with `remote.*.push`, `remote.*.mirror`, `push.default` or
   `branch.*.merge`, and `git config` that sets one of them (reads with `--get`, `get` or `--list`
   pass);
-- *every repo*: `git push` from a checkout whose `HEAD` holds `quality/checks.tsv` while the
-  `pre-push` git runs (after `core.hooksPath`) lacks `# vault-guard-start`; the deny names
+- *every repo*: `git push` from a checkout whose `quality/checks.tsv` at `HEAD` holds a push row
+  (a v2 `on` cell with a push token, a v1 `scope` of `release` or `both`) while the `pre-push` git
+  runs (after `core.hooksPath`) lacks `# vault-guard-start`; the deny names
   `qg hooks install` for the operator. `push_unguarded` in `gated.py` decides it;
 - `git config` that sets or unsets `core.hooksPath` or a `hook.*` key, and `git -c` with one;
 - assigning, exporting or passing through `env` `HUSKY=0`, any `GUARD_*` or `QG_*` name, or

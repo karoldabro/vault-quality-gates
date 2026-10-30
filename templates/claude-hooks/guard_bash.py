@@ -1,8 +1,8 @@
 """Rules for guard-bash.sh: denies a command that skips or weakens the commit gate or the push gate.
 
 The git and HUSKY rules bind only when the command acts on a gated repo (gated.py). The qg and
-guard.sh rules bind in every repo, and so do two push rules: a push from a checkout with
-quality/checks.tsv at HEAD and no vault-guard pre-push, and a `gh api` write that moves a ref or merges
+guard.sh rules bind in every repo, and so do two push rules: a push from a checkout whose
+quality/checks.tsv at HEAD holds push rows and no vault-guard pre-push, and a `gh api` write that moves a ref or merges
 on GitHub. Every other command runs unchecked; the repo's own pre-commit and pre-push hooks still
 judge each commit and push."""
 import json, os, re, shlex, stat, subprocess, sys, time
@@ -150,7 +150,7 @@ def push_branch(repo):
 
 def check_push(rest, repo):
     if push_unguarded(repo):
-        raise Unguarded(f'{os.path.realpath(repo)} has quality/checks.tsv at HEAD but no vault-guard pre-push hook, '
+        raise Unguarded(f'{os.path.realpath(repo)} has push rows in quality/checks.tsv at HEAD but no vault-guard pre-push hook, '
                         'so nothing would measure this push', 'Ask the operator to run `qg hooks install` in that checkout')
     for t in rest:
         if t in PUSH_DENIED or t.startswith(('--force', '--push-option=', '--receive-pack', '--exec')):

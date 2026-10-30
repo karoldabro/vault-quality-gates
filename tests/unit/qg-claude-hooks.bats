@@ -408,16 +408,23 @@ bash_err() {
     no_bad
 }
 
-@test "a push from a checkout with quality/checks.tsv at HEAD and no vault-guard pre-push is denied, in any repo" {
+# checks_at <repo> <row>... — commits quality/checks.tsv with the v2 header and the given on cells.
+checks_at() {
+    local repo="$1" on; shift
+    mkdir -p "$repo/quality"
+    { printf 'id\ton\tkind\tdriver\targs\tdirection\tthreshold\tgate\twhy\n'
+      for on in "$@"; do printf 'r-%s\t%s\tdiff\tshell\t-- echo 0\tdown\t0\trefuse\twhy\n' "${#on}" "$on"; done
+    } > "$repo/quality/checks.tsv"
+    git -C "$repo" add quality && git -C "$repo" -c user.email=t@e -c user.name=t commit -q -m gate
+}
+
+@test "a push from a checkout whose checks.tsv at HEAD has push rows and no vault-guard pre-push is denied, in any repo" {
     [ -w /var/tmp ] || skip '/var/tmp is not writable in this image'
     local real; real="$(mktemp -d -p /var/tmp)"
     for r in gated unhooked plain; do
         git init -q "$real/$r" && git -C "$real/$r" -c user.email=t@e -c user.name=t commit -q --allow-empty -m init
     done
-    for r in gated unhooked; do
-        mkdir -p "$real/$r/quality" && printf 'x\n' > "$real/$r/quality/checks.tsv"
-        git -C "$real/$r" add quality && git -C "$real/$r" -c user.email=t@e -c user.name=t commit -q -m gate
-    done
+    for r in gated unhooked; do checks_at "$real/$r" commit 'commit,push:!(refs/heads/hotfix/*)'; done
     printf '#!/bin/sh\n# vault-guard-start\n' > "$real/gated/.git/hooks/pre-push"
     cd "$real/unhooked" || return 1
     bash_case deny 'git push origin feature'
@@ -435,6 +442,35 @@ bash_err() {
     bash_case deny 'git push origin feature'
     printf '#!/bin/sh\n# vault-guard-start\n' > "$real/elsewhere/pre-push"
     bash_case allow 'git push origin feature'
+    rm -rf "$real"
+    no_bad
+}
+
+@test "a checkout whose checks.tsv has no push row pushes without a pre-push; v1 release and both rows count as push rows" {
+    [ -w /var/tmp ] || skip '/var/tmp is not writable in this image'
+    local real r; real="$(mktemp -d -p /var/tmp)"
+    for r in commit-only v2-push v1-commit v1-release v1-both absent; do
+        git init -q "$real/$r" && git -C "$real/$r" -c user.email=t@e -c user.name=t commit -q --allow-empty -m init
+    done
+    checks_at "$real/commit-only" commit commit,baseline baseline
+    checks_at "$real/v2-push" commit push
+    checks_at "$real/absent" -
+    v1_at() {
+        mkdir -p "$1/quality"
+        printf '%s\n' "$CHECKS_HEADER" '# a comment' "c"$'\t'"$2"$'\tdiff\techo 0\t-\t-\tdown\t0\trefuse' > "$1/quality/checks.tsv"
+        git -C "$1" add quality && git -C "$1" -c user.email=t@e -c user.name=t commit -q -m gate
+    }
+    v1_at "$real/v1-commit" commit
+    v1_at "$real/v1-release" release
+    v1_at "$real/v1-both" both
+    for r in commit-only v1-commit absent; do
+        cd "$real/$r" || return 1
+        bash_case allow 'git push origin feature'
+    done
+    for r in v2-push v1-release v1-both; do
+        cd "$real/$r" || return 1
+        bash_case deny 'git push origin feature'
+    done
     rm -rf "$real"
     no_bad
 }

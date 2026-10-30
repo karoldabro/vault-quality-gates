@@ -5,8 +5,8 @@ which every template in templates/git-hooks/ carries. It also counts as gated wh
 git dir or hooks folder cannot be read, or <common dir>/config sets hookspath, so anything unclear
 fails closed. is_gated reads only the filesystem; no git process starts.
 
-push_unguarded is the one rule that binds outside a gated repo: a checkout whose HEAD carries
-quality/checks.tsv but whose pre-push (the one git runs, after core.hooksPath) lacks that line pushes
+push_unguarded is the one rule that binds outside a gated repo: a checkout whose quality/checks.tsv at
+HEAD holds a push row but whose pre-push (the one git runs, after core.hooksPath) lacks that line pushes
 with no push gate at all. It runs git.
 
 `python3 -I gated.py <path>` exits 0 when gated and 3 when not.
@@ -101,13 +101,38 @@ def is_gated(path):
     return _cache[root]
 
 
+def has_push_row(checks):
+    """True when a checks.tsv text holds a row that runs on a push: a v2 `on` cell with a push token, or a
+    v1 `scope` of release or both (lib/qg-events.sh holds the grammar)."""
+    lines = [l for l in checks.splitlines() if l.strip() and not l.startswith('#')]
+    if not lines:
+        return False
+    header = lines[0].split('\t')
+    col = 'on' if 'on' in header else 'scope'
+    if col not in header:
+        return False
+    i = header.index(col)
+    for line in lines[1:]:
+        cells = line.split('\t')
+        if len(cells) <= i:
+            continue
+        cell = cells[i]
+        if col == 'scope' and cell in ('release', 'both'):
+            return True
+        if col == 'on' and any(t == 'push' or t.startswith('push:') for t in cell.split(',')):
+            return True
+    return False
+
+
 def push_unguarded(path):
-    """True when the repo at path has quality/checks.tsv at HEAD and git would run no vault-guard pre-push."""
+    """True when the repo at path has quality/checks.tsv at HEAD with a push row and git would run no
+    vault-guard pre-push."""
     import subprocess
     def git(*a):
         return subprocess.run(['git', '-C', path, *a], capture_output=True, text=True, timeout=5)
     try:
-        if git('cat-file', '-e', 'HEAD:quality/checks.tsv').returncode != 0:
+        checks = git('show', 'HEAD:quality/checks.tsv')
+        if checks.returncode != 0 or not has_push_row(checks.stdout):
             return False
         hook = git('rev-parse', '--path-format=absolute', '--git-path', 'hooks/pre-push').stdout.strip()
     except (OSError, subprocess.SubprocessError):
