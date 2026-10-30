@@ -30,7 +30,8 @@ help -h --help list explain last drivers doctor run report verify config   + hoo
 `bin/qg` refuses `override`, `init`, `migrate`, `baseline`, `accept`, `grant --agent`,
 `grant --revoke`, `hooks install` and `hooks remove` with exit 2 when `CLAUDECODE` or `AI_AGENT` is
 set. The two checks are independent: an agent outside a guarded Claude Code session still meets the
-second. Both lift `baseline` and `override` while the operator's grant names them (`## The agent grant`).
+second. Both lift `baseline` and `override` while the operator's grant names them, and guard-bash
+lifts a `hotfix/*` push target under a `hotfix` grant (`## The agent grant`).
 
 ## The agent grant
 
@@ -43,9 +44,11 @@ the rules; `bin/qg`, `lib/guard-override.sh` and `templates/claude-hooks/guard_b
 | `baseline` | `qg baseline`, which writes the file but no acceptance record, so a looser value stays refused |
 | `override` | `qg override --reason "<why>"`, and the agent's `git commit` consumes that token |
 | `push` | `qg override --reason "<why>" --push <sha>`, and the agent's `git push` consumes that token |
+| `hotfix` | `git push` of a `refs/heads/hotfix/*` branch, which runs no push row; `pre-push` refuses it otherwise (`vault/architecture/guard-push-pass.md` `## The hotfix refusal`) |
 
-- **Duration:** `30m`, `2h`, or a plain number of minutes. The default is 1 hour, the maximum 8
-  hours. A new grant replaces the old one. `qg grant --revoke` ends it now.
+- **Duration:** `30m`, `2h`, or a plain number of minutes. The default is 1 hour, or 30 minutes
+  when the actions name `hotfix`; the maximum is 8 hours. A `hotfix` grant covers every gated repo
+  on the machine for its life. A new grant replaces the old one. `qg grant --revoke` ends it now.
 - **Issuing and revoking are human only.** `qg grant --agent` and `--revoke` pass only the check
   `QG_SKIP_REASON` passes (`vault/architecture/guard-commit-gate.md`, `## The override`). A `!`
   command in Claude Code inherits `CLAUDECODE` and is refused, so the operator issues the grant in a
