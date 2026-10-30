@@ -3,7 +3,11 @@
 A repo is gated when <common dir>/hooks/pre-commit or pre-push holds the line `# vault-guard-start`,
 which every template in templates/git-hooks/ carries. It also counts as gated when its .git file,
 git dir or hooks folder cannot be read, or <common dir>/config sets hookspath, so anything unclear
-fails closed. Only the filesystem is read; no git process starts.
+fails closed. is_gated reads only the filesystem; no git process starts.
+
+push_unguarded is the one rule that binds outside a gated repo: a checkout whose HEAD carries
+quality/checks.tsv but whose pre-push (the one git runs, after core.hooksPath) lacks that line pushes
+with no push gate at all. It runs git.
 
 `python3 -I gated.py <path>` exits 0 when gated and 3 when not.
 """
@@ -95,6 +99,24 @@ def is_gated(path):
     if root not in _cache:
         _cache[root] = _gated_root(root)
     return _cache[root]
+
+
+def push_unguarded(path):
+    """True when the repo at path has quality/checks.tsv at HEAD and git would run no vault-guard pre-push."""
+    import subprocess
+    def git(*a):
+        return subprocess.run(['git', '-C', path, *a], capture_output=True, text=True, timeout=5)
+    try:
+        if git('cat-file', '-e', 'HEAD:quality/checks.tsv').returncode != 0:
+            return False
+        hook = git('rev-parse', '--path-format=absolute', '--git-path', 'hooks/pre-push').stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return False
+    try:
+        with open(hook, errors='replace') as f:
+            return MARKER not in f.read(65536)
+    except OSError:
+        return True
 
 
 if __name__ == '__main__':
