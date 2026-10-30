@@ -52,8 +52,8 @@ on    := '-' | token (',' token)*
 token := 'commit' | 'push' | 'push:' <ref-glob> | 'baseline'
 ```
 
-No spaces, no empty token, lower case only. A ref glob matches with bash `[[ == ]]`: `*`, `?` and
-`[...]` are glob characters, and `|` is a literal character. A `kind: absent` row carries `on: -`.
+No spaces, no empty token, lower case only; `-` for a `kind: absent` row. A ref glob is a bash extglob pattern
+matched by `[[ == ]]` only: `*` spans `/`, `!(…)` excludes, `|` alternates inside `( )` only, and unbalanced `( )` is refused; `push:!(refs/heads/hotfix/*)` skips only `hotfix/*` branches.
 
 | run | rows it measures |
 |---|---|

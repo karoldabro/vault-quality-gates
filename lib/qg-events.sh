@@ -5,8 +5,11 @@
 #   on    := '-' | token (',' token)*
 #   token := 'commit' | 'push' | 'push:' <ref-glob> | 'baseline'
 #
-# No spaces, no empty token, lower case only. A ref glob matches with bash [[ == ]]: `*`, `?`
-# and `[...]` are glob characters and `|` is a literal character, never an alternation.
+# No spaces, no empty token, lower case only. A ref glob is a bash extglob pattern, evaluated only by
+# [[ == ]], which matches extglob without `shopt -s extglob` (a `case` would not): `*`, `?` and
+# `[...]` are glob characters, `!(...)` excludes, and `|` alternates inside `( )` only; outside
+# them it is a literal character. `push:!(refs/heads/hotfix/*)` runs on every ref except a
+# hotfix/* branch. A glob with unbalanced parentheses is refused.
 
 # qg_on_valid <on> -> 0 when the cell follows the grammar; 1 with the reason on stdout.
 qg_on_valid() {
@@ -18,11 +21,23 @@ qg_on_valid() {
     for token in "${tokens[@]}"; do
         case "$token" in
             commit|push|baseline) ;;
-            push:?*) ;;
+            push:?*) qg_glob_balanced "${token#push:}" || { printf 'unbalanced parentheses in "%s"' "$token"; return 1; } ;;
             *) printf 'unknown token "%s"' "$token"; return 1 ;;
         esac
     done
     return 0
+}
+
+# qg_glob_balanced <glob> -> 0 when every `)` closes an earlier `(` and every `(` is closed.
+qg_glob_balanced() {
+    local g="$1" depth=0 i
+    for ((i = 0; i < ${#g}; i++)); do
+        case "${g:i:1}" in
+            '(') depth=$((depth + 1)) ;;
+            ')') depth=$((depth - 1)); [ "$depth" -ge 0 ] || return 1 ;;
+        esac
+    done
+    [ "$depth" -eq 0 ]
 }
 
 # qg_row_runs_on <on> <event> [<ref>] -> 0 when the row runs on that event.
