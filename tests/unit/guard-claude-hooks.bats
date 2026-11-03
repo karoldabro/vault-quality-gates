@@ -72,6 +72,48 @@ edit_hook() {  # edit_hook <cwd> <file>
     [ "$status" -eq 0 ]
 }
 
+@test "guard-bash judges qg inside a wrapper that detaches it or gives it a terminal" {
+    local c
+    for c in 'setsid -f env -i PATH=/usr/bin:/bin script -qec "qg override --reason x" /dev/null' \
+             'systemd-run --user --unit u qg grant --agent override' \
+             "tmux new -d 'qg override --reason x'" \
+             "screen -dm bash -c 'qg baseline'" \
+             'script -qec "/mnt/c/Windows/System32/wsl.exe -e qg override --reason x" /dev/null' \
+             "su -c 'qg override --reason x' me" \
+             'flock /tmp/l qg baseline' \
+             'env -u CLAUDECODE qg override --reason x'; do
+        run bash_hook "$WORK/plain" "$c"
+        [ "$status" -eq 2 ] || { echo "allowed: $c"; return 1; }
+    done
+    for c in 'script -q log.txt' 'tmux ls' 'ssh host uptime' 'systemd-run --user --scope make test' \
+             'script -qec "qg list" /dev/null' "tmux new -d 'qg grant --status'"; do
+        run bash_hook "$WORK/plain" "$c"
+        [ "$status" -eq 0 ] || { echo "denied: $c"; return 1; }
+    done
+}
+
+@test "guard-bash judges gate variables and git after a wrapper in a gated repo" {
+    local c
+    for c in "wsl.exe -e env QG_SKIP_REASON=x script -qfc 'git commit -m a' /dev/null" \
+             'systemd-run --user env GUARD_X=1 git commit -m a' \
+             'wsl.exe -e env QG_SKIP_REASON=x git commit -m a' \
+             'flock /tmp/l git commit --no-verify -m a'; do
+        run bash_hook "$WORK/gated" "$c"
+        [ "$status" -eq 2 ] || { echo "allowed: $c"; return 1; }
+    done
+    run bash_hook "$WORK/gated" 'ssh host git push --force origin main'
+    [ "$status" -eq 0 ]
+}
+
+@test "guard-bash judges 600 wrapped git words in under a second" {
+    local g start
+    g="$(printf 'git %.0s' $(seq 1 600))"
+    start="$(date +%s%N)"
+    run bash_hook "$WORK/plain" "nice $g"
+    [ "$status" -eq 0 ]
+    [ $(( ($(date +%s%N) - start) / 1000000 )) -lt 1000 ]
+}
+
 @test "guard-edit denies the git dir, husky and gate files in a gated repo only" {
     local f
     for f in .git/hooks/pre-commit .git/config .husky/pre-commit quality/config quality/drivers/x.sh \
