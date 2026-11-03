@@ -127,3 +127,96 @@ without_tty() {
     [ -f "$WORK/repo/.git/guard-bypass.log" ]
     grep -q from-worktree "$WORK/repo/.git/guard-bypass.log"
 }
+
+# --- the parent walk over a fake proc tree ------------------------------------------------
+# mkproc <pid> <ppid> <tty_nr> <comm> <uid> <env|-> writes <pid>/{stat,comm,status,environ} under
+# $WORK/proc. "-" leaves environ out, which reads as unreadable whatever uid the suite runs as.
+mkproc() {
+    local d="$WORK/proc/$1"
+    mkdir -p "$d"
+    printf '%s (%s) S %s %s %s %s 0 0\n' "$1" "$4" "$2" "$1" "$1" "$3" > "$d/stat"
+    printf '%s\n' "$4" > "$d/comm"
+    printf 'Name:\t%s\nUid:\t%s\t%s\t%s\t%s\n' "$4" "$5" "$5" "$5" "$5" > "$d/status"
+    [ "$6" = - ] || printf '%s\0' $6 > "$d/environ"
+}
+
+# A WSL2 terminal: init(1) -> SessionLeader(9, root) -> Relay(11) (10, root) -> bash (11, pts/0).
+wsl_tree() {
+    mkdir -p "$WORK/proc/sys/kernel"
+    printf '%s\n' "${1:-5.15.167.4-microsoft-standard-WSL2}" > "$WORK/proc/sys/kernel/osrelease"
+    mkdir -p "$WORK/proc/self"
+    printf '         0          0 4294967295\n' > "$WORK/proc/self/uid_map"
+    mkproc 9 1 0 SessionLeader 0 -
+    mkproc 10 9 0 "${2:-Relay(11)}" "${3:-0}" -
+    mkproc 11 10 34816 bash 1000 "${4:-HOME=/home/u}"
+}
+
+walk() {
+    . /code/lib/guard-override.sh
+    if _guard_override_walk "$WORK/proc" "$1"; then echo CLEAN; else echo REFUSED; fi
+}
+
+@test "walk: a shell under WSL's root-owned Relay is clean, though the Relay's environ is unreadable" {
+    wsl_tree
+    run walk 11
+    [ "$output" = CLEAN ]
+}
+
+@test "walk: a WSL1-style osrelease naming Microsoft also counts" {
+    wsl_tree 4.4.0-19041-Microsoft
+    run walk 11
+    [ "$output" = CLEAN ]
+}
+
+@test "walk: a Relay not owned by root is refused" {
+    wsl_tree '' 'Relay(11)' 1000
+    run walk 11
+    [ "$output" = REFUSED ]
+}
+
+@test "walk: a Relay name on a kernel that is not WSL is refused" {
+    wsl_tree 6.8.0-45-generic
+    run walk 11
+    [ "$output" = REFUSED ]
+}
+
+@test "walk: a root process with another name and an unreadable environ is refused" {
+    wsl_tree '' 'sshd'
+    run walk 11
+    [ "$output" = REFUSED ]
+}
+
+@test "walk: CLAUDECODE in the shell below the Relay is refused" {
+    wsl_tree '' '' '' 'HOME=/home/u CLAUDECODE=1'
+    run walk 11
+    [ "$output" = REFUSED ]
+}
+
+@test "walk: an agent process between the Relay and the probe is refused" {
+    wsl_tree
+    mkproc 12 11 34816 node 1000 'CLAUDECODE=1'
+    mkproc 13 12 0 bash 1000 'HOME=/home/u'
+    run walk 13
+    [ "$output" = REFUSED ]
+}
+
+@test "walk: the start process is never taken for the Relay, so its own environ is read" {
+    wsl_tree
+    mkproc 20 10 0 'Relay(20)' 0 -
+    run walk 20
+    [ "$output" = REFUSED ]
+}
+
+@test "walk: a Relay whose real uid is not 0 is refused, even with effective uid 0" {
+    wsl_tree
+    printf 'Name:\tRelay(11)\nUid:\t1000\t0\t0\t0\n' > "$WORK/proc/10/status"
+    run walk 11
+    [ "$output" = REFUSED ]
+}
+
+@test "walk: inside a user namespace a root-owned Relay is refused" {
+    wsl_tree
+    printf '         0       1000          1\n' > "$WORK/proc/self/uid_map"
+    run walk 11
+    [ "$output" = REFUSED ]
+}

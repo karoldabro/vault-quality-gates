@@ -73,6 +73,15 @@ judge what they commit or push.
 `nohup`, `time`, `timeout`, `sudo`, `exec`, `builtin`, `stdbuf`, `ionice` and `setsid` are skipped
 with their options, and so are `export`, `declare`, `typeset`, `readonly` and `local`.
 
+After any of those, and after `script`, `systemd-run`, `tmux`, `screen`, `su`, `runuser`, `wsl`,
+`wsl.exe` and `flock`, each argument that holds a space is read as a command line, and so are the
+trailing words from the first one that is `qg`, `guard.sh`, `git`, a shell, a wrapper or an
+assignment. `qg override` inside `script -qec "…"`, `systemd-run --user qg …` or
+`wsl.exe -e env QG_SKIP_REASON=x git commit` is therefore judged as if run directly. These wrappers
+detach a command or give it a terminal, which is how an agent would reach the human check in
+`lib/guard-override.sh`. `ssh` is not one of them: its command runs on another machine. A command
+that needs more than 256 inner reads is denied.
+
 ## What guard-edit denies
 
 In a gated repo, an edit to a path inside a `.git` folder or the git dir, `.husky/` or `.huskyrc`,

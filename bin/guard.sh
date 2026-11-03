@@ -77,6 +77,15 @@ guard_default_branch() {
         && printf '%s' "${b#origin/}" || printf 'master'
 }
 
+# guard_release_base <rev> -> the commit a push of <rev> is compared against: its merge-base with
+# the default branch. `baseline` measures against the same commit, so a {{base}} row reads the
+# number a push reads.
+guard_release_base() {
+    git merge-base "origin/$(guard_default_branch)" "$1" 2>/dev/null \
+        || git merge-base "$(guard_default_branch)" "$1" 2>/dev/null \
+        || git rev-parse "$1"
+}
+
 # GUARD_CONFIG_REV, set by `release`, is the commit whose VAULT.md, checks.tsv and baseline.tsv
 # the release gate reads, so an uncommitted edit cannot loosen the gate that judges a push.
 # GUARD_CONFIG_PIN is the caller's GUARD_CONFIG_REV, read before this file reuses the name: the
@@ -313,9 +322,7 @@ cmd_release() {
         [ "$(guard_row_field "$row" kind)" = absent ] && continue
         guard_row_selected "$row" release "$ref" && guard_only "$(guard_row_field "$row" id)" && n=$((n + 1))
     done
-    base="$(git merge-base "origin/$(guard_default_branch)" "$rev" 2>/dev/null \
-            || git merge-base "$(guard_default_branch)" "$rev" 2>/dev/null \
-            || git rev-parse "$rev")"
+    base="$(guard_release_base "$rev")"
     if [ "$n" -eq 0 ]; then
         # No row measures this ref, but the baseline still only gets tighter on every push.
         GUARD_RESULTS=()
@@ -380,7 +387,7 @@ cmd_baseline() {
         done
     fi
     guard_enter_tree
-    guard_run 'baseline' "$(git rev-parse HEAD)" || true
+    guard_run 'baseline' "$(guard_release_base HEAD)" || true
     guard_leave_tree
 
     local commit tmp line id value _b status _d

@@ -171,6 +171,10 @@ hook never sees it, and the commit is refused.
 character, `/dev/tty` opens, and neither `CLAUDECODE` nor `AI_AGENT` is set, even to an empty string.
 Neither may appear in `/proc/<pid>/environ` of any ancestor process below init either. An unreadable
 ancestor environment refuses, so an agent that starts a command with a fresh environment still fails.
+On WSL the walk ends, unread, at the root-owned `Relay(<n>)` process that parents the shell, so a
+session an agent opens through `wsl.exe` passes it too. **This check stops only an agent that does
+not evade it**: a same-user agent can pass it or edit `.git/hooks/`. The Claude Code guard denies the plain forms (`vault/architecture/guard-agent-hooks.md`);
+CI running `qg verify <range>` is the gate that binds.
 
 **The token.** `qg override` checks the same conditions, then writes `<git-common-dir>/qg-override`.
 The file holds the reason, the user, the time, `commit` or `push`, and a binding:

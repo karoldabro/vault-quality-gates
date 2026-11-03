@@ -34,21 +34,50 @@ guard_override_allowed() {
 # this hook's terminal whose parent is init, the user manager or a process that has left /proc was
 # orphaned: the parent it lost may have been the agent, so the walk fails closed there. A terminal
 # emulator, the normal child of the user manager, holds no controlling terminal and passes.
-# Builtins only: the hook's PATH is no help here.
+#
+# On WSL the walk also stops, clean, at the root-owned Relay(<n>) process that WSL's init puts
+# between the terminal and the shell: its environ is unreadable to the user, and a user-level agent
+# cannot create a root process. Builtins only: the hook's PATH is no help here.
 guard_override_ancestors_clean() {
-    local pid="$$" kv stat ppid tty mytty='' comm
+    _guard_override_walk /proc "$$"
+}
+
+# _guard_override_wsl_relay <proc root> <pid> -> 0 when <pid> is WSL's Relay(<n>): its comm reads
+# Relay(<digits>), its real uid is 0, the kernel's osrelease names Microsoft, and this process is in
+# the initial user namespace, where uid 0 is the real root and not a namespace's mapped root.
+_guard_override_wsl_relay() {
+    local proc="$1" pid="$2" comm line rel inside outside count
+    IFS=' ' read -r inside outside count _ 2>/dev/null < "${proc}/self/uid_map" || return 1
+    [ "$inside $outside $count" = '0 0 4294967295' ] || return 1
+    IFS= read -r comm 2>/dev/null < "${proc}/${pid}/comm" || return 1
+    [[ "$comm" =~ ^Relay\([0-9]+\)$ ]] || return 1
+    IFS= read -r rel 2>/dev/null < "${proc}/sys/kernel/osrelease" || return 1
+    [[ "${rel,,}" == *microsoft* ]] || return 1
+    while IFS= read -r line; do
+        case "$line" in Uid:*) read -r _ line _ <<<"$line"; [ "$line" = 0 ]; return ;; esac
+    done 2>/dev/null < "${proc}/${pid}/status"
+    return 1
+}
+
+# _guard_override_walk <proc root> <start pid> -> the walk above, reading every path under <proc
+# root>, so the tests can drive it over a tree they write.
+_guard_override_walk() {
+    local proc="$1" pid="$2" kv stat ppid tty mytty='' comm
     while :; do
-        [ -r "/proc/${pid}/environ" ] || return 1
+        if [ "$pid" != "$2" ] && _guard_override_wsl_relay "$proc" "$pid"; then
+            return 0
+        fi
+        [ -r "${proc}/${pid}/environ" ] || return 1
         while IFS= read -r -d '' kv; do
             case "$kv" in CLAUDECODE=*|AI_AGENT=*) return 1 ;; esac
-        done < "/proc/${pid}/environ" || return 1
-        # /proc/<pid>/stat: pid (comm) state ppid pgrp session tty_nr ...; comm may hold spaces.
-        IFS= read -r stat < "/proc/${pid}/stat" || return 1
+        done < "${proc}/${pid}/environ" || return 1
+        # <proc>/<pid>/stat: pid (comm) state ppid pgrp session tty_nr ...; comm may hold spaces.
+        IFS= read -r stat < "${proc}/${pid}/stat" || return 1
         read -r _ ppid _ _ tty _ <<<"${stat##*) }"
         case "$ppid$tty" in ''|*[!0-9]*) return 1 ;; esac
         [ -n "$mytty" ] || mytty="$tty"
         comm=''
-        [ "$ppid" -le 1 ] || { IFS= read -r comm < "/proc/${ppid}/comm" || return 1; }
+        [ "$ppid" -le 1 ] || { IFS= read -r comm < "${proc}/${ppid}/comm" || return 1; }
         if [ "$tty" != 0 ] && [ "$tty" = "$mytty" ] && { [ "$ppid" -le 1 ] || [ "$comm" = systemd ]; }; then
             return 1
         fi

@@ -3,7 +3,7 @@
 The git and HUSKY rules bind only when the command acts on a gated repo (gated.py). The qg and
 guard.sh rules bind in every repo. Every other command runs unchecked; the repo's own pre-commit
 and pre-push hooks still judge each commit and push."""
-import json, os, re, stat, subprocess, sys, time
+import json, os, re, shlex, stat, subprocess, sys, time
 
 # python3 -I leaves the script's folder off sys.path; the modules beside this file are put back.
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
@@ -28,6 +28,14 @@ PUSH_DENIED = {'--no-verify', '--force', '-f', '--force-with-lease', '--force-if
 SHELLS = {'bash', 'sh', 'zsh', 'dash'}
 # Programs that run the command after their own options.
 WRAPPERS = {'env', 'command', 'nice', 'nohup', 'time', 'timeout', 'sudo', 'exec', 'builtin', 'stdbuf', 'ionice', 'setsid'}
+# Programs that run a command given as a string, or after options this file does not parse; some also
+# detach it or give it a terminal of its own. Each argument, and each run of trailing words, is
+# judged as a command of its own, so qg inside them meets the same rules as qg run directly.
+# The commands scan() judges; a run of trailing words is read only when it starts with one.
+JUDGED = {'qg', 'guard.sh', 'git'}
+CMD_WRAPPERS = {'script', 'systemd-run', 'tmux', 'screen', 'su', 'runuser', 'wsl', 'wsl.exe', 'flock'}
+# At most this many inner reads per command; past it the command is denied, never waved through.
+INNER_BUDGET = 256
 DECLARE = {'export', 'declare', 'typeset', 'readonly', 'local'}
 ASSIGN = re.compile(r'[A-Za-z_]\w*=')
 # The gate reads these from its environment; a value an agent sets would steer which rows run.
@@ -210,6 +218,8 @@ def scan(text, cwd, depth=0):
     lx = Lexer(text)
     for seg in lx.parse() + lx.subs:
         words = [str(w) for w in seg['words']]
+        if words and base(words[0]) in WRAPPERS | CMD_WRAPPERS:
+            hits += scan_inner(words[1:], cwd, depth + 1)
         while words and (ASSIGN.match(words[0]) or base(words[0]) in WRAPPERS | DECLARE):
             if not ASSIGN.match(words[0]):
                 words = words[1:]
@@ -239,6 +249,28 @@ def scan(text, cwd, depth=0):
             rule, folder = check_git(words[1:], cwd)
             if rule:
                 hits.append((rule, folder))
+    return hits
+
+
+class Budget:
+    left = INNER_BUDGET
+
+
+def scan_inner(words, cwd, depth):
+    """The hits of each word that holds a command line, and of the trailing words from the first
+    one that is a command these rules judge, a wrapper, or an assignment; later runs are its own
+    arguments, which scan() already reads."""
+    hits = []
+    first = next((i for i, w in enumerate(words)
+                  if base(w) in JUDGED | SHELLS | WRAPPERS | CMD_WRAPPERS | DECLARE or ASSIGN.match(w)), None)
+    texts = [w for w in words if ' ' in w.strip()]
+    if first is not None:
+        texts.append(' '.join(shlex.quote(t) for t in words[first:]))
+    for text in texts:
+        Budget.left -= 1
+        if Budget.left < 0:
+            raise Integrity('the command nests too many wrappers to judge; run the parts separately')
+        hits += scan(text, cwd, depth)
     return hits
 
 
