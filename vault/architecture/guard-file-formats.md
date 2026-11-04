@@ -8,10 +8,10 @@ tags: [quality, gates, contract]
 
 # Gate file formats: what the engine, the drivers and the parsers read and write
 
-Each gated repo commits three tab-separated files and one key file under `quality/`. The engine
-keeps its run results under the git common dir. Exit codes are the same everywhere: 0 measured and
-acceptable, 1 measured and worse, 2 could not measure. A check that could not run is never recorded
-as passing. Drivers follow `vault/architecture/qg-driver-contract.md`.
+Each gated repo commits three tab-separated files and one key file under `quality/`. Exit codes are
+the same everywhere: 0 measured and acceptable, 1 measured and worse, 2 could not measure. A check
+that could not run is never recorded as passing. Drivers follow
+`vault/architecture/qg-driver-contract.md`.
 
 ## Parsing rules for every `.tsv` file
 
@@ -123,16 +123,16 @@ Required by `bin/guard.sh commit` and `verify`. Header: `id	tool	enforced_by	emi
 `bin/guard-report-errors.sh` matches a reported identifier against `emits` exactly first, then as a
 prefix ending at a `.` boundary, longest prefix winning.
 
-## `quality/baseline.tsv`: the ratchet
+## `quality/baseline.tsv`: the ratchet, and its one exit in `vault/architecture/guard-baseline-accept.md`
 
-Header: `id	value	commit	reason`. Only `kind: repo` ids appear. A non-numeric `value` is
-**exit 2**, because a row carrying no number must never score as clean. `reason` is `-` unless
-`guard.sh accept` wrote one. `checks.tsv` owns `direction`, `threshold` and `gate`.
+Header: `id	value	commit	reason`. Only `kind: repo` ids appear. A non-numeric `value` is **exit 2**,
+because a row with no number must never score as clean. `reason` is `-` unless `guard.sh accept`
+wrote one. `checks.tsv` owns `direction`, `threshold` and `gate`.
 
 **The baseline only gets tighter.** `guard_baseline_diff` reports a row as loosened when its value
 moved in the worse direction, whatever its reason. It also reports a row whose `reason` changed to
-anything but `-`. A removed or non-numeric `kind: repo` row is loosened too. The commit gate compares
-with the parent. The push gate compares with `GUARD_BASE`: the remote ref's old tip, else the fork
+anything but `-`. A removed or non-numeric `kind: repo` row is loosened too. The commit gate
+compares with the parent; the push gate with `GUARD_BASE`: the remote ref's old tip, else the fork
 point of a new branch. A base without the file skips the check.
 
 **The accept limit.** A push to a named ref exits 1 when more than `guard_accept_limit` rows carry a

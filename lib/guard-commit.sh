@@ -138,9 +138,10 @@ guard_show() {
 # guard_gate_locked <base> <target> <config dir> -> 0, or 1 with a `worse` result. Built in,
 # so no checks.tsv row can drop it: the target may not delete quality/checks.tsv or
 # quality/rules.tsv, and may not loosen quality/baseline.tsv against the base
-# (guard_baseline_diff). A first commit has nothing to loosen.
+# (guard_baseline_lock), unless `qg baseline` at a terminal accepted that exact file. A first
+# commit has nothing to loosen.
 guard_gate_locked() {
-    local base="$1" target="$2" cfg="$3" f gone='' lines rc=0 changed='' p
+    local base="$1" target="$2" cfg="$3" f gone='' rc=0 changed='' p
     [ "$base" != "$(guard_empty_tree)" ] || return 0
     # A repo driver or quality/config judges the next commit, so changing one is a human's
     # decision: refused here, passed only by a human override.
@@ -168,10 +169,8 @@ guard_gate_locked() {
         guard_show "$target" quality/baseline.tsv > "$cfg/baseline.new" || rm -f "$cfg/baseline.new"
         if [ ! -e "$cfg/baseline.new" ]; then
             GUARD_RESULTS+=("baseline-loosened|1|0|worse|deletes quality/baseline.tsv"); rc=1
-        elif lines="$(guard_baseline_diff "$cfg/baseline.old" "$cfg/baseline.new" "$cfg/checks.tsv")"; then :
         else
-            GUARD_RESULTS+=("baseline-loosened|$(wc -l <<<"$lines")|0|worse|$(awk -F'\t' '{ printf "%s%s %s -> %s (%s)", (NR > 1 ? "; " : ""), $1, $2, $3, $4 }' <<<"$lines")")
-            rc=1
+            guard_baseline_lock "$cfg/baseline.old" "$cfg/baseline.new" "$cfg/checks.tsv" || rc=1
         fi
     fi
     return "$rc"

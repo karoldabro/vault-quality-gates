@@ -107,5 +107,7 @@ refusal_file() { cat "$(git rev-parse --path-format=absolute --git-common-dir)/q
     [[ "$output" == *'push refused to refs/heads/feature/x'* ]]
     [[ "$output" == *'reproduce: qg run push --ref refs/heads/feature/x --only p'* ]]
     [[ "$output" == *'Measure again without pushing: GUARD_SHA='* ]]
-    [[ "$output" == *'--push <sha>'* ]]
+    # No override passes a push row, so the footer offers none.
+    [[ "$output" == *'A worse push row is fixed in code; no override passes it.'* ]]
+    [[ "$output" != *'--push <sha>'* ]]
 }

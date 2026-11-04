@@ -19,7 +19,7 @@ export GIT_NO_REPLACE_OBJECTS=1
 #                                baseline.tsv and VAULT.md read from GUARD_SHA (else HEAD);
 #                                --record-pass writes a push pass record after a full pass,
 #                                --use-pass accepts a valid one instead of measuring
-#   guard.sh baseline [--skip <regex> | --only <id,id>]
+#   guard.sh baseline [--skip <regex> | --only <id,id>] [--reason "<why>"]
 #                                rows scoped baseline plus every kind: repo row,
 #                                then rewrites quality/baseline.tsv. --skip omits
 #                                matching ids and KEEPS their existing rows, so a
@@ -27,6 +27,10 @@ export GIT_NO_REPLACE_OBJECTS=1
 #                                schedule without blocking every other measurement.
 #                                --only measures the named rows, rewrites only their
 #                                lines, and writes nothing when one yields no number.
+#                                Run by a human at a terminal, it also records the
+#                                file it wrote as accepted (--reason, default
+#                                "qg baseline"), so the commit and push gates pass
+#                                its looser values (lib/guard-baseline-accept.sh).
 #   guard.sh report              re-render from quality-reports/
 #   guard.sh accept <id> --reason "<why>"
 #   guard.sh hooks install [--claude]|remove [--claude]|status
@@ -63,6 +67,8 @@ export GUARD_LIB_DIR
 . "${GUARD_LIB_DIR}/guard-metrics.sh"
 # shellcheck source=../lib/guard-pass.sh
 . "${GUARD_LIB_DIR}/guard-pass.sh"
+# shellcheck source=../lib/guard-baseline-accept.sh
+. "${GUARD_LIB_DIR}/guard-baseline-accept.sh"
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
     guard_err 'guard: not a git repository'; exit 2
@@ -261,16 +267,14 @@ guard_release_tree_matches() {
 
 # guard_release_locked <row base> -> 1 with a `worse` result when the measured baseline.tsv
 # loosens the one at GUARD_BASE (the pre-push hook passes the remote ref's old sha, or the parent of the
-# oldest commit on no remote), else the merge-base the rows use.
+# oldest commit on no remote), else the merge-base the rows use, and `qg baseline` at a terminal did
+# not accept that exact file (lib/guard-baseline-accept.sh).
 guard_release_locked() {
-    local old new lines
+    local old new
     old="$(mktemp)" new="$(mktemp)"
     if git show "${GUARD_BASE:-$1}:quality/baseline.tsv" > "$old" 2>/dev/null; then
         [ -r "$BASELINE" ] && cp "$BASELINE" "$new" || : > "$new"
-        if ! lines="$(guard_baseline_diff "$old" "$new" "$CHECKS")"; then
-            GUARD_RESULTS+=("baseline-loosened|$(wc -l <<<"$lines")|0|worse|$(awk -F'\t' '{ printf "%s%s %s -> %s (%s)", (NR > 1 ? "; " : ""), $1, $2, $3, $4 }' <<<"$lines")")
-            rm -f "$old" "$new"; return 1
-        fi
+        guard_baseline_lock "$old" "$new" "$CHECKS" || { rm -f "$old" "$new"; return 1; }
     fi
     rm -f "$old" "$new"
 }
@@ -413,6 +417,7 @@ cmd_baseline() {
     guard_render_report
     printf 'baseline written: %s\n' "$BASELINE"
     cat "$BASELINE"
+    guard_baseline_accept_note "$GUARD_ACCEPT_REASON"
 }
 
 # guard_baseline_only <commit> -> rewrites only the rows GUARD_ONLY names, leaving every other line
@@ -446,6 +451,7 @@ guard_baseline_only() {
     mv "$tmp" "$BASELINE"
     guard_render_report
     printf 'baseline written for %s: %s\n' "$GUARD_ONLY" "$BASELINE"
+    guard_baseline_accept_note "$GUARD_ACCEPT_REASON"
 }
 
 cmd_accept() {
@@ -491,13 +497,22 @@ case "${1:-}" in
         cmd_release "$rel_ref" ;;
     baseline)
         shift
-        case "${1:-}" in
-            --skip) export GUARD_SKIP="${2:-}" ;;
-            --only) only="${2:-}"
-                    [ -n "${only//[[:space:],]/}" ] || { guard_err 'usage: guard.sh baseline [--skip <regex> | --only <id,id>]'; exit 2; }
-                    # `a, b` and `a,b` name the same rows.
-                    GUARD_ONLY="${only//[[:space:]]/}" ;;
-        esac
+        baseline_usage='usage: guard.sh baseline [--skip <regex> | --only <id,id>] [--reason "<why>"]'
+        GUARD_ACCEPT_REASON='qg baseline'
+        while [ $# -gt 0 ]; do
+            [ $# -ge 2 ] || { guard_err "$baseline_usage"; exit 2; }
+            case "$1" in
+                --skip)   export GUARD_SKIP="$2" ;;
+                --only)   only="$2"
+                          [ -n "${only//[[:space:],]/}" ] || { guard_err "$baseline_usage"; exit 2; }
+                          # `a, b` and `a,b` name the same rows.
+                          GUARD_ONLY="${only//[[:space:]]/}" ;;
+                --reason) [[ "$2" =~ [^[:space:]] ]] || { guard_err "$baseline_usage"; exit 2; }
+                          GUARD_ACCEPT_REASON="$2" ;;
+                *)        guard_err "$baseline_usage"; exit 2 ;;
+            esac
+            shift 2
+        done
         cmd_baseline ;;
     report)   cat "${REPORTS}/REPORT.md" 2>/dev/null || { guard_err 'guard: no report yet'; exit 2; } ;;
     accept)   shift; cmd_accept "$@" ;;

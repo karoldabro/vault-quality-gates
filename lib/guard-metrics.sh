@@ -164,8 +164,8 @@ guard_accept_count() {
 #     default), whatever its reason column says;
 #   - its reason column changed to anything but `-` (an accepted regression is a loosening);
 #   - it disappeared, or its value is not a number, while checks.tsv gives it kind repo.
-# A tighter value, a cleared reason and a new row pass. The gate refuses a loosening for an
-# agent; only a human override (QG_SKIP_REASON at a terminal) commits or pushes one.
+# A tighter value, a cleared reason and a new row pass. guard_baseline_lock
+# (lib/guard-baseline-accept.sh) refuses a loosening unless `qg baseline` at a terminal accepted it.
 guard_baseline_diff() {
     local old="$1" new="$2" checks="$3" kinds rc
     [ -r "$old" ] || return 0
