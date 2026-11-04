@@ -42,6 +42,13 @@ commit_at_tty() { at_tty "git commit -q -m override-test 2>&1; echo rc=\$?"; }
     [ ! -e "$(token)" ]
 }
 
+@test "a commit token is refused when nothing is staged, and the refusal names git commit <path>" {
+    git -c core.hooksPath=/dev/null commit -q -m staged-first
+    run write_token 'nothing staged'
+    [[ "$output" == *'nothing is staged'*'git commit <path>'* ]]
+    [ ! -e "$(token)" ]
+}
+
 @test "a token passes the refused commit of exactly that staged content, once, and logs it" {
     write_token 'tool broken, checked by hand'
     run commit_at_tty

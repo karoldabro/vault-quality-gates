@@ -120,14 +120,25 @@ qg_print_refusal() {
     if [ "$measured" -eq 1 ]; then foot+="  1. Fix what is listed above in the code, git add it, and ${again}."$'\n'
     else foot+="  1. Fix what the output above names (a tool, a service, the environment), then ${again}."$'\n'; fi
     foot+="  2. qg explain <id> says what a gate checks and why; qg last prints this refusal again."$'\n'
+    # Each route named here passes the refusal it is printed for: no override reaches the push rows
+    # or a looser baseline, and only qg baseline at a terminal accepts a new floor.
+    local n=3 others=0
+    for id in "${ids[@]}"; do [ "$id" = baseline-loosened ] || others=1; done
     if qg_agent; then
         foot+='  3. Agents may not override a gate. If you cannot fix it, stop and tell the operator.'$'\n'
-    elif [ "$event" = commit ] && [ "$ref" != '-' ] && [ "$ref" != ':index' ]; then
-        foot+='  3. Only a human at a terminal, when this commit must be pushed as it is:'$'\n''     qg override --reason "<why>" --push <sha>   then push again.'$'\n'
-    elif [ "$event" = commit ]; then
-        foot+='  3. Only a human at a terminal, when the gate itself is wrong:'$'\n''     qg override --reason "<why>"   then commit again from a terminal (once, for exactly this staged content).'$'\n'
     else
-        foot+='  3. Only a human at a terminal, for commits that never passed the commit gate:'$'\n''     qg override --reason "<why>" --push <sha>   then push again. A worse metric is fixed in code.'$'\n'
+        if [[ " ${ids[*]} " == *' baseline-loosened '* ]]; then
+            foot+="  ${n}. Only a human at a terminal, when the looser values are the new floor:"$'\n''     qg baseline --reason "<why>", git add quality/baseline.tsv, commit, then push. It records that exact file as the new floor; a hand edit stays refused.'$'\n'
+            n=$((n + 1))
+        fi
+        if [ "$others" -eq 0 ]; then :
+        elif [ "$event" = push ]; then
+            foot+="  ${n}. A worse push row is fixed in code; no override passes it."$'\n'
+        elif [ "$ref" != '-' ] && [ "$ref" != ':index' ]; then
+            foot+="  ${n}. Only a human at a terminal, when this commit must be pushed as it is:"$'\n''     qg override --reason "<why>" --push <sha>   then push again. The push rows still run.'$'\n'
+        else
+            foot+="  ${n}. Only a human at a terminal, when the gate itself is wrong:"$'\n''     git add what you commit, then qg override --reason "<why>", then git commit with no path (once, for exactly this staged content).'$'\n'
+        fi
     fi
     foot+="(qg is ${qg})"$'\n'
 

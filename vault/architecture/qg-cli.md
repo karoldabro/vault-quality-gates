@@ -40,7 +40,7 @@ the rules; `bin/qg`, `lib/guard-override.sh` and `templates/claude-hooks/guard_b
 
 | action | what an agent may then run |
 |---|---|
-| `baseline` | `qg baseline` |
+| `baseline` | `qg baseline`, which writes the file but no acceptance record, so a looser value stays refused |
 | `override` | `qg override --reason "<why>"`, and the agent's `git commit` consumes that token |
 | `push` | `qg override --reason "<why>" --push <sha>`, and the agent's `git push` consumes that token |
 
@@ -86,14 +86,14 @@ the rules; `bin/qg`, `lib/guard-override.sh` and `templates/claude-hooks/guard_b
 | `qg drivers [<name>]` | the drivers this repo can use, or one driver's `describe` and `explain` | 0; 2 for an unknown name | yes |
 | `qg doctor` | checks the setup | 0 healthy (warnings allowed), 1 something is broken | yes |
 | `qg config get <key>` | a gate key as committed: `quality/config`, else `VAULT.md` | 0 and the value; 1 when unset; 2 on bad usage | yes |
-| `qg override --reason "<why>" [--push <sha>]` | lets the next commit of what is staged now, or the push of `<sha>`, through once within 10 minutes | 0 token written; 1 no terminal or a bad `--push` sha; 2 no reason or an agent | with a grant naming `override`, or `push` for `--push` |
+| `qg override --reason "<why>" [--push <sha>]` | lets the next commit of what is staged now, or the push of `<sha>`, through once within 10 minutes | 0 token written; 1 no terminal, nothing staged (commit token), or a bad `--push` sha; 2 no reason or an agent | with a grant naming `override`, or `push` for `--push` |
 | `qg grant --agent [<duration>] <action,action>`, `qg grant --revoke`, `qg grant --status` | issues, ends or shows the agent grant (`## The agent grant`) | 0; 2 on a bad duration or action, without a terminal, or for an agent | `--status` only |
 | `qg init --profile docs\|php\|nuxt\|flutter\|hugo [--force]` | writes `quality/checks.tsv`, `rules.tsv`, `baseline.tsv` and `config` from `templates/init/<profile>.tsv`. `config` protects the five gate files by exact path, plus every tracked `.doc-lint` for docs, which also gets `guard_doc_lint`. An existing `config` is kept, with a warning naming what it lacks. Next: `qg hooks install`, commit, `qg doctor` | 0; 2 on a bad profile or an existing `checks.tsv` without `--force` | no |
 | `qg migrate [--draft]` | rewrites a v1 `checks.tsv` as v2 and writes `quality/config` from the `VAULT.md` keys | 1 without `--draft`, listing rows with no why; 0 with `--draft`; 2 when there is nothing to migrate | no |
 | `qg hooks`, `qg hooks status [--user [--config-dir <dir>]...]` | what is installed (`vault/architecture/guard-agent-hooks.md`) | 0 | yes |
 | `qg hooks install [--claude [--user [--config-dir <dir>]...]]`, `qg hooks remove [--claude [--user ...]]` | installs or removes the git hooks or the guard entries (`vault/architecture/guard-agent-hooks.md`) | 0; 2 from a linked worktree (`--user`) or on invalid settings JSON | no |
 | `qg report`, `qg verify <range>` | pass through to `guard.sh report` and `guard.sh verify` | from `guard.sh` | yes |
-| `qg baseline`, `qg accept <id> --reason "<why>"` | pass through to `guard.sh baseline` and `guard.sh accept` | from `guard.sh` | `baseline` with a grant naming it; `accept` never |
+| `qg baseline [--skip <regex> \| --only <id,id>] [--reason "<why>"]`, `qg accept <id> --reason "<why>"` | pass through to `guard.sh baseline` and `guard.sh accept`; `baseline` at a terminal also accepts the file it wrote (`vault/architecture/guard-baseline-accept.md`) | from `guard.sh` | `baseline` with a grant naming it; `accept` never |
 
 **`qg run push` with no `--ref`** prints the refusal under the heading `the push gate failed (run by
 hand, every push row)` and skips the accept-limit check, which binds a named ref only. `qg run

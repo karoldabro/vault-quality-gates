@@ -9,8 +9,7 @@ tags: [quality, gates, contract]
 # The commit gate — what `guard.sh commit` and `verify` measure, and the hooks around them
 
 The commit gate refuses a commit that adds a violation, measured on exactly the tree being committed.
-The file formats, the substitution tokens and the parsers it uses are in
-`vault/architecture/guard-file-formats.md`.
+Its file formats, substitution tokens and parsers: `vault/architecture/guard-file-formats.md`.
 
 ## What the gate measures
 
@@ -151,7 +150,7 @@ measuring again: `vault/architecture/guard-push-pass.md`.
 | `gate-config-changed` | changes a path under `quality/drivers` or `quality/config` |
 | `gate-config-invalid` | stages a `quality/checks.tsv` that does not load |
 | `gate-config-deleted` | deletes `quality/checks.tsv` or `quality/rules.tsv` |
-| `baseline-loosened` | loosens or deletes `quality/baseline.tsv` against the parent |
+| `baseline-loosened` | deletes `quality/baseline.tsv`, or loosens it against the parent when `qg baseline` at a terminal did not accept that exact file |
 
 ## The override
 
@@ -179,10 +178,11 @@ CI running `qg verify <range>` is the gate that binds.
 **The token.** `qg override` checks the same conditions, then writes `<git-common-dir>/qg-override`.
 The file holds the reason, the user, the time, `commit` or `push`, and a binding:
 
-- A commit token binds to `git write-tree` of the index when `qg override` ran. It passes only a
-  commit of exactly that staged content.
+- A commit token binds to `git write-tree` of the index, and passes only a commit of exactly that
+  staged content. With nothing staged it is refused: `git commit <path>` stages after the token.
 - `qg override --reason "<why>" --push <sha>` binds to that full sha. It lifts only the `pre-push`
-  check for commits with no pass record. The push gate rows still run.
+  check for commits with no pass record. The push rows and the baseline lock still run
+  (`vault/architecture/guard-baseline-accept.md`).
 
 `qg_override_take` re-checks the human conditions in the hook's own process. A token is therefore
 never consumed by a commit or push an agent runs, unless a live grant names `override` (commit) or

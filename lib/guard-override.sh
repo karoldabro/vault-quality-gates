@@ -124,6 +124,11 @@ qg_override_write() {
         if [ -x "$user_step" ] && { guard_override_allowed "$reason" || qg_grant_live override; }; then
             "$user_step" || { printf 'qg override: %s failed; fix that first\n' "$user_step" >&2; return 1; }
         fi
+        # `git commit <path>` stages after this token is written, so its tree never matches the token.
+        if git diff --cached --quiet 2>/dev/null && ! git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+            printf 'qg override: nothing is staged, so the token would name no commit. git add what you commit first, then\nrun qg override, then git commit with no path: `git commit <path>` stages after the token and never matches it.\n' >&2
+            return 1
+        fi
         binding="$(git write-tree 2>/dev/null)" || { printf 'qg override: cannot read the index\n' >&2; return 1; }
     fi
     if ! qg_override_granted "$reason" "$kind"; then
