@@ -63,3 +63,27 @@ setup() {
     [ "$(qg_on_from_v1 baseline '')" = baseline ]
     [ "$(qg_on_from_v1 - '')" = - ]
 }
+
+@test "an extglob cell skips only hotfix/* branches: every other ref, tag and namespace runs the row" {
+    local on='push:!(refs/heads/hotfix/*)' r
+    qg_on_valid "$on"
+    for r in refs/heads/feature/x refs/heads/agent/JOB-1 refs/heads/hotfix refs/heads/Hotfix/x refs/heads/hotfix-x \
+             refs/heads/master refs/tags/v1 refs/side/x; do
+        qg_row_runs_on "$on" push "$r" || { echo "not run on $r"; return 1; }
+    done
+    for r in refs/heads/hotfix/x refs/heads/hotfix/a/b; do
+        ! qg_row_runs_on "$on" push "$r" || { echo "run on $r"; return 1; }
+    done
+    qg_row_runs_on "$on" push -
+    qg_row_runs_on 'push:refs/heads/@(release|hotfix)/*' push refs/heads/hotfix/x
+    ! qg_row_runs_on 'push:refs/heads/@(release|hotfix)/*' push refs/heads/feature/x
+}
+
+@test "a cell with unbalanced parentheses is refused" {
+    local c
+    for c in 'push:!(refs/heads/hotfix/*' 'push:refs/heads/hotfix/*)' 'push:)(' 'commit,push:!(a' 'push:!(a,b)'; do
+        run qg_on_valid "$c"
+        [ "$status" -eq 1 ] || { echo "accepted: [$c]"; return 1; }
+        [ -n "$output" ]
+    done
+}

@@ -41,16 +41,22 @@ The `--user` forms run in `bin/qg` itself, because only `qg` holds the caller's 
 
 ## Scope
 
-The git, gate-variable and gate-file rules bind only in a gated repo.
+The git, gate-variable and gate-file rules bind only in a gated repo, except the two push rules
+marked *every repo* below.
 `templates/claude-hooks/gated.py` decides it from the filesystem alone. A repo is gated when
 `<common dir>/hooks/pre-commit` or `pre-push` holds `# vault-guard-start`. It is also gated when its
 `.git` file, git dir or hooks folder cannot be read, or its config sets `hookspath`. The folder a
 rule checks is the cwd after each literal `cd`, a `git -C` target, or the folder of a write target.
-The `qg` and `guard.sh` rules bind in every repo.
+A write target resolves against that cwd with `os.path.realpath`, so `cd .git && printf x > guard-pass/k`
+is a write inside the git dir. The `qg` and `guard.sh` rules bind in every repo.
+
+A deny names its next step. A push rule names the push to make instead, or the operator command it
+needs; every other git rule tells the agent to fix what the commit gate reports.
 
 A command the hook cannot parse runs unchecked (`guard-bash: not checked …` on stderr). A computed
 `git -C "$x"`, a script file, and code run through an interpreter are not read; the repo's git hooks
-judge what they commit or push.
+judge what they commit or push. A GitHub API write from a script reaches no hook; only the
+operator's merge flow catches it.
 
 ## What guard-bash denies
 
@@ -58,15 +64,37 @@ judge what they commit or push.
 - `--no-verify` on `merge`, `push`, `am`, `rebase`, `cherry-pick`, `revert` and `pull`;
 - `git push` with `--force*`, `-f`, a `+` refspec, `--mirror`, `--delete`, `-d`, `--prune`,
   `-o`/`--push-option`, `--receive-pack` or `--exec`;
-- `git push` whose target branch is `master`, `main`, `develop` or `development`, including a bare
-  `git push` or `HEAD` from one of them, because a push there deploys;
+- `git push` whose target branch is `master`, `main`, `develop` or `development`, because a push
+  there deploys. A bare `git push` targets the branch `@{push}` names, else the current branch;
+  `HEAD` targets the current branch;
+- `git push` whose target is a `hotfix/*` branch while no live operator grant names `hotfix`. The
+  deny names `qg grant --agent hotfix`. `pre-push` refuses the same push by its real remote ref
+  (`vault/architecture/guard-push-pass.md` `## The hotfix refusal`), so a reroute this rule misses
+  is still refused;
+- `git push` that reroutes past the branch rules: `--all`, `--branches`, a refspec holding `*`, a
+  bare `:` refspec, and a target ref outside `refs/heads/`;
+- `git -c` or `--config-env` with `remote.*.push`, `remote.*.mirror`, `push.default` or
+  `branch.*.merge`, and `git config` that sets one of them (reads with `--get`, `get` or `--list`
+  pass);
+- *every repo*: `git push` from a checkout whose `quality/checks.tsv` at `HEAD` holds a push row
+  (a v2 `on` cell with a push token, a v1 `scope` of `release` or `both`) while the `pre-push` git
+  runs (after `core.hooksPath`) lacks `# vault-guard-start`; the deny names
+  `qg hooks install` for the operator. `push_unguarded` in `gated.py` decides it;
 - `git config` that sets or unsets `core.hooksPath` or a `hook.*` key, and `git -c` with one;
-- assigning, exporting or passing through `env` `HUSKY=0` or any `GUARD_*` or `QG_*` name;
+- assigning, exporting or passing through `env` `HUSKY=0`, any `GUARD_*` or `QG_*` name, or
+  `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_*`, `GIT_CONFIG_VALUE_*`, `GIT_CONFIG_PARAMETERS`,
+  `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM` or `GIT_CONFIG_NOSYSTEM`;
 - a redirect or a `rm`, `mv`, `cp`, `ln`, `chmod`, `touch`, `tee`, `truncate`, `install`, `mkdir`,
-  `rsync` or `dd of=` target inside a `.git` folder, naming `qg-override`, inside `.husky/`, or under
-  `quality/config`, `quality/drivers`, `quality/baseline.tsv` or `quality/checks.tsv`;
+  `rsync` or `dd of=` target inside a `.git` folder or a git dir, naming `qg-override`, inside
+  `.husky/`, or under `quality/config`, `quality/drivers`, `quality/baseline.tsv` or
+  `quality/checks.tsv`, by its text or by its resolved path;
+- *every repo*: `gh api` with `-X`/`--method` `POST`, `PUT`, `PATCH` or `DELETE`, or with
+  `-f`/`-F`/`--field`/`--raw-field`/`--input` and no `-X GET`, on a path holding `git/refs`,
+  `git/commits`, `contents`, `merges` or `pulls/<n>/merge`. The target repo on GitHub cannot be read
+  from the cwd, so the rule binds everywhere. `gh api` reads pass;
 - `qg` subcommands other than the reads in `vault/architecture/qg-cli.md`; `qg baseline` and
-  `qg override` pass while the operator grant names them (`## The agent grant` there);
+  `qg override` pass while the operator grant names them (`## The agent grant` there), and so does
+  a `hotfix/*` push target;
 - `guard.sh` subcommands other than `verify <range>`, `report` and `hooks status`.
 
 `bash -c`, `sh -c`, `zsh -c` and `dash -c` text is read like the command. `env`, `command`, `nice`,

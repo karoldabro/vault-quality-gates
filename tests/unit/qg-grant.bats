@@ -157,3 +157,25 @@ agent_commit() { CLAUDECODE=1 git commit -q -m agent-commit 2>&1; echo "rc=$?"; 
     run "$QG" grant --status
     [[ "$output" == 'grant: baseline,override,push until'* ]]
 }
+
+@test "hotfix is grantable; a grant naming it lasts 30 minutes by default, and push,hotfix still covers the push token" {
+    run at_tty "$QG grant --agent hotfix"
+    [[ "$output" == *'agents may run hotfix until'* ]]
+    run "$QG" grant --status
+    [[ "$output" == 'grant: hotfix until '*'(30 minutes left)' ]]
+    run at_tty "$QG grant --agent push,hotfix"
+    run "$QG" grant --status
+    [[ "$output" == 'grant: push,hotfix until '*'(30 minutes left)' ]]
+    run at_tty "$QG grant --agent 2h hotfix"
+    run "$QG" grant --status
+    [[ "$output" == *'(120 minutes left)' ]]
+    run at_tty "$QG grant --agent baseline"
+    run "$QG" grant --status
+    [[ "$output" == *'(60 minutes left)' ]]
+    grant push,hotfix
+    CLAUDECODE=1 run "$QG" override --reason 'unrecorded' --push HEAD
+    [ "$status" -eq 0 ]
+    [ -s "$(token)" ]
+    run "$QG" help grant
+    [[ "$output" == *"hotfix (an agent's push of a hotfix/* branch)"* ]]
+}

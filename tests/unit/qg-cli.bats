@@ -48,6 +48,48 @@ teardown() {
     [ "$(jq -r '.rows | map(.id) | join(",")' <<<"$output")" = rel-tests ]
 }
 
+@test "list --on push --ref lists the push rows that run on that ref, read at --rev" {
+    ids() { jq -r '.rows | map(.id) | join(",")' <<<"$output"; }
+    run "$QG" list --on push --ref refs/heads/release/1.0.0 --json
+    [ "$status" -eq 0 ] && [ "$(ids)" = rel-tests ]
+    run "$QG" list --ref refs/heads/feature/x --on push --json
+    [ "$status" -eq 0 ] && [ "$(ids)" = '' ]
+    old="$(git rev-parse HEAD)"
+    sed -i 's|push:refs/heads/release/\*|push:!(refs/heads/hotfix/*)|' quality/checks.tsv
+    commit_all hotfix-glob
+    run "$QG" list --on push --ref refs/heads/feature/x --json
+    [ "$(ids)" = rel-tests ]
+    run "$QG" list --on push --ref refs/heads/hotfix/x --json
+    [ "$status" -eq 0 ] && [ "$(ids)" = '' ]
+    run "$QG" list --on push --ref refs/heads/feature/x --rev "$old" --json
+    [ "$status" -eq 0 ] && [ "$(ids)" = '' ]
+    run "$QG" list --on push --ref refs/heads/feature/x
+    [[ "$output" == *'rel-tests'*'pushes to !(refs/heads/hotfix/*)'* ]]
+    run "$QG" list --on commit --ref refs/heads/feature/x
+    [ "$status" -eq 2 ]
+    run "$QG" list --on push --ref refs/heads/x --rev no-such-rev
+    [ "$status" -eq 2 ] && [[ "$output" == *'cannot read commit no-such-rev'* ]]
+    run "$QG" list --ref
+    [ "$status" -eq 2 ]
+    CLAUDECODE=1 run "$QG" list --on push --ref refs/heads/feature/x --json
+    [ "$status" -eq 0 ] && [ "$(ids)" = rel-tests ]
+}
+
+@test "list --ref resolves a v1 file through guard_release_pattern at --rev" {
+    printf '%s\n' "$CHECKS_HEADER" $'rel\trelease\tdiff\techo 0\t-\t-\tdown\t0\trefuse' $'com\tcommit\tdiff\techo 0\t-\t-\tdown\t0\trefuse' > quality/checks.tsv
+    printf 'guard_release_pattern: refs/heads/rc/*\n' > VAULT.md
+    commit_all v1
+    v1="$(git rev-parse HEAD)"
+    printf 'guard_release_pattern: refs/heads/other/*\n' > VAULT.md
+    commit_all moved
+    run "$QG" list --on push --ref refs/heads/rc/1 --rev "$v1" --json
+    [ "$status" -eq 0 ] && [ "$(jq -r '.rows | map(.id) | join(",")' <<<"$output")" = rel ]
+    run "$QG" list --on push --ref refs/heads/rc/1 --json
+    [ "$(jq -r '.rows | map(.id) | join(",")' <<<"$output")" = '' ]
+    run "$QG" list --on push --ref refs/heads/release/1 --rev "$v1" --json
+    [ "$(jq -r '.rows | map(.id) | join(",")' <<<"$output")" = '' ]
+}
+
 @test "run commit passes and fails like the hook would, and --json gives verdict and rows" {
     run "$QG" run commit
     [ "$status" -eq 0 ]

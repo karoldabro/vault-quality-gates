@@ -86,6 +86,14 @@ _guard_override_walk() {
     done
 }
 
+# guard_pusher_is_agent -> 0 when CLAUDECODE or AI_AGENT is set here, or the ancestor walk of
+# guard_override_ancestors_clean fails: an ancestor holds one, or an environment cannot be read.
+# No /dev/tty test, so a person's push from a GUI git client counts as human.
+guard_pusher_is_agent() {
+    [ -n "${CLAUDECODE+set}" ] || [ -n "${AI_AGENT+set}" ] && return 0
+    ! guard_override_ancestors_clean
+}
+
 _guard_override_field() {
     printf '%s' "$1" | tr '\t\n\r' '   '
 }

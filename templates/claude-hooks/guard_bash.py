@@ -1,15 +1,17 @@
 """Rules for guard-bash.sh: denies a command that skips or weakens the commit gate or the push gate.
 
 The git and HUSKY rules bind only when the command acts on a gated repo (gated.py). The qg and
-guard.sh rules bind in every repo. Every other command runs unchecked; the repo's own pre-commit
-and pre-push hooks still judge each commit and push."""
+guard.sh rules bind in every repo, and so do two push rules: a push from a checkout whose
+quality/checks.tsv at HEAD holds push rows and no vault-guard pre-push, and a `gh api` write that moves a ref or merges
+on GitHub. Every other command runs unchecked; the repo's own pre-commit and pre-push hooks still
+judge each commit and push."""
 import json, os, re, shlex, stat, subprocess, sys, time
 
 # python3 -I leaves the script's folder off sys.path; the modules beside this file are put back.
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 try:
     from shell_lexer import Lexer
-    from gated import is_gated
+    from gated import is_gated, is_git_dir, push_unguarded
 except Exception as e:  # exit 1 would let the command run; a hook that cannot load denies
     sys.stderr.write(f'guard-bash: denied: cannot load the rules ({type(e).__name__}: {e})\n')
     sys.exit(2)
@@ -18,7 +20,7 @@ PLUGIN = os.path.realpath(sys.argv[1].rstrip('/') or '/')
 # What an agent may run through qg: reads, and the gate itself. Everything else changes the gate.
 QG_READS = {'help', '-h', '--help', 'list', 'explain', 'last', 'drivers', 'doctor', 'run', 'report', 'verify', 'config'}
 # What the operator's grant may name, and its longest life: QG_GRANT_ACTIONS and QG_GRANT_MAX in lib/qg-grant.sh.
-GRANT_ACTIONS = {'baseline', 'override', 'push'}
+GRANT_ACTIONS = {'baseline', 'override', 'push', 'hotfix'}
 GRANT_MAX = 28800
 # A push to one of these deploys.
 DEPLOY_BRANCHES = {'master', 'main', 'develop', 'development'}
@@ -44,6 +46,17 @@ GATE_VAR = re.compile(r'(GUARD|QG)_\w*=')
 GATE_FILES = ('quality/config', 'quality/drivers', 'quality/baseline.tsv', 'quality/checks.tsv')
 WRITERS = {'rm', 'mv', 'cp', 'ln', 'chmod', 'touch', 'tee', 'truncate', 'install', 'mkdir', 'rsync'}
 HOOK_KEY = re.compile(r'(core\.hookspath|hook\..*)\Z', re.I)
+# Configuration that changes which remote ref a push writes.
+PUSH_KEY = re.compile(r'(remote\..*\.(push|mirror)|push\.default|branch\..*\.merge)\Z', re.I)
+# Environment that sets git configuration for every git command it reaches.
+GIT_CONFIG_VAR = re.compile(r'GIT_CONFIG_(COUNT|KEY_\w*|VALUE_\w*|PARAMETERS|GLOBAL|SYSTEM|NOSYSTEM)=')
+# GitHub API paths whose write moves a ref, makes a commit or a file, or merges.
+GH_WRITE_PATH = re.compile(r'(^|/)(git/(refs|commits)|contents|merges|pulls/[^/]+/merge)(/|$)')
+GH_VALUE_OPTS = {'-X', '--method', '-f', '-F', '--field', '--raw-field', '-H', '--header', '--input', '-q', '--jq',
+                 '-t', '--template', '--hostname', '--cache', '-p', '--preview'}
+REROUTE = 'Push one branch by name, as git push origin <branch>, so the push gate measures the ref it sends'
+HOTFIX = ('Ask the operator to run `qg grant --agent hotfix` in a separate terminal, or push it as a feature branch '
+          'and let the push gate measure it')
 
 
 class Deny(Exception):
@@ -52,6 +65,20 @@ class Deny(Exception):
 
 class Integrity(Deny):
     """A qg or guard.sh rule; it binds in every repo."""
+
+
+class PushDeny(Deny):
+    """A push rule; main() names its next step instead of the commit-gate sentence."""
+    everywhere = False
+
+    def __init__(self, rule, step):
+        super().__init__(rule)
+        self.step = step
+
+
+class Unguarded(PushDeny):
+    """A push rule that binds outside a gated repo too."""
+    everywhere = True
 
 
 def base(w):
@@ -109,39 +136,67 @@ def current_branch(repo):
         return ''
 
 
+def push_branch(repo):
+    """The branch a bare `git push` writes on the remote, after upstream and push.default; else the current branch."""
+    try:
+        full = subprocess.run(['git', '-C', repo, 'rev-parse', '--symbolic-full-name', '@{push}'],
+                              capture_output=True, text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        full = ''
+    if full.startswith('refs/remotes/') and full.count('/') >= 3:
+        return full.split('/', 3)[3]
+    return current_branch(repo)
+
+
 def check_push(rest, repo):
+    if push_unguarded(repo):
+        raise Unguarded(f'{os.path.realpath(repo)} has push rows in quality/checks.tsv at HEAD but no vault-guard pre-push hook, '
+                        'so nothing would measure this push', 'Ask the operator to run `qg hooks install` in that checkout')
     for t in rest:
         if t in PUSH_DENIED or t.startswith(('--force', '--push-option=', '--receive-pack', '--exec')):
-            raise Deny(f'git push {t} is refused for an agent (force, delete, mirror, push options, no-verify)')
+            raise PushDeny(f'git push {t} is refused for an agent (force, delete, mirror, push options, no-verify)',
+                           'Push without it; a refused push is fixed in the code')
+        if t in ('--all', '--branches'):
+            raise PushDeny(f'git push {t} pushes every local branch, whatever its name', REROUTE)
     positional = [t for t in rest if not t.startswith('-')]
-    refspecs = positional[1:]
-    if not refspecs:
-        refspecs = [current_branch(repo)]
+    refspecs = positional[1:] or [None]
     for spec in refspecs:
-        if spec.startswith('+'):
-            raise Deny(f'git push {spec} forces the update')
-        dst = spec.split(':', 1)[-1].removeprefix('refs/heads/')
-        if dst == 'HEAD':
-            dst = current_branch(repo)
+        if spec is None:
+            dst = push_branch(repo)
+        else:
+            if spec.startswith('+'):
+                raise PushDeny(f'git push {spec} forces the update', 'Push without the +; a refused push is fixed in the code')
+            if spec == ':' or '*' in spec:
+                raise PushDeny(f'git push {spec} pushes every branch it matches', REROUTE)
+            dst = spec.split(':', 1)[-1]
+            if dst.startswith('refs/') and not dst.startswith('refs/heads/'):
+                raise PushDeny(f'git push to {dst} writes a ref outside refs/heads/', REROUTE)
+            dst = dst.removeprefix('refs/heads/')
+            if dst == 'HEAD':
+                dst = current_branch(repo)
         if dst in DEPLOY_BRANCHES:
-            raise Deny(f'git push to {dst} deploys; push a branch and let the operator merge it')
+            raise PushDeny(f'git push to {dst} deploys', 'Push a branch and let the operator merge it')
+        if dst.startswith('hotfix/') and 'hotfix' not in granted():
+            raise PushDeny(f'git push to {dst} skips the push rows, and no operator grant names hotfix', HOTFIX)
 
 
 def check_config(rest):
     for t in rest:
         key = t.split('=', 1)[0]
-        if HOOK_KEY.match(key) and not t.startswith('-'):
+        if (HOOK_KEY.match(key) or PUSH_KEY.match(key)) and not t.startswith('-'):
             if any(r in ('--get', '--get-all', '--get-regexp', '--list', '-l', 'get', 'list') for r in rest):
                 return
+            if PUSH_KEY.match(key):
+                raise PushDeny(f'git config {key} changes which remote ref a push writes', REROUTE)
             raise Deny(f'git config {key} can disable or reroute the hooks')
 
 
 def check_git(args, cwd):
-    """The rule a git command breaks, or None, and the folder it acts on."""
+    """The rule a git command breaks (a Deny), or None, and the folder it acts on."""
     try:
         return None, git_rules(args, cwd)
     except Deny as d:
-        return str(d), git_folder(args, cwd)
+        return d, git_folder(args, cwd)
 
 
 def git_folder(args, cwd):
@@ -152,18 +207,29 @@ def git_folder(args, cwd):
     return cwd
 
 
+def config_option(kv):
+    """Raises Deny for a `git -c` or `--config-env` setting that reroutes the hooks or the push."""
+    key = kv.split('=', 1)[0]
+    if HOOK_KEY.match(key):
+        raise Deny('git -c core.hooksPath or hook.* reroutes the hooks')
+    if PUSH_KEY.match(key):
+        raise PushDeny(f'git -c {key} changes which remote ref a push writes', REROUTE)
+
+
 def git_rules(args, cwd):
     """Raises Deny for a commit or push rule; returns the folder git acts on."""
     i = 0
     while i < len(args) and args[i].startswith('-'):
         t = args[i]
-        if t in ('-C', '-c') and i + 1 < len(args):
+        if t in ('-C', '-c', '--config-env') and i + 1 < len(args):
             if t == '-C':
                 cwd = os.path.join(cwd, os.path.expanduser(args[i + 1]))
-            elif HOOK_KEY.match(args[i + 1].split('=', 1)[0]):
-                raise Deny('git -c core.hooksPath or hook.* reroutes the hooks')
+            else:
+                config_option(args[i + 1])
             i += 2
             continue
+        if t.startswith('--config-env='):
+            config_option(t.split('=', 1)[1])
         i += 1
     if i >= len(args):
         return cwd
@@ -180,24 +246,67 @@ def git_rules(args, cwd):
 
 
 def check_assign(word):
-    """The rule an assignment breaks, or None."""
+    """The rule an assignment breaks (a Deny), or None."""
     if word == 'HUSKY=0':
-        return 'HUSKY=0 switches the hooks off'
+        return Deny('HUSKY=0 switches the hooks off')
     if GATE_VAR.match(word):
-        return f'{word.split("=", 1)[0]} is read by the gate; an agent may not set it'
+        return Deny(f'{word.split("=", 1)[0]} is read by the gate; an agent may not set it')
+    if GIT_CONFIG_VAR.match(word):
+        return PushDeny(f'{word.split("=", 1)[0]} sets git configuration for every git command, which can reroute a push '
+                        'or switch off the hooks', REROUTE)
     return None
 
 
-def gate_path(path):
-    """Why a write to path changes what judges the next commit or push, or None. The same files
-    guard-edit.sh denies."""
+def in_git_dir(full):
+    """True when the absolute path lies inside a git directory: a .git folder or a bare or separate git dir."""
+    if '.git' in full.split('/'):
+        return True
+    d = os.path.dirname(full)
+    while d != '/':
+        if is_git_dir(d):
+            return True
+        d = os.path.dirname(d)
+    return False
+
+
+def gate_path(path, full):
+    """Why a write to path, which resolves to full against the tracked cwd, changes what judges the
+    next commit or push, or None. The same files guard-edit.sh denies."""
     parts = path.split('/')
-    if '.git' in parts or path.startswith('.git/') or 'qg-override' in path:
+    if '.git' in parts or path.startswith('.git/') or 'qg-override' in path or in_git_dir(full):
         return f'{path} is inside a .git directory'
-    if '.husky' in parts:
+    if '.husky' in parts or '.husky' in full.split('/'):
         return f'{path} is a husky hook file'
-    if any(g in path for g in GATE_FILES):
+    if any(g in path or g in full for g in GATE_FILES):
         return f'{path} judges the next commit or push; a human changes it'
+    return None
+
+
+def check_gh(args):
+    """A PushDeny when `gh api` writes a ref, a commit, a file or a merge on GitHub; reads pass."""
+    if args[:1] != ['api']:
+        return None
+    method, body, path, i = None, False, None, 1
+    while i < len(args):
+        t = args[i]
+        opt, eq, val = t.partition('=') if t.startswith('--') else (t, '', '')
+        if opt in GH_VALUE_OPTS:
+            if not eq:
+                val = args[i + 1] if i + 1 < len(args) else ''
+                i += 1
+            if opt in ('-X', '--method'):
+                method = val.upper()
+            elif opt in ('-f', '-F', '--field', '--raw-field', '--input'):
+                body = True
+        elif t.startswith('-X') and len(t) > 2:
+            method = t[2:].upper()
+        elif not t.startswith('-') and path is None:
+            path = t
+        i += 1
+    method = method or ('POST' if body else 'GET')
+    if path and method in ('POST', 'PUT', 'PATCH', 'DELETE') and GH_WRITE_PATH.search(path.split('?', 1)[0].strip('/')):
+        return Unguarded(f'gh api {method} {path} writes on GitHub past the push gate',
+                         'Push a branch with git push, so pre-push measures it, and open a pull request; the operator merges it')
     return None
 
 
@@ -231,9 +340,10 @@ def scan(text, cwd, depth=0):
                 hits.append((rule, cwd))
             words = words[1:]
         for t in write_targets(base(words[0]) if words else '', words[1:], seg['redirs']):
-            rule = gate_path(str(t))
+            full = os.path.realpath(os.path.join(cwd, os.path.expanduser(str(t))))
+            rule = gate_path(str(t), full)
             if rule:
-                hits.append((rule, os.path.dirname(os.path.join(cwd, os.path.expanduser(str(t))))))
+                hits.append((Deny(rule), os.path.dirname(full)))
         if not words:
             continue
         cmd = base(words[0])
@@ -245,6 +355,10 @@ def scan(text, cwd, depth=0):
             check_guard_sh(words[1:])
         elif cmd in SHELLS and len(words) > 2 and words[1] == '-c':
             hits += scan(words[2], cwd, depth + 1)
+        elif cmd == 'gh':
+            rule = check_gh(words[1:])
+            if rule:
+                hits.append((rule, cwd))
         elif cmd == 'git':
             rule, folder = check_git(words[1:], cwd)
             if rule:
@@ -280,9 +394,13 @@ def main():
         if event.get('tool_name', 'Bash') != 'Bash':
             return
         command = (event.get('tool_input') or {}).get('command') or ''
-        hit = next((h for h in scan(command, event.get('cwd') or os.getcwd()) if is_gated(h[1])), None)
+        hits = scan(command, event.get('cwd') or os.getcwd())
+        hit = next((d for d, folder in hits if getattr(d, 'everywhere', False) or is_gated(folder)), None)
+        if isinstance(hit, PushDeny):
+            sys.stderr.write(f'guard-bash: denied: {hit}. {hit.step}.\n')
+            sys.exit(2)
         if hit:
-            sys.stderr.write(f'guard-bash: denied: {hit[0]}. Fix what the commit gate reports instead; only the human at a terminal may override it.\n')
+            sys.stderr.write(f'guard-bash: denied: {hit}. Fix what the commit gate reports instead; only the human at a terminal may override it.\n')
             sys.exit(2)
     except Integrity as d:
         sys.stderr.write(f'guard-bash: denied: {d}. Ask the human to run it from a separate terminal.\n')

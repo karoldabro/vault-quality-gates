@@ -91,6 +91,8 @@ hook() {
 
 @test "reading a gate variable and the plain commands stay allowed" {
     local bad='' c
+    # A checkout with quality/checks.tsv at HEAD pushes only through the vault-guard pre-push.
+    printf '#!/bin/sh\n# vault-guard-start\n' > .git/hooks/pre-push && chmod 644 .git/hooks/pre-push
     for c in 'git push -u origin feat/x' 'git commit -m "fix the GUARD_SKIP handling"' 'echo $GUARD_SKIP' \
              'grep -rn GUARD_CONFIG_REV lib' 'env | grep GUARD_'; do
         hook "$c" || bad+=$'\n'"denied: $c"

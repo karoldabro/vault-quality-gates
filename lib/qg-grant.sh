@@ -14,11 +14,14 @@
 #   baseline  qg baseline
 #   override  qg override --reason, and the commit hook consuming that token in an agent's commit
 #   push      qg override --push <sha>, and the pre-push hook consuming that token in an agent's push
+#   hotfix    an agent's push of a refs/heads/hotfix/* branch, which runs no push row (bin/guard.sh)
 
 declare -F qg_tool_path_file >/dev/null || . "${BASH_SOURCE[0]%/*}/qg-toolpath.sh"
 
-QG_GRANT_ACTIONS='baseline override push'
+QG_GRANT_ACTIONS='baseline override push hotfix'
 QG_GRANT_DEFAULT=3600
+# A grant naming hotfix and no duration: a hotfix push skips every push row, so it lasts 30 minutes.
+QG_GRANT_HOTFIX_DEFAULT=1800
 QG_GRANT_MAX=28800
 
 # qg_grant_file -> the grant file's path; exit 1 when the plugin checkout has no readable git dir.
@@ -83,14 +86,17 @@ qg_grant_human() {
 }
 
 # qg_grant_issue [<duration>] <action,action> -> writes the grant; exit 1 with the reason on stderr.
+# The default life is QG_GRANT_DEFAULT, or QG_GRANT_HOTFIX_DEFAULT when an action is hotfix.
 qg_grant_issue() {
-    local secs="$QG_GRANT_DEFAULT" actions a file now tmp
+    local secs="$QG_GRANT_DEFAULT" secs_given='' actions a file now tmp
     if [ $# -ge 2 ]; then
         secs="$(qg_grant_seconds "$1")" || { printf 'qg grant: "%s" is no duration; use 30m, 2h or minutes\n' "$1" >&2; return 1; }
+        secs_given=1
         shift
     fi
     actions="${1:-}"
     [ $# -eq 1 ] && [[ "$actions" =~ ^[a-z]+(,[a-z]+)*$ ]] || { printf 'qg grant: name the actions, comma-separated, from: %s\n' "${QG_GRANT_ACTIONS// /, }" >&2; return 1; }
+    [ -n "${secs_given:-}" ] || [[ ",${actions}," != *,hotfix,* ]] || secs="$QG_GRANT_HOTFIX_DEFAULT"
     for a in ${actions//,/ }; do
         [[ " $QG_GRANT_ACTIONS " == *" $a "* ]] || { printf 'qg grant: "%s" is no grantable action; the actions are %s\n' "$a" "${QG_GRANT_ACTIONS// /, }" >&2; return 1; }
     done
