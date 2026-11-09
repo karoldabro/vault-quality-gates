@@ -141,7 +141,8 @@ trusts its writer.
 **`reset=`:** `phpunit` empties each listed file before the run, such as a log the suite appends to.
 
 **Setting an environment variable inside a runner:** write `bin=env` and put the assignment first in
-the argv, as `bin=env -- XDEBUG_MODE=coverage vendor/bin/phpunit --log-junit ...`.
+the argv, as `bin=env -- XDEBUG_MODE=coverage vendor/bin/phpunit --log-junit ...`. A PHP whole-suite row
+runs on PCOV and capped paratest workers: `vault/architecture/php-coverage-suite-speed.md`.
 
 ## Config files each driver loads
 
